@@ -60,3 +60,9 @@ src/
 `.github/workflows/deploy.yml`이 준비되어 있습니다. GitHub에 새 저장소를 만들어 올리면
 `master`에 push할 때마다 테스트 → 빌드 → Pages 배포가 자동으로 실행됩니다.
 저장소 Settings → Pages → Source를 "GitHub Actions"로 바꿔 주세요.
+
+## 앱처럼 설치하기 (PWA)
+
+배포된 주소에서 브라우저 메뉴의 "홈 화면에 추가"(아이폰은 공유 → 홈 화면에 추가)를 누르면
+주소창 없이 가로 전체 화면으로 열립니다. 처음 접속하면 게임 파일이 폰에 저장되어 인터넷이 없어도 열립니다.
+(`public/manifest.webmanifest`, `public/sw.js`, 아이콘은 `public/`에 있습니다. 개발 서버에서는 동작하지 않고 배포본에서만 동작합니다.)

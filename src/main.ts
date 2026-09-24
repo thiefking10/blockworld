@@ -760,6 +760,13 @@ onPress(musicButton, () => {
   showToast(audio.isMusicOn() ? "배경음악을 켰어요" : "배경음악을 껐어요");
 });
 
+// 배포된 게임은 처음 접속하면 파일을 폰에 저장해 두어 인터넷이 없어도 열린다 (개발 중에는 쓰지 않는다).
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  navigator.serviceWorker.register("./sw.js").catch(() => {
+    // 등록에 실패해도 게임은 그대로 된다.
+  });
+}
+
 // 브라우저는 사용자가 화면을 누르기 전에는 소리를 못 내게 막는다. 첫 터치/클릭/키 입력 때 소리를 켠다.
 function unlockAudioOnce(): void {
   audio.unlock();

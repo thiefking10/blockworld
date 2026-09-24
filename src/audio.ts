@@ -116,6 +116,35 @@ class GameAudio {
     };
     schedule();
     this.musicTimer = window.setInterval(schedule, 500);
+    // 낮에는 새소리, 밤에는 귀뚜라미 소리를 가끔 낸다. 음악 버튼으로 같이 꺼진다.
+    window.setInterval(() => {
+      if (!this.musicOn) return;
+      if (this.night ? Math.random() < 0.3 : Math.random() < 0.14) this.playAmbient();
+    }, 1000);
+  }
+
+  /** 아주 작은 자연 소리 하나. 낮에는 새가 두세 번 짹짹, 밤에는 귀뚜라미가 빠르게 삑삑삑. */
+  private playAmbient(): void {
+    const ctx = this.context();
+    const now = ctx.currentTime + 0.05;
+    const bus = this.musicBus as GainNode;
+    const pulses = this.night ? 5 : 2 + Math.floor(Math.random() * 2);
+    const base = this.night ? 4300 + Math.random() * 400 : 2600 + Math.random() * 1200;
+    for (let i = 0; i < pulses; i++) {
+      const at = now + i * (this.night ? 0.09 : 0.16);
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(this.night ? base : base * 0.85, at);
+      if (!this.night) osc.frequency.exponentialRampToValueAtTime(base * 1.25, at + 0.09);
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, at);
+      gain.gain.linearRampToValueAtTime(this.night ? 0.03 : 0.045, at + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + (this.night ? 0.05 : 0.11));
+      osc.connect(gain);
+      gain.connect(bus);
+      osc.start(at);
+      osc.stop(at + 0.14);
+    }
   }
 
   private playMusicNote(at: number, freq: number, length: number): void {
