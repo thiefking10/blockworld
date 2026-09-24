@@ -686,6 +686,30 @@ onPress(document.getElementById("achievement-button") as HTMLElement, () => {
 });
 onPress(document.getElementById("achievement-close") as HTMLElement, () => achievementPanel.classList.remove("open"));
 
+// 전체화면: 크롬 같은 브라우저의 주소창과 탭 줄을 숨겨 게임 화면을 넓힌다. 지원하지 않는 브라우저(아이폰 사파리)에서는 버튼을 숨긴다.
+const fullscreenButton = document.getElementById("fullscreen-button") as HTMLElement;
+if (document.documentElement.requestFullscreen) {
+  fullscreenButton.style.display = "flex";
+  // 전체화면 요청은 손가락을 뗄 때(click) 해야 브라우저가 허락한다.
+  fullscreenButton.addEventListener("pointerdown", (e) => e.stopPropagation());
+  fullscreenButton.addEventListener("click", async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await document.documentElement.requestFullscreen({ navigationUI: "hide" });
+        // 가로 화면으로 고정한다 (지원하는 기기에서만 된다).
+        await (screen.orientation as unknown as { lock?: (o: string) => Promise<void> }).lock?.("landscape");
+      }
+    } catch {
+      // 거절되거나 지원하지 않으면 그냥 넘어간다.
+    }
+  });
+  document.addEventListener("fullscreenchange", () => {
+    fullscreenButton.textContent = document.fullscreenElement ? "전체화면 끄기" : "전체화면";
+  });
+}
+
 const helpPanel = document.getElementById("help-panel") as HTMLElement;
 const HELP_KEY = "voxelgame:help-seen";
 onPress(document.getElementById("help-button") as HTMLElement, () => helpPanel.classList.toggle("open"));
