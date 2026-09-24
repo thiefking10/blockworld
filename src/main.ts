@@ -1,9 +1,11 @@
 import * as THREE from "three";
 import { iconTile, tileIconDataUrl } from "./atlas";
 import { audio } from "./audio";
-import { blockName, PLACEABLE_BLOCKS, sanitizeHotbar } from "./blocks";
+import { Achievements, ACHIEVEMENTS } from "./achievements";
+import { blockName, canPlaceAt, PLACEABLE_BLOCKS, sanitizeHotbar } from "./blocks";
+import { CropField } from "./crops";
 import { FallTracker, Health, MAX_HEALTH } from "./health";
-import { dropFor, Inventory, Item, ITEM_NAMES, MEAT_HEAL, mobDrops, RECIPES } from "./inventory";
+import { dropsFor, FOOD_HEAL, Inventory, Item, ITEM_NAMES, mobDrops, RECIPES } from "./inventory";
 import { Controls } from "./controls";
 import { ambientColor, DAY_LENGTH_SECONDS, daylight, nextMorning, phaseFromSeconds, skyColor } from "./daycycle";
 import { solidMaterial, waterMaterial } from "./mesher";
@@ -14,7 +16,7 @@ import { AdaptiveQuality, fogFar, QUALITY_LEVELS } from "./quality";
 import { EYE_HEIGHT, Player } from "./player";
 import { lookDirection, raycast, RayHit } from "./raycast";
 import { decodeSave, EditLog, encodeSave, SaveData } from "./save";
-import { Block, BlockId, SIZE_X, SIZE_Z, World, isPassable } from "./world";
+import { Block, BlockId, SIZE_X, SIZE_Z, World, isPassable, isPlant } from "./world";
 
 const REACH = 5;
 
@@ -63,6 +65,13 @@ const inventory = new Inventory();
 if (saved && saved.seed === seed && saved.inventory) inventory.load(saved.inventory);
 const health = new Health();
 const fallTracker = new FallTracker();
+const achievements = new Achievements();
+if (saved && saved.seed === seed && saved.achievements) achievements.load(saved.achievements);
+const crops = new CropField();
+if (saved && saved.seed === seed && saved.crops) crops.load(saved.crops);
+
+let resetting = false;
+let saveTimer: number | undefined;
 
 const toastElement = document.getElementById("toast") as HTMLElement;
 let toastTimer: number | undefined;
@@ -85,6 +94,30 @@ function iconUrl(block: number): string {
 
 function itemLabel(item: number): string {
   return ITEM_NAMES[item] ?? blockName(item);
+}
+
+/** 도전 과제를 달성하면 알림을 띄운다. 이미 달성한 것이면 아무것도 안 한다. */
+function unlockAchievement(id: string): void {
+  if (!achievements.unlock(id)) return;
+  const def = ACHIEVEMENTS.find((a) => a.id === id);
+  showToast("도전 과제 달성! " + (def?.name ?? id), 2600);
+  audio.playCraft();
+  scheduleSave();
+}
+
+/** 가방에 무엇이 있는지 보고 달성한 도전 과제를 챙긴다. */
+function checkInventoryAchievements(): void {
+  const has = (item: number): boolean => inventory.count(item) > 0;
+  if (has(Block.Wood)) unlockAchievement("wood");
+  if (has(Block.Planks)) unlockAchievement("planks");
+  if (has(Item.WoodClub) || has(Item.StoneClub) || has(Item.IronClub)) unlockAchievement("club");
+  if (has(Item.Meat) || has(Item.CookedMeat)) unlockAchievement("meat");
+  if (has(Item.CookedMeat)) unlockAchievement("cooked");
+  if (has(Item.Bed)) unlockAchievement("bed");
+  if (has(Block.IronOre)) unlockAchievement("iron");
+  if (has(Item.IronClub)) unlockAchievement("ironclub");
+  if (has(Item.Grain)) unlockAchievement("harvest");
+  if (has(Item.Bread)) unlockAchievement("bread");
 }
 
 // 월드를 만드는 동안 화면이 멈추므로, 먼저 "만드는 중" 문구가 그려지게 한 프레임 기다린다.
@@ -198,6 +231,7 @@ const slotElements = hotbarBlocks.map((_block, index) => {
 
 /** 아이템 바 칸마다 블록 무늬 아이콘과 이름을 그린다. */
 function refreshHotbar(): void {
+  checkInventoryAchievements();
   slotElements.forEach((element, i) => {
     const block = hotbarBlocks[i];
     element.replaceChildren();
@@ -247,14 +281,15 @@ function onPress(element: HTMLElement, action: () => void): void {
   });
 }
 
-function eatMeat(): void {
-  if (inventory.count(Item.Meat) === 0) return;
+function eat(item: number): void {
+  const heal = FOOD_HEAL[item];
+  if (heal === undefined || inventory.count(item) === 0) return;
   if (health.hp >= MAX_HEALTH) {
     showToast("체력이 가득이라 안 먹어도 돼요");
     return;
   }
-  inventory.remove(Item.Meat);
-  health.heal(MEAT_HEAL);
+  inventory.remove(item);
+  health.heal(heal);
   audio.playEat();
   refreshHearts();
   refreshInventoryPanel();
@@ -273,6 +308,7 @@ function sleepInBed(): void {
     return;
   }
   worldSeconds = nextMorning(worldSeconds);
+  unlockAchievement("sleep");
   health.heal(10);
   mobSim.clearHostile();
   refreshHearts();
@@ -329,10 +365,13 @@ function refreshInventoryPanel(): void {
     for (const [item, amount] of extras) {
       const chip = document.createElement("div");
       chip.className = "item-chip";
-      if (item === Item.Meat) {
+      if (FOOD_HEAL[item] !== undefined) {
         chip.classList.add("eatable");
-        chip.textContent = "🍖 " + itemLabel(item) + " ×" + amount + " (눌러서 먹기)";
-        onPress(chip, eatMeat);
+        const emoji = item === Item.Bread ? "🍞" : item === Item.CookedMeat ? "🍖" : "🥩";
+        chip.textContent = emoji + " " + itemLabel(item) + " ×" + amount + " (눌러서 먹기)";
+        onPress(chip, () => eat(item));
+      } else if (item === Item.Grain) {
+        chip.textContent = "🌾 " + itemLabel(item) + " ×" + amount + " (3개로 빵을 만들어요)";
       } else if (item === Item.Bed) {
         chip.classList.add("eatable");
         chip.textContent = "🛏 " + itemLabel(item) + " ×" + amount + " (밤에 눌러서 자기)";
@@ -397,8 +436,9 @@ function hitMobInSight(blockHit: RayHit | null): boolean {
   audio.playMobHit();
   const damage = mode === "creative" ? 4 : inventory.attackDamage();
   const kind = found.mob.kind;
-  if (mobSim.hit(found.mob, player.x, player.z, damage) && mode === "survival") {
-    const drops = mobDrops(kind, Math.random);
+  if (mobSim.hit(found.mob, player.x, player.z, damage)) {
+    if (kind === "zombie") unlockAchievement("zombie");
+    const drops = mode === "survival" ? mobDrops(kind, Math.random) : [];
     if (drops.length > 0) {
       for (const [item, amount] of drops) inventory.add(item, amount);
       showToast(drops.map(([item, amount]) => itemLabel(item) + " ×" + amount).join(", ") + " 얻었어요");
@@ -409,19 +449,28 @@ function hitMobInSight(blockHit: RayHit | null): boolean {
   return true;
 }
 
+/** 블록 하나를 없앤다. 서바이벌이면 나오는 것들을 가방에 넣고, 알릴 만한 것은 알려 준다. */
+function removeBlock(x: number, y: number, z: number): void {
+  const broken = world.get(x, y, z);
+  if (mode === "survival") {
+    const drops = dropsFor(broken, Math.random);
+    for (const [item, amount] of drops) inventory.add(item, amount);
+    if (drops.some(([item]) => item === Block.Sprout) && broken === Block.Grass) showToast("밀 씨앗을 얻었어요");
+    refreshHotbar();
+  }
+  world.set(x, y, z, Block.Air);
+  editLog.record(x, y, z, Block.Air);
+  crops.remove(x, y, z);
+}
+
 function breakBlock(): void {
   const hit = currentTarget();
   if (hitMobInSight(hit)) return;
   if (!hit || hit.y === 0) return;
-  const broken = world.get(hit.x, hit.y, hit.z);
-  audio.playBreak(broken);
-  if (mode === "survival") {
-    const drop = dropFor(broken);
-    if (drop) inventory.add(drop[0], drop[1]);
-    refreshHotbar();
-  }
-  world.set(hit.x, hit.y, hit.z, Block.Air);
-  editLog.record(hit.x, hit.y, hit.z, Block.Air);
+  audio.playBreak(world.get(hit.x, hit.y, hit.z));
+  removeBlock(hit.x, hit.y, hit.z);
+  // 밑이 사라진 식물은 서 있을 곳이 없으니 같이 뽑힌다.
+  if (isPlant(world.get(hit.x, hit.y + 1, hit.z))) removeBlock(hit.x, hit.y + 1, hit.z);
   worldMesh.updateBlock(hit.x, hit.z);
   scheduleSave();
 }
@@ -433,6 +482,10 @@ function placeBlock(): void {
   if (!world.inBounds(px, py, pz) || !isPassable(world.get(px, py, pz))) return;
   if (player.intersectsBlock(px, py, pz) || mobSim.intersectsBlock(px, py, pz)) return;
   const block = hotbarBlocks[selectedSlot];
+  if (isPlant(block) && (world.get(px, py, pz) !== Block.Air || !canPlaceAt(block, world.get(px, py - 1, pz)))) {
+    showToast(blockName(block) + "은(는) 풀이나 흙 위에만 심을 수 있어요");
+    return;
+  }
   if (mode === "survival") {
     if (!inventory.remove(block)) {
       showToast(blockName(block) + " 블록이 없어요");
@@ -443,12 +496,11 @@ function placeBlock(): void {
   audio.playPlace(block);
   world.set(px, py, pz, block);
   editLog.record(px, py, pz, block);
+  if (block === Block.Sprout) crops.plant(px, py, pz, worldSeconds);
   worldMesh.updateBlock(px, pz);
   scheduleSave();
 }
 
-let resetting = false;
-let saveTimer: number | undefined;
 
 function saveNow(): void {
   if (resetting) return;
@@ -461,6 +513,8 @@ function saveNow(): void {
     hotbar: hotbarBlocks,
     mode,
     inventory: inventory.entries(),
+    crops: crops.toArray(),
+    achievements: achievements.toArray(),
   };
   writeStorage(saveKey(seed), encodeSave(data));
 }
@@ -597,8 +651,43 @@ function updateEnvironment(): void {
 
 // 개발용: 주소에 ?debug 를 붙이면 콘솔에서 __vox 로 월드와 플레이어를 만질 수 있다.
 if (new URLSearchParams(window.location.search).has("debug")) {
-  (window as unknown as { __vox: unknown }).__vox = { world, player, camera, scene, audio, generateMs, worldMesh, mobSim, health, applyQuality, inventory, hurt, setMode: (m: "survival" | "creative") => { mode = m; refreshHotbar(); } };
+  (window as unknown as { __vox: unknown }).__vox = { world, player, camera, scene, audio, generateMs, worldMesh, mobSim, health, applyQuality, crops, achievements, inventory, hurt, setMode: (m: "survival" | "creative") => { mode = m; refreshHotbar(); } };
 }
+
+const achievementPanel = document.getElementById("achievement-panel") as HTMLElement;
+const achievementTitle = document.getElementById("achievement-title") as HTMLElement;
+const achievementList = document.getElementById("achievement-list") as HTMLElement;
+
+function refreshAchievementPanel(): void {
+  achievementTitle.textContent = "도전 과제 (" + achievements.count + "/" + ACHIEVEMENTS.length + ")";
+  achievementList.replaceChildren();
+  for (const def of ACHIEVEMENTS) {
+    const done = achievements.has(def.id);
+    const row = document.createElement("div");
+    row.className = "achievement" + (done ? " done" : "");
+    row.textContent = (done ? "✅ " : "⬜ ") + def.name;
+    const hint = document.createElement("small");
+    hint.textContent = def.hint;
+    row.append(hint);
+    achievementList.appendChild(row);
+  }
+}
+onPress(document.getElementById("achievement-button") as HTMLElement, () => {
+  toggleInventory(false);
+  const open = achievementPanel.classList.toggle("open");
+  if (open) refreshAchievementPanel();
+});
+onPress(document.getElementById("achievement-close") as HTMLElement, () => achievementPanel.classList.remove("open"));
+
+const LOOK_KEY = "voxelgame:look";
+const lookSlider = document.getElementById("look-slider") as HTMLInputElement;
+const savedLook = Number(readStorage(LOOK_KEY));
+if (savedLook >= 0.5 && savedLook <= 2) lookSlider.value = String(savedLook);
+controls.lookScale = Number(lookSlider.value);
+lookSlider.addEventListener("input", () => {
+  controls.lookScale = Number(lookSlider.value);
+  writeStorage(LOOK_KEY, lookSlider.value);
+});
 
 const MUSIC_KEY = "voxelgame:music";
 const musicButton = document.getElementById("music-button") as HTMLElement;
@@ -648,6 +737,7 @@ function updateMovementSounds(moved: number): void {
 }
 
 let shownHp = health.hp;
+let cropTimer = 0;
 let last = performance.now();
 let frames = 0;
 let fpsTimer = 0;
@@ -664,6 +754,17 @@ function frame(now: number): void {
   player.update(dt, controls.currentInput());
   updateMovementSounds(Math.hypot(player.x - beforeX, player.z - beforeZ));
   worldMesh.update(player.x, player.z);
+  cropTimer += dt;
+  if (cropTimer >= 1) {
+    cropTimer = 0;
+    for (const [x, y, z] of crops.harvestReady(worldSeconds)) {
+      if (world.get(x, y, z) !== Block.Sprout) continue;
+      world.set(x, y, z, Block.Wheat);
+      editLog.record(x, y, z, Block.Wheat);
+      worldMesh.updateBlock(x, z);
+      scheduleSave();
+    }
+  }
   const fallDamage = fallTracker.update(player.y, player.onGround, player.isInWater());
   if (fallDamage > 0) hurt(fallDamage);
   health.update(dt);

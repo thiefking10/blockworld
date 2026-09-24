@@ -54,6 +54,13 @@ describe("save", () => {
     expect(decodeSave(JSON.stringify({ ...sample, inventory: "x" }))).toBeNull();
   });
 
+  it("심은 작물과 도전 과제도 저장된다", () => {
+    const full: SaveData = { ...sample, crops: [[1, 2, 3, 40.5]], achievements: ["wood", "bed"] };
+    expect(decodeSave(encodeSave(full))).toEqual(full);
+    expect(decodeSave(JSON.stringify({ ...sample, crops: [[1, 2, 3]] }))).toBeNull();
+    expect(decodeSave(JSON.stringify({ ...sample, achievements: [1] }))).toBeNull();
+  });
+
   it("형식이 다르면 null이다", () => {
     expect(decodeSave(JSON.stringify({ ...sample, version: 2 }))).toBeNull();
     expect(decodeSave(JSON.stringify({ ...sample, edits: [[1, 2, 3]] }))).toBeNull();

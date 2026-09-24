@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dropFor, Inventory, Item, mobDrops, RECIPES } from "./inventory";
+import { dropsFor, FOOD_HEAL, Inventory, Item, mobDrops, RECIPES } from "./inventory";
 import { Block } from "./world";
 
 describe("Inventory", () => {
@@ -55,11 +55,34 @@ describe("Inventory", () => {
 });
 
 describe("drops", () => {
-  it("잔디는 흙, 물과 공기는 아무것도 안 나온다", () => {
-    expect(dropFor(Block.Grass)).toEqual([Block.Dirt, 1]);
-    expect(dropFor(Block.Stone)).toEqual([Block.Stone, 1]);
-    expect(dropFor(Block.Water)).toBeNull();
-    expect(dropFor(Block.Air)).toBeNull();
+  it("잔디는 흙(가끔 씨앗), 물과 공기는 아무것도 안 나온다", () => {
+    expect(dropsFor(Block.Grass, () => 0.9)).toEqual([[Block.Dirt, 1]]);
+    expect(dropsFor(Block.Grass, () => 0.1)).toEqual([[Block.Dirt, 1], [Block.Sprout, 1]]);
+    expect(dropsFor(Block.Stone, () => 0.5)).toEqual([[Block.Stone, 1]]);
+    expect(dropsFor(Block.Water, () => 0.5)).toEqual([]);
+    expect(dropsFor(Block.Air, () => 0.5)).toEqual([]);
+  });
+
+  it("다 자란 밀은 밀과 씨앗을, 어린 싹은 씨앗을 준다", () => {
+    expect(dropsFor(Block.Wheat, () => 0.1)).toEqual([[Item.Grain, 2], [Block.Sprout, 2]]);
+    expect(dropsFor(Block.Wheat, () => 0.9)).toEqual([[Item.Grain, 1], [Block.Sprout, 1]]);
+    expect(dropsFor(Block.Sprout, () => 0.5)).toEqual([[Block.Sprout, 1]]);
+  });
+
+  it("고기는 구워서 회복이 커지고, 밀 3개는 빵이 된다", () => {
+    expect(FOOD_HEAL[Item.CookedMeat]).toBeGreaterThan(FOOD_HEAL[Item.Meat]);
+    const inv = new Inventory();
+    inv.add(Item.Meat, 1);
+    inv.add(Block.Wood, 1);
+    inv.add(Item.Grain, 3);
+    const cook = RECIPES.find((r) => r.name === "구운 고기");
+    const bread = RECIPES.find((r) => r.name === "빵");
+    if (!cook || !bread) throw new Error("recipe");
+    expect(inv.craft(cook)).toBe(true);
+    expect(inv.craft(bread)).toBe(true);
+    expect(inv.count(Item.CookedMeat)).toBe(1);
+    expect(inv.count(Item.Bread)).toBe(1);
+    expect(inv.count(Item.Meat)).toBe(0);
   });
 
   it("돼지는 고기, 양은 고기와 양털을 떨구고 좀비는 안 떨군다", () => {

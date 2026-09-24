@@ -14,6 +14,10 @@ export interface SaveData {
   mode?: "survival" | "creative";
   /** 가방 내용 [아이템 번호, 개수]. */
   inventory?: [number, number][];
+  /** 심어 둔 씨앗 [x, y, z, 심은 시각(초)]. */
+  crops?: [number, number, number, number][];
+  /** 달성한 도전 과제 번호. */
+  achievements?: string[];
 }
 
 /** 플레이어가 부수거나 놓은 블록을 기록한다. 같은 자리는 마지막 값만 남는다. */
@@ -57,6 +61,8 @@ export function decodeSave(text: string | null): SaveData | null {
       !(Array.isArray(data.inventory) && data.inventory.every((e: unknown) => Array.isArray(e) && e.length === 2 && isFiniteNumbers(e)))
     )
       return null;
+    if (data.crops !== undefined && !(Array.isArray(data.crops) && data.crops.every((e: unknown) => Array.isArray(e) && e.length === 4 && isFiniteNumbers(e)))) return null;
+    if (data.achievements !== undefined && !(Array.isArray(data.achievements) && data.achievements.every((a: unknown) => typeof a === "string"))) return null;
     if (!data.edits.every((e: unknown) => Array.isArray(e) && e.length === 4 && isFiniteNumbers(e))) return null;
     return data as SaveData;
   } catch {

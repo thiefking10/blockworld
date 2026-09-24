@@ -10,6 +10,58 @@ function flatWorld(): World {
 
 const idle = { moveX: 0, moveZ: 0, jump: false };
 
+describe("자동 점프", () => {
+  function walkForward(player: Player, seconds: number): void {
+    for (let i = 0; i < seconds * 60; i++) player.update(1 / 60, { moveX: 0, moveZ: 1, jump: false });
+  }
+
+  function worldWithWall(height: number): World {
+    const world = flatWorld();
+    for (let y = 1; y <= height; y++) for (let x = 0; x < 16; x++) for (let z = 0; z <= 5; z++) world.set(x, y, z, Block.Stone);
+    return world;
+  }
+
+  it("한 칸 높이 턱은 점프 버튼 없이 올라간다", () => {
+    const player = new Player(worldWithWall(1));
+    player.x = 8;
+    player.z = 8;
+    player.y = 1;
+    walkForward(player, 2);
+    expect(player.z).toBeLessThan(5.5);
+    expect(player.y).toBeCloseTo(2, 1);
+  });
+
+  it("두 칸 높이 벽은 못 올라가고, 끄면 한 칸도 안 오른다", () => {
+    const wall = new Player(worldWithWall(2));
+    wall.x = 8;
+    wall.z = 8;
+    wall.y = 1;
+    walkForward(wall, 2);
+    expect(wall.z).toBeGreaterThan(5.9);
+    expect(wall.y).toBeCloseTo(1, 1);
+
+    const off = new Player(worldWithWall(1));
+    off.autoJump = false;
+    off.x = 8;
+    off.z = 8;
+    off.y = 1;
+    walkForward(off, 2);
+    expect(off.z).toBeGreaterThan(5.9);
+  });
+
+  it("머리 위가 막힌 좁은 턱은 오르지 않는다", () => {
+    const world = worldWithWall(1);
+    for (let x = 0; x < 16; x++) world.set(x, 3, 5, Block.Stone);
+    for (let x = 0; x < 16; x++) world.set(x, 3, 4, Block.Stone);
+    const player = new Player(world);
+    player.x = 8;
+    player.z = 8;
+    player.y = 1;
+    walkForward(player, 2);
+    expect(player.y).toBeCloseTo(1, 1);
+  });
+});
+
 describe("player", () => {
   it("공중에 있으면 떨어져서 바닥에 선다", () => {
     const player = new Player(flatWorld());

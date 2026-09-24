@@ -22,6 +22,10 @@ export function materialOf(block: number): Material {
       return "wood";
     case Block.Leaves:
     case Block.Cactus:
+    case Block.Flower:
+    case Block.YellowFlower:
+    case Block.Sprout:
+    case Block.Wheat:
       return "leaves";
     case Block.Water:
       return "water";

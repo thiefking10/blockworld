@@ -27,6 +27,8 @@ export class Player {
   yaw = 0;
   pitch = 0;
   onGround = false;
+  /** 걷다가 한 칸 높이 턱에 부딪히면 알아서 뛰어 오른다 (터치 조작이 편하도록). */
+  autoJump = true;
 
   constructor(private readonly world: World) {}
 
@@ -78,14 +80,24 @@ export class Player {
     const dx = (forwardX * input.moveZ + rightX * input.moveX) * speed * dt;
     const dz = (forwardZ * input.moveZ + rightZ * input.moveX) * speed * dt;
 
-    if (!this.collides(this.x + dx, this.y, this.z)) this.x += dx;
-    if (!this.collides(this.x, this.y, this.z + dz)) this.z += dz;
+    const blockedX = this.collides(this.x + dx, this.y, this.z);
+    const blockedZ = this.collides(this.x, this.y, this.z + dz);
+    if (!blockedX) this.x += dx;
+    if (!blockedZ) this.z += dz;
+
+    // 부딪힌 방향으로 한 칸 높이에 머리 위까지 빈 공간이 있으면 오를 수 있는 턱이다.
+    const stepUp =
+      this.autoJump &&
+      this.onGround &&
+      !inWater &&
+      (blockedX || blockedZ) &&
+      !this.collides(this.x + (blockedX ? dx : 0), this.y + 1.05, this.z + (blockedZ ? dz : 0));
 
     if (inWater) {
       if (input.jump) this.vy = Math.min(this.vy + WATER_SWIM_UP * dt, WATER_MAX_RISE);
       else this.vy = Math.max(this.vy - WATER_GRAVITY * dt, -WATER_MAX_SINK);
     } else {
-      if (input.jump && this.onGround) this.vy = JUMP_SPEED;
+      if ((input.jump || stepUp) && this.onGround) this.vy = JUMP_SPEED;
       this.vy -= GRAVITY * dt;
     }
 

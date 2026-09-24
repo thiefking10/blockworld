@@ -1,4 +1,4 @@
-import { Block, BlockId } from "./world";
+import { Block, BlockId, isPlant } from "./world";
 
 export interface PlaceableBlock {
   block: BlockId;
@@ -20,7 +20,16 @@ export const PLACEABLE_BLOCKS: PlaceableBlock[] = [
   { block: Block.Cactus, name: "선인장" },
   { block: Block.Wool, name: "양털" },
   { block: Block.IronOre, name: "철광석" },
+  { block: Block.Flower, name: "붉은 꽃" },
+  { block: Block.YellowFlower, name: "노란 꽃" },
+  { block: Block.Sprout, name: "밀 씨앗" },
 ];
+
+/** 이 블록을 놓으려는 칸 바로 아래 블록이 (below) 받쳐 줄 수 있는지. 식물은 풀이나 흙 위에만 심는다. */
+export function canPlaceAt(block: number, below: number): boolean {
+  if (isPlant(block)) return below === Block.Grass || below === Block.Dirt;
+  return true;
+}
 
 export const HOTBAR_SIZE = 6;
 

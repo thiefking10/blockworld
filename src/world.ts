@@ -14,6 +14,10 @@ export const Block = {
   Cactus: 12,
   Wool: 13,
   IronOre: 14,
+  Flower: 15,
+  YellowFlower: 16,
+  Sprout: 17,
+  Wheat: 18,
 } as const;
 export type BlockId = (typeof Block)[keyof typeof Block];
 
@@ -22,9 +26,14 @@ export const SIZE_Y = 32;
 export const SIZE_Z = 256;
 export const SEA_LEVEL = 9;
 
-/** 빛을 막고 몸이 부딪히는 블록인지 (공기와 물은 아니다). */
+/** 꽃, 밀 같은 식물 블록인지. 십자 모양으로 그려지고, 몸은 지나가며 빛도 막지 않는다. */
+export function isPlant(block: number): boolean {
+  return block === Block.Flower || block === Block.YellowFlower || block === Block.Sprout || block === Block.Wheat;
+}
+
+/** 빛을 막고 몸이 부딪히는 블록인지 (공기, 물, 식물은 아니다). */
 export function isOpaque(block: number): boolean {
-  return block !== Block.Air && block !== Block.Water;
+  return block !== Block.Air && block !== Block.Water && !isPlant(block);
 }
 
 /** 하늘빛을 막는 블록인지. 유리는 몸은 막아도 빛은 통과시킨다. */
@@ -238,6 +247,20 @@ export class World {
     }
   }
 
+  /** 풀밭 위에 꽃을 드문드문 심는다. 초원과 숲에만 핀다. */
+  private scatterFlowers(seed: number): void {
+    for (let x = 1; x < SIZE_X - 1; x++) {
+      for (let z = 1; z < SIZE_Z - 1; z++) {
+        const biome = biomeAt(x, z, seed);
+        const density = biome === "plains" ? 0.03 : biome === "forest" ? 0.02 : 0;
+        if (density === 0 || hash2(x, z, seed + 2024) > density) continue;
+        const ground = this.surfaceHeight(x, z) - 1;
+        if (ground < SEA_LEVEL || this.get(x, ground, z) !== Block.Grass || this.get(x, ground + 1, z) !== Block.Air) continue;
+        this.set(x, ground + 1, z, hash2(x, z, seed + 55) < 0.5 ? Block.Flower : Block.YellowFlower);
+      }
+    }
+  }
+
   generate(seed: number): void {
     for (let x = 0; x < SIZE_X; x++) {
       for (let z = 0; z < SIZE_Z; z++) {
@@ -258,5 +281,6 @@ export class World {
     this.carveCaves(seed);
     this.scatterOre(seed);
     this.plantTrees(seed);
+    this.scatterFlowers(seed);
   }
 }

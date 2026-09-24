@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { createAtlasTexture, tileForFace, tileUV } from "./atlas";
 import { CHUNK_SIZE } from "./chunkMath";
-import { Block, BlockId, SIZE_Y, World, occludes } from "./world";
+import { Block, BlockId, SIZE_Y, World, isPlant, occludes } from "./world";
 
 /** 하늘이 안 보이는 곳(동굴 안, 지붕 밑)의 밝기 */
 const DARK_LIGHT = 0.45;
@@ -38,6 +38,14 @@ export const waterMaterial = new THREE.MeshBasicMaterial({
   opacity: 0.6,
   depthWrite: false,
 });
+
+/** 식물은 X 모양으로 엇갈린 두 장의 판을 앞뒤로 그린다. */
+const PLANT_QUADS: number[][][] = [
+  [[0, 0, 0], [0, 1, 0], [1, 1, 1], [1, 0, 1]],
+  [[1, 0, 1], [1, 1, 1], [0, 1, 0], [0, 0, 0]],
+  [[1, 0, 0], [1, 1, 0], [0, 1, 1], [0, 0, 1]],
+  [[0, 0, 1], [0, 1, 1], [1, 1, 0], [1, 0, 0]],
+];
 
 class MeshData {
   positions: number[] = [];
@@ -103,10 +111,17 @@ export function buildChunkMesh(world: World, chunkX: number, chunkZ: number): Ch
           const airAbove = world.get(x, y + 1, z) === Block.Air;
           for (const face of FACES) {
             const [dx, dy, dz] = face.dir;
-            if (world.get(x + dx, y + dy, z + dz) !== Block.Air) continue;
+            const beside = world.get(x + dx, y + dy, z + dz);
+            if (beside !== Block.Air && !isPlant(beside)) continue;
             const corners = airAbove ? face.corners.map(([cx, cy, cz]) => [cx, cy === 1 ? WATER_TOP : cy, cz]) : face.corners;
             water.addQuad(corners, x, y, z, face.shade, tileForFace(block, dy), dy !== 0);
           }
+          continue;
+        }
+
+        if (isPlant(block)) {
+          const brightness = (0.95 + noise) * (world.isSkyLit(x, y, z) ? 1 : DARK_LIGHT);
+          for (const corners of PLANT_QUADS) solid.addQuad(corners, x, y, z, brightness, tileForFace(block, 0), false);
           continue;
         }
 

@@ -7,6 +7,9 @@ export const Item = {
   StoneClub: 102,
   Bed: 103,
   IronClub: 104,
+  CookedMeat: 105,
+  Grain: 106,
+  Bread: 107,
 } as const;
 
 export const ITEM_NAMES: Record<number, string> = {
@@ -15,10 +18,20 @@ export const ITEM_NAMES: Record<number, string> = {
   [Item.StoneClub]: "돌 몽둥이",
   [Item.Bed]: "침대",
   [Item.IronClub]: "철 몽둥이",
+  [Item.CookedMeat]: "구운 고기",
+  [Item.Grain]: "밀",
+  [Item.Bread]: "빵",
 };
 
 /** 고기를 먹으면 회복하는 체력 (하트 4개). */
 export const MEAT_HEAL = 8;
+
+/** 먹을 수 있는 아이템과 회복하는 체력. */
+export const FOOD_HEAL: Record<number, number> = {
+  [Item.Meat]: MEAT_HEAL,
+  [Item.CookedMeat]: 14,
+  [Item.Bread]: 10,
+};
 
 /** 가진 도구별 공격력. 도구가 없으면 맨손 1. 센 것부터 적는다. */
 export const CLUB_DAMAGE: [number, number][] = [
@@ -41,13 +54,24 @@ export const RECIPES: Recipe[] = [
   { name: "돌 몽둥이", inputs: [[Block.Stone, 2], [Block.Planks, 1]], output: [Item.StoneClub, 1] },
   { name: "철 몽둥이", inputs: [[Block.IronOre, 2], [Block.Planks, 1]], output: [Item.IronClub, 1] },
   { name: "침대", inputs: [[Block.Wool, 3], [Block.Planks, 3]], output: [Item.Bed, 1] },
+  { name: "구운 고기", inputs: [[Item.Meat, 1], [Block.Wood, 1]], output: [Item.CookedMeat, 1] },
+  { name: "빵", inputs: [[Item.Grain, 3]], output: [Item.Bread, 1] },
 ];
 
-/** 블록을 부수면 무엇이 몇 개 나오는지. 잔디는 흙이 나온다. */
-export function dropFor(block: number): [number, number] | null {
-  if (block === Block.Air || block === Block.Water) return null;
-  if (block === Block.Grass) return [Block.Dirt, 1];
-  return [block, 1];
+/**
+ * 블록을 부수면 무엇이 몇 개 나오는지. 잔디는 흙이 나오고 가끔 씨앗도 나온다.
+ * 다 자란 밀은 밀과 씨앗을, 어린 싹은 씨앗을 준다. 씨앗은 밀 씨앗 블록(Sprout)이 곧 아이템이다.
+ */
+export function dropsFor(block: number, rng: () => number): [number, number][] {
+  if (block === Block.Air || block === Block.Water) return [];
+  switch (block) {
+    case Block.Grass:
+      return rng() < 0.25 ? [[Block.Dirt, 1], [Block.Sprout, 1]] : [[Block.Dirt, 1]];
+    case Block.Wheat:
+      return [[Item.Grain, 1 + (rng() < 0.5 ? 1 : 0)], [Block.Sprout, 1 + (rng() < 0.5 ? 1 : 0)]];
+    default:
+      return [[block, 1]];
+  }
 }
 
 /** 동물을 잡으면 나오는 것들. 돼지와 양은 고기, 양은 양털도 준다. */

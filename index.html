@@ -220,15 +220,16 @@
         justify-content: center;
         pointer-events: auto;
       }
-      #inventory-panel {
+      #inventory-panel,
+      #achievement-panel {
         position: absolute;
         left: 50%;
         top: 50%;
         transform: translate(-50%, -50%);
         display: none;
         flex-direction: column;
-        gap: 10px;
-        padding: 14px;
+        gap: 6px;
+        padding: 10px 14px;
         background: rgba(15, 15, 25, 0.93);
         border: 2px solid rgba(255, 255, 255, 0.35);
         border-radius: 10px;
@@ -239,7 +240,8 @@
         overflow: auto;
         touch-action: pan-y;
       }
-      #inventory-panel.open {
+      #inventory-panel.open,
+      #achievement-panel.open {
         display: flex;
       }
       #inventory-title {
@@ -262,7 +264,7 @@
       }
       #inventory-grid {
         display: grid;
-        grid-template-columns: repeat(4, 68px);
+        grid-template-columns: repeat(4, 62px);
         gap: 8px;
       }
       #inventory-empty {
@@ -291,15 +293,14 @@
         background: rgba(255, 150, 80, 0.15);
       }
       #craft-list {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        width: 250px;
+        display: grid;
+        grid-template-columns: repeat(2, 160px);
+        gap: 6px;
       }
       .craft-row {
         box-sizing: border-box;
-        min-height: 48px;
-        padding: 6px 10px;
+        min-height: 44px;
+        padding: 4px 10px;
         border: 2px solid rgba(255, 255, 255, 0.25);
         border-radius: 6px;
         font-size: 13px;
@@ -324,6 +325,57 @@
         gap: 10px;
         font-size: 13px;
       }
+      #look-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 13px;
+      }
+      #look-slider {
+        width: 120px;
+        min-height: 32px;
+      }
+      #achievement-button {
+        position: absolute;
+        right: 150px;
+        top: 8px;
+        min-width: 44px;
+        min-height: 34px;
+        padding: 0 10px;
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-size: 13px;
+        background: rgba(0, 0, 0, 0.4);
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        border-radius: 6px;
+        pointer-events: auto;
+      }
+      #achievement-list {
+        display: grid;
+        grid-template-columns: repeat(2, 250px);
+        gap: 8px;
+      }
+      .achievement {
+        box-sizing: border-box;
+        min-height: 48px;
+        padding: 6px 10px;
+        border: 2px solid rgba(255, 255, 255, 0.2);
+        border-radius: 6px;
+        font-size: 13px;
+        line-height: 1.35;
+      }
+      .achievement small {
+        display: block;
+        color: #bbb;
+        font-size: 11px;
+      }
+      .achievement.done {
+        border-color: #ffd98a;
+        background: rgba(255, 210, 120, 0.15);
+      }
       #mode-toggle {
         padding: 8px 14px;
         border: 1px solid rgba(255, 255, 255, 0.5);
@@ -333,7 +385,7 @@
       .inv-tile {
         position: relative;
         box-sizing: border-box;
-        height: 66px;
+        height: 60px;
         border: 2px solid rgba(255, 255, 255, 0.25);
         border-radius: 6px;
         display: flex;
@@ -343,8 +395,8 @@
         font-size: 11px;
       }
       .inv-tile img {
-        width: 36px;
-        height: 36px;
+        width: 30px;
+        height: 30px;
         image-rendering: pixelated;
       }
       .inv-tile .count,
@@ -415,7 +467,8 @@
         opacity: 1;
         transition: none;
       }
-      #inventory-close {
+      #inventory-close,
+      .close-button {
         align-self: center;
         padding: 8px 26px;
         border: 1px solid rgba(255, 255, 255, 0.5);
@@ -459,6 +512,7 @@
       <div id="hearts"></div>
       <div id="damage-flash"></div>
       <div id="toast"></div>
+      <div id="achievement-button">도전</div>
       <div id="music-button">♪</div>
       <div id="new-world-button">새 월드</div>
       <div id="joystick-base"></div>
@@ -468,10 +522,18 @@
       <div id="place-button">놓기</div>
       <div id="hotbar"></div>
       <div id="inventory-button">가방</div>
+      <div id="achievement-panel">
+        <div id="achievement-title"></div>
+        <div id="achievement-list"></div>
+        <div id="achievement-close" class="close-button">닫기</div>
+      </div>
       <div id="inventory-panel">
-        <div id="inventory-title">가방</div>
         <div id="mode-row">
           <span id="mode-label"></span>
+          <div id="look-row">
+            <span>시점 속도</span>
+            <input id="look-slider" type="range" min="0.5" max="2" step="0.1" value="1" />
+          </div>
           <div id="mode-toggle">방식 바꾸기</div>
         </div>
         <div id="inventory-body">

@@ -19,6 +19,10 @@ export const TILE = {
   CactusTop: 14,
   Wool: 15,
   IronOre: 16,
+  Flower: 17,
+  YellowFlower: 18,
+  Sprout: 19,
+  Wheat: 20,
 } as const;
 
 export const ATLAS_COLS = 5;
@@ -57,6 +61,14 @@ export function tileForFace(block: number, dirY: number): number {
       return TILE.Wool;
     case Block.IronOre:
       return TILE.IronOre;
+    case Block.Flower:
+      return TILE.Flower;
+    case Block.YellowFlower:
+      return TILE.YellowFlower;
+    case Block.Sprout:
+      return TILE.Sprout;
+    case Block.Wheat:
+      return TILE.Wheat;
     default:
       return TILE.Stone;
   }
@@ -222,6 +234,42 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: number): void {
         const cy = 2 + Math.floor(random() * 11);
         for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
           if (random() < 0.85) px(cx + dx, cy + dy, shade([214, 158, 110], (random() - 0.5) * 30));
+        }
+      }
+      break;
+    }
+    case TILE.Flower:
+    case TILE.YellowFlower: {
+      const petal = tile === TILE.Flower ? [214, 52, 60] : ([240, 208, 50] as RGB);
+      const center = tile === TILE.Flower ? [250, 226, 90] : ([214, 132, 30] as RGB);
+      for (let y = 7; y < TILE_PIXELS; y++) px(7 + (y % 5 === 0 ? 1 : 0), y, shade([52, 128, 42], (random() - 0.5) * 20));
+      for (const [dx, dy] of [[-2, 3], [-3, 3], [2, 3], [3, 3], [-2, 5], [3, 5]]) px(7 + dx + 1, 8 + dy, shade([52, 128, 42], -10));
+      for (let y = 1; y <= 6; y++) {
+        for (let x = 4; x <= 11; x++) {
+          const corner = (x === 4 || x === 11) && (y === 1 || y === 6);
+          if (!corner) px(x, y, shade(petal as RGB, (random() - 0.5) * 24));
+        }
+      }
+      for (const [x, y] of [[7, 3], [8, 3], [7, 4], [8, 4]]) px(x, y, shade(center as RGB, (random() - 0.5) * 14));
+      break;
+    }
+    case TILE.Sprout: {
+      for (const [x, height] of [[3, 5], [6, 7], [9, 6], [12, 5]]) {
+        for (let y = TILE_PIXELS - height; y < TILE_PIXELS; y++) {
+          px(x, y, shade([92, 168, 60], (random() - 0.5) * 24));
+          px(x + 1, y + 1 < TILE_PIXELS ? y + 1 : y, shade([70, 146, 48], (random() - 0.5) * 20));
+        }
+      }
+      break;
+    }
+    case TILE.Wheat: {
+      for (const x of [1, 4, 7, 10, 13]) {
+        const top = 2 + Math.floor(random() * 3);
+        for (let y = top; y < TILE_PIXELS; y++) px(x, y, shade([170, 160, 70], (random() - 0.5) * 24));
+        for (let y = top; y < top + 5; y++) {
+          px(x - 1, y, shade([222, 184, 70], (random() - 0.5) * 24));
+          px(x + 1, y, shade([222, 184, 70], (random() - 0.5) * 24));
+          px(x, y, shade([236, 200, 86], (random() - 0.5) * 20));
         }
       }
       break;

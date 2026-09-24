@@ -1,11 +1,15 @@
 const LOOK_SPEED = 0.005;
 const STICK_RADIUS = 56;
+/** 부수기/놓기 버튼을 꾹 누르고 있을 때 반복하는 간격(밀리초) */
+const REPEAT_MS = 280;
 
 /** 터치(왼쪽 조이스틱 / 오른쪽 드래그 시점 / 점프 버튼)와 키보드·마우스 입력. */
 export class Controls {
   moveX = 0;
   moveZ = 0;
   jump = false;
+  /** 시점 돌리는 속도 배율 (설정에서 바꾼다). */
+  lookScale = 1;
   onBreak?: () => void;
   onPlace?: () => void;
   onSelectSlot?: (index: number) => void;
@@ -55,15 +59,21 @@ export class Controls {
     window.addEventListener("keyup", (e) => this.keys.delete(e.code));
   }
 
-  /** 버튼을 누르는 순간 한 번 실행한다 (누르고 있어도 반복하지 않는다). */
+  /** 버튼을 누르는 순간 한 번 실행하고, 계속 누르고 있으면 조금씩 간격을 두고 반복한다. */
   private bindActionButton(id: string, action: () => void): void {
     const button = document.getElementById(id) as HTMLElement;
+    let repeatTimer: number | undefined;
     button.addEventListener("pointerdown", (e) => {
       e.stopPropagation();
       button.classList.add("active");
       action();
+      window.clearInterval(repeatTimer);
+      repeatTimer = window.setInterval(action, REPEAT_MS);
     });
-    const release = () => button.classList.remove("active");
+    const release = () => {
+      button.classList.remove("active");
+      window.clearInterval(repeatTimer);
+    };
     button.addEventListener("pointerup", release);
     button.addEventListener("pointercancel", release);
     button.addEventListener("pointerleave", release);
@@ -130,7 +140,8 @@ export class Controls {
 
   /** 지금까지 쌓인 시점 회전량을 꺼내고 비운다. */
   consumeLook(): { yaw: number; pitch: number } {
-    const result = { yaw: -this.lookDeltaX * LOOK_SPEED, pitch: -this.lookDeltaY * LOOK_SPEED };
+    const speed = LOOK_SPEED * this.lookScale;
+    const result = { yaw: -this.lookDeltaX * speed, pitch: -this.lookDeltaY * speed };
     this.lookDeltaX = 0;
     this.lookDeltaY = 0;
     return result;
