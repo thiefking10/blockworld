@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { audio } from "./audio";
 import { Controls } from "./controls";
 import { ambientColor, DAY_LENGTH_SECONDS, daylight, phaseFromSeconds, skyColor } from "./daycycle";
 import { solidMaterial, waterMaterial } from "./mesher";
@@ -153,6 +154,7 @@ function currentTarget(): RayHit | null {
 function breakBlock(): void {
   const hit = currentTarget();
   if (!hit || hit.y === 0) return;
+  audio.playBreak(world.get(hit.x, hit.y, hit.z));
   world.set(hit.x, hit.y, hit.z, Block.Air);
   editLog.record(hit.x, hit.y, hit.z, Block.Air);
   worldMesh.updateBlock(hit.x, hit.z);
@@ -165,6 +167,7 @@ function placeBlock(): void {
   const { px, py, pz } = hit;
   if (!world.inBounds(px, py, pz) || !isPassable(world.get(px, py, pz))) return;
   if (player.intersectsBlock(px, py, pz)) return;
+  audio.playPlace(HOTBAR[selectedSlot].block);
   world.set(px, py, pz, HOTBAR[selectedSlot].block);
   editLog.record(px, py, pz, HOTBAR[selectedSlot].block);
   worldMesh.updateBlock(px, pz);
@@ -272,7 +275,39 @@ function updateEnvironment(): void {
 
 // 개발용: 주소에 ?debug 를 붙이면 콘솔에서 __vox 로 월드와 플레이어를 만질 수 있다.
 if (new URLSearchParams(window.location.search).has("debug")) {
-  (window as unknown as { __vox: unknown }).__vox = { world, player, camera, scene };
+  (window as unknown as { __vox: unknown }).__vox = { world, player, camera, scene, audio };
+}
+
+// 브라우저는 사용자가 화면을 누르기 전에는 소리를 못 내게 막는다. 첫 터치/클릭/키 입력 때 소리를 켠다.
+function unlockAudioOnce(): void {
+  audio.unlock();
+  document.removeEventListener("pointerdown", unlockAudioOnce);
+  document.removeEventListener("touchstart", unlockAudioOnce);
+  document.removeEventListener("keydown", unlockAudioOnce);
+}
+document.addEventListener("pointerdown", unlockAudioOnce);
+document.addEventListener("touchstart", unlockAudioOnce);
+document.addEventListener("keydown", unlockAudioOnce);
+
+const STEP_DISTANCE = 1.7;
+let stepProgress = 0;
+let wasInWater = false;
+
+/** 걷는 거리마다 발소리, 물에 들어가는 순간 첨벙 소리. */
+function updateMovementSounds(moved: number): void {
+  const inWater = player.isInWater();
+  if (inWater && !wasInWater) audio.splash();
+  wasInWater = inWater;
+
+  if (player.onGround && !inWater) {
+    stepProgress += moved;
+    if (stepProgress >= STEP_DISTANCE) {
+      stepProgress = 0;
+      audio.playStep(world.get(Math.floor(player.x), Math.floor(player.y - 0.1), Math.floor(player.z)));
+    }
+  } else {
+    stepProgress = 0;
+  }
 }
 
 let last = performance.now();
@@ -286,7 +321,10 @@ function frame(now: number): void {
   const look = controls.consumeLook();
   player.yaw += look.yaw;
   player.pitch = Math.max(-1.5, Math.min(1.5, player.pitch + look.pitch));
+  const beforeX = player.x;
+  const beforeZ = player.z;
   player.update(dt, controls.currentInput());
+  updateMovementSounds(Math.hypot(player.x - beforeX, player.z - beforeZ));
 
   camera.position.set(player.x, player.y + EYE_HEIGHT, player.z);
   camera.rotation.set(player.pitch, player.yaw, 0);
