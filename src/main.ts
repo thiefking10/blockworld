@@ -1,5 +1,7 @@
 import * as THREE from "three";
 import { Controls } from "./controls";
+import { ambientColor, DAY_LENGTH_SECONDS, daylight, phaseFromSeconds, skyColor } from "./daycycle";
+import { solidMaterial, waterMaterial } from "./mesher";
 import { ChunkedWorldMesh } from "./chunks";
 import { EYE_HEIGHT, Player } from "./player";
 import { lookDirection, raycast, RayHit } from "./raycast";
@@ -179,6 +181,7 @@ function saveNow(): void {
     seed,
     edits: editLog.toArray(),
     player: { x: player.x, y: player.y, z: player.z, yaw: player.yaw, pitch: player.pitch },
+    time: worldSeconds,
   };
   writeStorage(saveKey(seed), encodeSave(data));
 }
@@ -211,20 +214,60 @@ controls.onSelectSlot = selectSlot;
 
 const fog = scene.fog as THREE.Fog;
 const underwaterColor = new THREE.Color(0x1a4f8f);
+const underwaterTinted = new THREE.Color();
 
-/** 눈이 물속에 있으면 시야를 파랗고 짧게 만든다. */
+/** 눈이 물속에 있으면 시야를 파랗고 짧게 만든다. 밤에는 물속도 어둡다. */
 function applyUnderwaterLook(underwater: boolean): void {
   if (underwater) {
-    fog.color.copy(underwaterColor);
+    underwaterTinted.copy(underwaterColor).multiplyScalar(0.25 + 0.75 * dayFactor);
+    fog.color.copy(underwaterTinted);
     fog.near = 0.5;
     fog.far = 16;
-    scene.background = underwaterColor;
+    scene.background = underwaterTinted;
   } else {
     fog.color.copy(sky);
     fog.near = 30;
     fog.far = 70;
     scene.background = sky;
   }
+}
+
+// 낮/밤. 주소에 ?time=0.5 (0~1, 0.5가 한낮)를 붙이면 그 시각으로 멈춘다 (확인용).
+const timeParam = new URLSearchParams(window.location.search).get("time");
+const freezeTime = timeParam !== null && Number.isFinite(Number(timeParam));
+let worldSeconds = freezeTime
+  ? Number(timeParam) * DAY_LENGTH_SECONDS
+  : saved && saved.seed === seed && saved.time !== undefined
+    ? saved.time
+    : 0.3 * DAY_LENGTH_SECONDS;
+let dayFactor = 1;
+
+function makeDisc(color: number, size: number): THREE.Mesh {
+  const disc = new THREE.Mesh(
+    new THREE.PlaneGeometry(size, size),
+    new THREE.MeshBasicMaterial({ color, fog: false, depthWrite: false }),
+  );
+  scene.add(disc);
+  return disc;
+}
+const sun = makeDisc(0xfff2b0, 16);
+const moon = makeDisc(0xdfe6f5, 11);
+
+function updateEnvironment(): void {
+  const phase = phaseFromSeconds(worldSeconds);
+  const [sr, sg, sb] = skyColor(phase);
+  sky.setRGB(sr, sg, sb);
+  const [ar, ag, ab] = ambientColor(phase);
+  solidMaterial.color.setRGB(ar, ag, ab);
+  waterMaterial.color.setRGB(ar, ag, ab);
+  dayFactor = daylight(phase);
+
+  const angle = phase * Math.PI * 2;
+  const direction = new THREE.Vector3(Math.sin(angle), -Math.cos(angle), 0.3).normalize().multiplyScalar(85);
+  sun.position.copy(camera.position).add(direction);
+  moon.position.copy(camera.position).sub(direction);
+  sun.lookAt(camera.position);
+  moon.lookAt(camera.position);
 }
 
 // 개발용: 주소에 ?debug 를 붙이면 콘솔에서 __vox 로 월드와 플레이어를 만질 수 있다.
@@ -252,6 +295,8 @@ function frame(now: number): void {
   outline.visible = target !== null;
   if (target) outline.position.set(target.x + 0.5, target.y + 0.5, target.z + 0.5);
 
+  if (!freezeTime) worldSeconds += dt;
+  updateEnvironment();
   applyUnderwaterLook(world.get(Math.floor(camera.position.x), Math.floor(camera.position.y), Math.floor(camera.position.z)) === Block.Water);
 
   renderer.render(scene, camera);

@@ -1,16 +1,7 @@
 import * as THREE from "three";
+import { createAtlasTexture, tileForFace, tileUV } from "./atlas";
 import { CHUNK_SIZE } from "./chunkMath";
 import { Block, BlockId, SIZE_Y, World, isOpaque } from "./world";
-
-const BLOCK_COLOR: Record<number, [number, number, number]> = {
-  [Block.Grass]: [0.36, 0.63, 0.22],
-  [Block.Dirt]: [0.47, 0.33, 0.2],
-  [Block.Stone]: [0.5, 0.5, 0.52],
-  [Block.Sand]: [0.86, 0.8, 0.55],
-  [Block.Wood]: [0.42, 0.28, 0.14],
-  [Block.Leaves]: [0.2, 0.5, 0.16],
-  [Block.Water]: [0.2, 0.42, 0.85],
-};
 
 /** 하늘이 안 보이는 곳(동굴 안, 지붕 밑)의 밝기 */
 const DARK_LIGHT = 0.45;
@@ -27,15 +18,22 @@ const FACES: { dir: [number, number, number]; shade: number; corners: number[][]
   { dir: [0, 0, -1], shade: 0.7, corners: [[0, 0, 0], [0, 1, 0], [1, 1, 0], [1, 0, 0]] },
 ];
 
+/** 옆면은 위가 v=1, 위/아래 면은 꼭짓점 순서에 맞춰 무늬를 붙인다. */
+const SIDE_UV = [[0, 0], [0, 1], [1, 1], [1, 0]];
+const FLAT_UV = [[0, 0], [1, 0], [1, 1], [0, 1]];
+
 function jitter(x: number, y: number, z: number): number {
   let h = Math.imul(x, 73856093) ^ Math.imul(y, 19349663) ^ Math.imul(z, 83492791);
   h = Math.imul(h ^ (h >>> 15), 2246822519);
   return (((h ^ (h >>> 13)) >>> 0) / 4294967296) * 0.12 - 0.06;
 }
 
-export const solidMaterial = new THREE.MeshBasicMaterial({ vertexColors: true });
+const atlas = createAtlasTexture();
+/** 밤낮에 따라 main에서 color를 바꿔 전체 밝기를 조절한다. */
+export const solidMaterial = new THREE.MeshBasicMaterial({ vertexColors: true, map: atlas });
 export const waterMaterial = new THREE.MeshBasicMaterial({
   vertexColors: true,
+  map: atlas,
   transparent: true,
   opacity: 0.6,
   depthWrite: false,
@@ -44,14 +42,25 @@ export const waterMaterial = new THREE.MeshBasicMaterial({
 class MeshData {
   positions: number[] = [];
   colors: number[] = [];
+  uvs: number[] = [];
   indices: number[] = [];
 
-  addQuad(corners: number[][], offsetX: number, offsetY: number, offsetZ: number, color: [number, number, number]): void {
+  addQuad(
+    corners: number[][],
+    offsetX: number,
+    offsetY: number,
+    offsetZ: number,
+    brightness: number,
+    tile: number,
+    flat: boolean,
+  ): void {
     const start = this.positions.length / 3;
-    for (const [cx, cy, cz] of corners) {
+    const uvCorners = flat ? FLAT_UV : SIDE_UV;
+    corners.forEach(([cx, cy, cz], i) => {
       this.positions.push(offsetX + cx, offsetY + cy, offsetZ + cz);
-      this.colors.push(color[0], color[1], color[2]);
-    }
+      this.colors.push(brightness, brightness, brightness);
+      this.uvs.push(...tileUV(tile, uvCorners[i][0], uvCorners[i][1]));
+    });
     this.indices.push(start, start + 1, start + 2, start, start + 2, start + 3);
   }
 
@@ -60,6 +69,7 @@ class MeshData {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.Float32BufferAttribute(this.positions, 3));
     geometry.setAttribute("color", new THREE.Float32BufferAttribute(this.colors, 3));
+    geometry.setAttribute("uv", new THREE.Float32BufferAttribute(this.uvs, 2));
     geometry.setIndex(this.indices);
     geometry.computeBoundingSphere();
     return new THREE.Mesh(geometry, material);
@@ -87,7 +97,6 @@ export function buildChunkMesh(world: World, chunkX: number, chunkZ: number): Ch
       for (let x = startX; x < startX + CHUNK_SIZE; x++) {
         const block: BlockId = world.get(x, y, z);
         if (block === Block.Air) continue;
-        const base = BLOCK_COLOR[block];
         const noise = jitter(x, y, z);
 
         if (block === Block.Water) {
@@ -96,8 +105,7 @@ export function buildChunkMesh(world: World, chunkX: number, chunkZ: number): Ch
             const [dx, dy, dz] = face.dir;
             if (world.get(x + dx, y + dy, z + dz) !== Block.Air) continue;
             const corners = airAbove ? face.corners.map(([cx, cy, cz]) => [cx, cy === 1 ? WATER_TOP : cy, cz]) : face.corners;
-            const k = face.shade;
-            water.addQuad(corners, x, y, z, [base[0] * k, base[1] * k, base[2] * k]);
+            water.addQuad(corners, x, y, z, face.shade, tileForFace(block, dy), dy !== 0);
           }
           continue;
         }
@@ -110,8 +118,7 @@ export function buildChunkMesh(world: World, chunkX: number, chunkZ: number): Ch
           if (isOpaque(world.get(nx, ny, nz))) continue;
 
           const light = world.isSkyLit(nx, ny, nz) ? 1 : DARK_LIGHT;
-          const k = (face.shade + noise) * light;
-          solid.addQuad(face.corners, x, y, z, [base[0] * k, base[1] * k, base[2] * k]);
+          solid.addQuad(face.corners, x, y, z, (face.shade + noise) * light, tileForFace(block, dy), dy !== 0);
         }
       }
     }

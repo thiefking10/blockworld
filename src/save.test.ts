@@ -38,6 +38,13 @@ describe("save", () => {
     expect(decodeSave("{not json")).toBeNull();
   });
 
+  it("시간이 있으면 같이 저장되고, 없는 예전 저장도 읽힌다", () => {
+    const withTime = { ...sample, time: 88.5 };
+    expect(decodeSave(encodeSave(withTime))).toEqual(withTime);
+    expect(decodeSave(encodeSave(sample))?.time).toBeUndefined();
+    expect(decodeSave(JSON.stringify({ ...sample, time: "a" }))).toBeNull();
+  });
+
   it("형식이 다르면 null이다", () => {
     expect(decodeSave(JSON.stringify({ ...sample, version: 2 }))).toBeNull();
     expect(decodeSave(JSON.stringify({ ...sample, edits: [[1, 2, 3]] }))).toBeNull();
