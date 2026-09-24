@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { TILE, tileForFace, tileUV } from "./atlas";
+import { ATLAS_COLS, TILE, tileForFace, tileUV } from "./atlas";
 import { Block } from "./world";
 
 describe("atlas", () => {
-  it("타일 번호는 서로 다르고 아틀라스(16칸) 안에 있다", () => {
+  it("타일 번호는 서로 다르고 아틀라스 칸 안에 있다", () => {
     const tiles = Object.values(TILE);
     expect(new Set(tiles).size).toBe(tiles.length);
     for (const t of tiles) {
       expect(t).toBeGreaterThanOrEqual(0);
-      expect(t).toBeLessThan(16);
+      expect(t).toBeLessThan(ATLAS_COLS * ATLAS_COLS);
     }
   });
 
@@ -26,14 +26,14 @@ describe("atlas", () => {
 
   it("타일 안 좌표는 그 타일 칸 안의 uv로 바뀐다", () => {
     for (const tile of Object.values(TILE)) {
-      const col = tile % 4;
-      const row = Math.floor(tile / 4);
+      const col = tile % ATLAS_COLS;
+      const row = Math.floor(tile / ATLAS_COLS);
       for (const [u, v] of [[0, 0], [1, 1], [0.5, 0.5]] as const) {
         const [tu, tv] = tileUV(tile, u, v);
-        expect(tu).toBeGreaterThan(col / 4);
-        expect(tu).toBeLessThan((col + 1) / 4);
-        expect(tv).toBeGreaterThan(1 - (row + 1) / 4);
-        expect(tv).toBeLessThan(1 - row / 4);
+        expect(tu).toBeGreaterThan(col / ATLAS_COLS);
+        expect(tu).toBeLessThan((col + 1) / ATLAS_COLS);
+        expect(tv).toBeGreaterThan(1 - (row + 1) / ATLAS_COLS);
+        expect(tv).toBeLessThan(1 - row / ATLAS_COLS);
       }
     }
   });

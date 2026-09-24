@@ -3,13 +3,14 @@ import { iconTile, tileIconDataUrl } from "./atlas";
 import { audio } from "./audio";
 import { blockName, PLACEABLE_BLOCKS, sanitizeHotbar } from "./blocks";
 import { FallTracker, Health, MAX_HEALTH } from "./health";
-import { dropFor, Inventory, Item, ITEM_NAMES, MEAT_HEAL, mobDrop, RECIPES } from "./inventory";
+import { dropFor, Inventory, Item, ITEM_NAMES, MEAT_HEAL, mobDrops, RECIPES } from "./inventory";
 import { Controls } from "./controls";
-import { ambientColor, DAY_LENGTH_SECONDS, daylight, phaseFromSeconds, skyColor } from "./daycycle";
+import { ambientColor, DAY_LENGTH_SECONDS, daylight, nextMorning, phaseFromSeconds, skyColor } from "./daycycle";
 import { solidMaterial, waterMaterial } from "./mesher";
 import { ChunkedWorldMesh } from "./chunks";
 import { MobRenderer } from "./mobRender";
-import { MobSimulation, raycastMobs } from "./mobs";
+import { MOB_SPECS, MobSimulation, raycastMobs } from "./mobs";
+import { AdaptiveQuality, fogFar, QUALITY_LEVELS } from "./quality";
 import { EYE_HEIGHT, Player } from "./player";
 import { lookDirection, raycast, RayHit } from "./raycast";
 import { decodeSave, EditLog, encodeSave, SaveData } from "./save";
@@ -101,12 +102,13 @@ if (saved && saved.seed === seed) {
 }
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
 const sky = new THREE.Color(0x87ceeb);
 const scene = new THREE.Scene();
 scene.background = sky;
-scene.fog = new THREE.Fog(sky, 30, 70);
+let fogNear = 30;
+let fogFarDistance = 70;
+scene.fog = new THREE.Fog(sky, fogNear, fogFarDistance);
 
 const worldMesh = new ChunkedWorldMesh(world);
 scene.add(worldMesh.group);
@@ -127,7 +129,31 @@ function resize(): void {
   camera.updateProjectionMatrix();
 }
 window.addEventListener("resize", resize);
-resize();
+
+// 화질: 폰은 한 단계 낮춰 시작하고, 계속 느리면 스스로 더 낮춘다. 주소에 ?quality=0~3 을 붙이면 그 단계로 고정한다.
+const qualityParam = new URLSearchParams(window.location.search).get("quality");
+const fixedQuality = qualityParam !== null && Number.isInteger(Number(qualityParam));
+const startQuality = fixedQuality
+  ? Math.max(0, Math.min(QUALITY_LEVELS.length - 1, Number(qualityParam)))
+  : navigator.maxTouchPoints > 0
+    ? 1
+    : 0;
+const adaptiveQuality = new AdaptiveQuality(startQuality);
+let qualityLevel = startQuality;
+
+function applyQuality(level: number): void {
+  qualityLevel = level;
+  const quality = QUALITY_LEVELS[level];
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, quality.pixelRatioCap));
+  resize();
+  worldMesh.setRadius(quality.radius);
+  fogFarDistance = fogFar(quality.radius);
+  fogNear = fogFarDistance * 0.43;
+  const sceneFog = scene.fog as THREE.Fog;
+  sceneFog.near = fogNear;
+  sceneFog.far = fogFarDistance;
+}
+applyQuality(startQuality);
 
 /** 월드 가운데에서 가장 가까운, 잔디가 맨 위인 자리(나무 위가 아닌 곳)를 찾는다. */
 function findSpawn(): [number, number] {
@@ -235,6 +261,26 @@ function eatMeat(): void {
   scheduleSave();
 }
 
+/** 밤에만 잘 수 있다. 가까이에 좀비가 있으면 못 잔다. 자면 아침이 되고 체력이 조금 찬다. */
+function sleepInBed(): void {
+  if (dayFactor >= 0.3) {
+    showToast("밤에만 잘 수 있어요");
+    return;
+  }
+  const danger = mobSim.mobs.some((m) => MOB_SPECS[m.kind].hostile && Math.hypot(m.x - player.x, m.z - player.z) < 12);
+  if (danger) {
+    showToast("가까이에 좀비가 있어서 잘 수 없어요");
+    return;
+  }
+  worldSeconds = nextMorning(worldSeconds);
+  health.heal(10);
+  mobSim.clearHostile();
+  refreshHearts();
+  toggleInventory(false);
+  showToast("푹 잤어요. 아침이 밝았어요", 2500);
+  scheduleSave();
+}
+
 function craftRecipe(index: number): void {
   const recipe = RECIPES[index];
   if (!inventory.craft(recipe)) return;
@@ -287,6 +333,10 @@ function refreshInventoryPanel(): void {
         chip.classList.add("eatable");
         chip.textContent = "🍖 " + itemLabel(item) + " ×" + amount + " (눌러서 먹기)";
         onPress(chip, eatMeat);
+      } else if (item === Item.Bed) {
+        chip.classList.add("eatable");
+        chip.textContent = "🛏 " + itemLabel(item) + " ×" + amount + " (밤에 눌러서 자기)";
+        onPress(chip, sleepInBed);
       } else {
         chip.textContent = "🔨 " + itemLabel(item) + " ×" + amount + " (자동으로 써요)";
       }
@@ -348,10 +398,10 @@ function hitMobInSight(blockHit: RayHit | null): boolean {
   const damage = mode === "creative" ? 4 : inventory.attackDamage();
   const kind = found.mob.kind;
   if (mobSim.hit(found.mob, player.x, player.z, damage) && mode === "survival") {
-    const drop = mobDrop(kind, Math.random);
-    if (drop) {
-      inventory.add(drop[0], drop[1]);
-      showToast(itemLabel(drop[0]) + " ×" + drop[1] + " 얻었어요");
+    const drops = mobDrops(kind, Math.random);
+    if (drops.length > 0) {
+      for (const [item, amount] of drops) inventory.add(item, amount);
+      showToast(drops.map(([item, amount]) => itemLabel(item) + " ×" + amount).join(", ") + " 얻었어요");
       refreshHotbar();
       scheduleSave();
     }
@@ -500,8 +550,8 @@ function applyUnderwaterLook(underwater: boolean): void {
     scene.background = underwaterTinted;
   } else {
     fog.color.copy(sky);
-    fog.near = 30;
-    fog.far = 70;
+    fog.near = fogNear;
+    fog.far = fogFarDistance;
     scene.background = sky;
   }
 }
@@ -535,6 +585,7 @@ function updateEnvironment(): void {
   solidMaterial.color.setRGB(ar, ag, ab);
   waterMaterial.color.setRGB(ar, ag, ab);
   dayFactor = daylight(phase);
+  audio.setNight(dayFactor < 0.3);
 
   const angle = phase * Math.PI * 2;
   const direction = new THREE.Vector3(Math.sin(angle), -Math.cos(angle), 0.3).normalize().multiplyScalar(85);
@@ -546,8 +597,23 @@ function updateEnvironment(): void {
 
 // 개발용: 주소에 ?debug 를 붙이면 콘솔에서 __vox 로 월드와 플레이어를 만질 수 있다.
 if (new URLSearchParams(window.location.search).has("debug")) {
-  (window as unknown as { __vox: unknown }).__vox = { world, player, camera, scene, audio, generateMs, worldMesh, mobSim, health, inventory, hurt, setMode: (m: "survival" | "creative") => { mode = m; refreshHotbar(); } };
+  (window as unknown as { __vox: unknown }).__vox = { world, player, camera, scene, audio, generateMs, worldMesh, mobSim, health, applyQuality, inventory, hurt, setMode: (m: "survival" | "creative") => { mode = m; refreshHotbar(); } };
 }
+
+const MUSIC_KEY = "voxelgame:music";
+const musicButton = document.getElementById("music-button") as HTMLElement;
+audio.setMusic(readStorage(MUSIC_KEY) !== "off");
+function refreshMusicButton(): void {
+  musicButton.classList.toggle("off", !audio.isMusicOn());
+}
+refreshMusicButton();
+onPress(musicButton, () => {
+  audio.unlock();
+  audio.setMusic(!audio.isMusicOn());
+  writeStorage(MUSIC_KEY, audio.isMusicOn() ? "on" : "off");
+  refreshMusicButton();
+  showToast(audio.isMusicOn() ? "배경음악을 켰어요" : "배경음악을 껐어요");
+});
 
 // 브라우저는 사용자가 화면을 누르기 전에는 소리를 못 내게 막는다. 첫 터치/클릭/키 입력 때 소리를 켠다.
 function unlockAudioOnce(): void {
@@ -628,7 +694,15 @@ function frame(now: number): void {
   frames++;
   fpsTimer += dt;
   if (fpsTimer >= 0.5) {
-    fpsLabel.textContent = `${Math.round(frames / fpsTimer)} FPS · seed ${seed}`;
+    const fps = frames / fpsTimer;
+    if (!fixedQuality && !document.hidden) {
+      const lowered = adaptiveQuality.report(fps, fpsTimer);
+      if (lowered !== null) {
+        applyQuality(lowered);
+        showToast("화면이 느려서 화질을 '" + QUALITY_LEVELS[lowered].name + "'으로 낮췄어요", 2500);
+      }
+    }
+    fpsLabel.textContent = `${Math.round(fps)} FPS · 화질 ${QUALITY_LEVELS[qualityLevel].name} · seed ${seed}`;
     frames = 0;
     fpsTimer = 0;
   }

@@ -42,6 +42,16 @@ export function ambientColor(phase: number): RGB {
   return [0.2 + 0.8 * d, 0.24 + 0.76 * d, 0.42 + 0.58 * d];
 }
 
+/** 아침 시각의 하루 위치. 게임을 처음 시작할 때와 침대에서 일어날 때 이 시각이 된다. */
+export const MORNING_PHASE = 0.3;
+
+/** 지금(초)부터 가장 가까운 다음 아침의 시각(초). 이미 아침이 막 시작한 순간이면 다음 날 아침이다. */
+export function nextMorning(seconds: number): number {
+  const day = Math.floor(seconds / DAY_LENGTH_SECONDS);
+  const today = (day + MORNING_PHASE) * DAY_LENGTH_SECONDS;
+  return today > seconds ? today : today + DAY_LENGTH_SECONDS;
+}
+
 /** 시간(초)을 하루의 위치(0~1)로 바꾼다. */
 export function phaseFromSeconds(seconds: number): number {
   const phase = (seconds / DAY_LENGTH_SECONDS) % 1;

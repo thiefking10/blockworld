@@ -1,3 +1,4 @@
+import { BAR_SECONDS, composeBar } from "./music";
 import { Block } from "./world";
 
 export type Material = "stone" | "dirt" | "sand" | "wood" | "leaves" | "water" | "glass" | "snow";
@@ -7,10 +8,12 @@ export function materialOf(block: number): Material {
   switch (block) {
     case Block.Stone:
     case Block.Brick:
+    case Block.IronOre:
       return "stone";
     case Block.Glass:
       return "glass";
     case Block.Snow:
+    case Block.Wool:
       return "snow";
     case Block.Sand:
       return "sand";
@@ -41,9 +44,96 @@ class GameAudio {
   private master: GainNode | null = null;
   private noise: AudioBuffer | null = null;
 
+  private musicOn = true;
+  private night = false;
+  private musicBus: GainNode | null = null;
+  private musicSend: GainNode | null = null;
+  private musicTimer: number | undefined;
+  private nextBarTime = 0;
+  private noteIndex = 2;
+
   /** 브라우저 자동재생 제한 때문에, 사용자가 화면을 누른 순간 불러서 소리를 켠다. */
   unlock(): void {
     this.context();
+    if (this.musicOn) this.startMusic();
+  }
+
+  /** 배경음악을 켜고 끈다. 아직 소리가 잠겨 있으면 잠금이 풀릴 때 적용된다. */
+  setMusic(on: boolean): void {
+    this.musicOn = on;
+    if (!this.ctx) return;
+    if (on) this.startMusic();
+    if (this.musicBus) this.musicBus.gain.setTargetAtTime(on ? 0.5 : 0, this.ctx.currentTime, 0.15);
+  }
+
+  isMusicOn(): boolean {
+    return this.musicOn;
+  }
+
+  /** 밤이면 더 낮고 드문 음으로 바뀐다. */
+  setNight(night: boolean): void {
+    this.night = night;
+  }
+
+  /** 잔잔한 음악을 계속 이어서 만든다. 소리는 울림(에코)을 살짝 얹은 부드러운 사인파다. */
+  private startMusic(): void {
+    if (this.musicTimer !== undefined) return;
+    const ctx = this.context();
+
+    this.musicBus = ctx.createGain();
+    this.musicBus.gain.value = this.musicOn ? 0.5 : 0;
+    this.musicBus.connect(this.master as GainNode);
+
+    // 울림: 지연된 소리를 걸러서 되먹임하면 공간이 있는 것처럼 들린다.
+    const delay = ctx.createDelay(1);
+    delay.delayTime.value = 0.42;
+    const feedback = ctx.createGain();
+    feedback.gain.value = 0.38;
+    const tone = ctx.createBiquadFilter();
+    tone.type = "lowpass";
+    tone.frequency.value = 1800;
+    this.musicSend = ctx.createGain();
+    this.musicSend.gain.value = 0.5;
+    this.musicSend.connect(delay);
+    delay.connect(tone);
+    tone.connect(feedback);
+    feedback.connect(delay);
+    tone.connect(this.musicBus);
+
+    this.nextBarTime = ctx.currentTime + 1;
+    const schedule = (): void => {
+      if (this.nextBarTime < ctx.currentTime) this.nextBarTime = ctx.currentTime + 0.2;
+      while (this.nextBarTime < ctx.currentTime + 2) {
+        const bar = composeBar(Math.random, this.night, this.noteIndex);
+        this.noteIndex = bar.lastIndex;
+        for (const note of bar.notes) this.playMusicNote(this.nextBarTime + note.time, note.freq, note.length);
+        this.nextBarTime += BAR_SECONDS;
+      }
+    };
+    schedule();
+    this.musicTimer = window.setInterval(schedule, 500);
+  }
+
+  private playMusicNote(at: number, freq: number, length: number): void {
+    const ctx = this.context();
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.linearRampToValueAtTime(0.11, at + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + length);
+    gain.connect(this.musicBus as GainNode);
+    gain.connect(this.musicSend as GainNode);
+
+    for (const [ratio, level] of [[1, 1], [2, 0.18]]) {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = freq * ratio;
+      const part = ctx.createGain();
+      part.gain.value = level;
+      osc.connect(part);
+      part.connect(gain);
+      osc.start(at);
+      osc.stop(at + length + 0.05);
+    }
   }
 
   private context(): AudioContext {

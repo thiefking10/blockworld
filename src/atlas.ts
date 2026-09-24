@@ -17,9 +17,11 @@ export const TILE = {
   Snow: 12,
   CactusSide: 13,
   CactusTop: 14,
+  Wool: 15,
+  IronOre: 16,
 } as const;
 
-const ATLAS_COLS = 4;
+export const ATLAS_COLS = 5;
 const TILE_PIXELS = 16;
 /** 타일 가장자리 색이 옆 타일에서 번지지 않게 살짝 안쪽만 쓴다. */
 const EDGE = 0.002;
@@ -51,6 +53,10 @@ export function tileForFace(block: number, dirY: number): number {
       return TILE.Snow;
     case Block.Cactus:
       return dirY !== 0 ? TILE.CactusTop : TILE.CactusSide;
+    case Block.Wool:
+      return TILE.Wool;
+    case Block.IronOre:
+      return TILE.IronOre;
     default:
       return TILE.Stone;
   }
@@ -201,6 +207,23 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: number): void {
       noiseFill(ctx, ox, oy, [52, 132, 60], 22, random);
       for (let x = 0; x < TILE_PIXELS; x += 5) for (let y = 0; y < TILE_PIXELS; y++) px(x, y, shade([28, 92, 40], (random() - 0.5) * 12));
       for (let i = 0; i < 14; i++) px(Math.floor(random() * 16), Math.floor(random() * 16), "rgb(214,226,170)");
+      break;
+    }
+    case TILE.Wool: {
+      noiseFill(ctx, ox, oy, [236, 236, 230], 12, random);
+      for (let y = 1; y < TILE_PIXELS; y += 4) for (let x = 0; x < TILE_PIXELS; x++) px(x, y, shade([214, 214, 208], (random() - 0.5) * 8));
+      break;
+    }
+    case TILE.IronOre: {
+      noiseFill(ctx, ox, oy, [128, 128, 132], 26, random);
+      for (let i = 0; i < 26; i++) px(Math.floor(random() * 16), Math.floor(random() * 16), shade([128, 128, 132], -38));
+      for (let cluster = 0; cluster < 5; cluster++) {
+        const cx = 2 + Math.floor(random() * 11);
+        const cy = 2 + Math.floor(random() * 11);
+        for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+          if (random() < 0.85) px(cx + dx, cy + dy, shade([214, 158, 110], (random() - 0.5) * 30));
+        }
+      }
       break;
     }
     case TILE.CactusTop: {

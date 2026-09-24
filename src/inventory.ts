@@ -5,12 +5,16 @@ export const Item = {
   Meat: 100,
   WoodClub: 101,
   StoneClub: 102,
+  Bed: 103,
+  IronClub: 104,
 } as const;
 
 export const ITEM_NAMES: Record<number, string> = {
   [Item.Meat]: "고기",
   [Item.WoodClub]: "나무 몽둥이",
   [Item.StoneClub]: "돌 몽둥이",
+  [Item.Bed]: "침대",
+  [Item.IronClub]: "철 몽둥이",
 };
 
 /** 고기를 먹으면 회복하는 체력 (하트 4개). */
@@ -18,6 +22,7 @@ export const MEAT_HEAL = 8;
 
 /** 가진 도구별 공격력. 도구가 없으면 맨손 1. 센 것부터 적는다. */
 export const CLUB_DAMAGE: [number, number][] = [
+  [Item.IronClub, 6],
   [Item.StoneClub, 4],
   [Item.WoodClub, 2],
 ];
@@ -34,6 +39,8 @@ export const RECIPES: Recipe[] = [
   { name: "벽돌", inputs: [[Block.Stone, 2]], output: [Block.Brick, 2] },
   { name: "나무 몽둥이", inputs: [[Block.Planks, 3]], output: [Item.WoodClub, 1] },
   { name: "돌 몽둥이", inputs: [[Block.Stone, 2], [Block.Planks, 1]], output: [Item.StoneClub, 1] },
+  { name: "철 몽둥이", inputs: [[Block.IronOre, 2], [Block.Planks, 1]], output: [Item.IronClub, 1] },
+  { name: "침대", inputs: [[Block.Wool, 3], [Block.Planks, 3]], output: [Item.Bed, 1] },
 ];
 
 /** 블록을 부수면 무엇이 몇 개 나오는지. 잔디는 흙이 나온다. */
@@ -43,10 +50,12 @@ export function dropFor(block: number): [number, number] | null {
   return [block, 1];
 }
 
-/** 동물을 잡으면 나오는 것. */
-export function mobDrop(kind: string, rng: () => number): [number, number] | null {
-  if (kind === "pig" || kind === "sheep") return [Item.Meat, 1 + (rng() < 0.5 ? 1 : 0)];
-  return null;
+/** 동물을 잡으면 나오는 것들. 돼지와 양은 고기, 양은 양털도 준다. */
+export function mobDrops(kind: string, rng: () => number): [number, number][] {
+  const drops: [number, number][] = [];
+  if (kind === "pig" || kind === "sheep") drops.push([Item.Meat, 1 + (rng() < 0.5 ? 1 : 0)]);
+  if (kind === "sheep") drops.push([Block.Wool, 1 + (rng() < 0.5 ? 1 : 0)]);
+  return drops;
 }
 
 /** 가방. 아이템 번호마다 개수를 센다. */

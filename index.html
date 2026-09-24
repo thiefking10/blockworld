@@ -59,6 +59,27 @@
         height: 2px;
         width: 18px;
       }
+      #music-button {
+        position: absolute;
+        right: 96px;
+        top: 8px;
+        min-width: 44px;
+        min-height: 34px;
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-size: 15px;
+        background: rgba(0, 0, 0, 0.4);
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        border-radius: 6px;
+        pointer-events: auto;
+      }
+      #music-button.off {
+        color: #999;
+        text-decoration: line-through;
+      }
       #new-world-button {
         position: absolute;
         right: 12px;
@@ -438,6 +459,7 @@
       <div id="hearts"></div>
       <div id="damage-flash"></div>
       <div id="toast"></div>
+      <div id="music-button">♪</div>
       <div id="new-world-button">새 월드</div>
       <div id="joystick-base"></div>
       <div id="joystick-knob"></div>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dropFor, Inventory, Item, mobDrop, RECIPES } from "./inventory";
+import { dropFor, Inventory, Item, mobDrops, RECIPES } from "./inventory";
 import { Block } from "./world";
 
 describe("Inventory", () => {
@@ -62,9 +62,30 @@ describe("drops", () => {
     expect(dropFor(Block.Air)).toBeNull();
   });
 
-  it("돼지와 양은 고기를 떨구고 좀비는 안 떨군다", () => {
-    expect(mobDrop("pig", () => 0.9)?.[0]).toBe(Item.Meat);
-    expect(mobDrop("sheep", () => 0.1)?.[1]).toBe(2);
-    expect(mobDrop("zombie", () => 0.5)).toBeNull();
+  it("돼지는 고기, 양은 고기와 양털을 떨구고 좀비는 안 떨군다", () => {
+    expect(mobDrops("pig", () => 0.9)).toEqual([[Item.Meat, 1]]);
+    expect(mobDrops("sheep", () => 0.1)).toEqual([[Item.Meat, 2], [Block.Wool, 2]]);
+    expect(mobDrops("zombie", () => 0.5)).toEqual([]);
+  });
+
+  it("철광석은 철 몽둥이가 되고 가장 센 무기로 쓰인다", () => {
+    const inv = new Inventory();
+    inv.add(Block.IronOre, 2);
+    inv.add(Block.Planks, 1);
+    const iron = RECIPES.find((r) => r.name === "철 몽둥이");
+    if (!iron) throw new Error("recipe");
+    inv.add(Item.StoneClub);
+    expect(inv.craft(iron)).toBe(true);
+    expect(inv.attackDamage()).toBe(6);
+  });
+
+  it("침대는 양털 3개와 판자 3개로 만든다", () => {
+    const inv = new Inventory();
+    inv.add(Block.Wool, 3);
+    inv.add(Block.Planks, 3);
+    const bed = RECIPES.find((r) => r.name === "침대");
+    if (!bed) throw new Error("recipe");
+    expect(inv.craft(bed)).toBe(true);
+    expect(inv.count(Item.Bed)).toBe(1);
   });
 });

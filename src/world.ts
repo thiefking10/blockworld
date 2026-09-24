@@ -12,6 +12,8 @@ export const Block = {
   Brick: 10,
   Snow: 11,
   Cactus: 12,
+  Wool: 13,
+  IronOre: 14,
 } as const;
 export type BlockId = (typeof Block)[keyof typeof Block];
 
@@ -187,6 +189,20 @@ export class World {
     }
   }
 
+  /** 땅속 돌 사이에 철광석을 덩어리(2x2x2 칸 단위)로 흩뿌린다. 동굴 벽에서 눈에 띈다. */
+  private scatterOre(seed: number): void {
+    for (let x = 0; x < SIZE_X; x++) {
+      for (let z = 0; z < SIZE_Z; z++) {
+        const surface = this.top[x + SIZE_X * z];
+        for (let y = 2; y <= Math.min(surface - 3, 14); y++) {
+          if (this.get(x, y, z) !== Block.Stone) continue;
+          if (hash3(x >> 1, y >> 1, z >> 1, seed + 31337) > 0.02) continue;
+          if (hash3(x, y, z, seed + 11) < 0.85) this.set(x, y, z, Block.IronOre);
+        }
+      }
+    }
+  }
+
   /** 잔디 위 여기저기에 나무(기둥 + 잎)를 심는다. 시드가 같으면 같은 자리에 심긴다. */
   private plantTrees(seed: number): void {
     for (let x = 3; x < SIZE_X - 3; x++) {
@@ -240,6 +256,7 @@ export class World {
       }
     }
     this.carveCaves(seed);
+    this.scatterOre(seed);
     this.plantTrees(seed);
   }
 }

@@ -190,4 +190,22 @@ describe("world", () => {
     }
     expect(snowTops).toBeGreaterThan(200);
   });
+
+  it("땅속 돌 사이에 철광석이 있고, 돌 안쪽에만 박혀 있다", () => {
+    const world = new World();
+    world.generate(7);
+    let ore = 0;
+    for (let x = 0; x < SIZE_X; x++) {
+      for (let z = 0; z < SIZE_Z; z++) {
+        for (let y = 0; y < SIZE_Y; y++) {
+          if (world.get(x, y, z) !== Block.IronOre) continue;
+          ore++;
+          expect(y).toBeGreaterThanOrEqual(2);
+          expect(y).toBeLessThanOrEqual(14);
+          expect(y).toBeLessThan(world.surfaceHeight(x, z) - 2);
+        }
+      }
+    }
+    expect(ore).toBeGreaterThan(200);
+  });
 });

@@ -13,8 +13,16 @@ export class ChunkedWorldMesh {
   private readonly meshes = new Map<string, THREE.Mesh[]>();
   private queue: [number, number][] = [];
   private centerKey = "";
+  private radius = RENDER_RADIUS;
 
   constructor(private readonly world: World) {}
+
+  /** 그려 두는 구역 반경을 바꾼다 (화질 조절). 다음 update에서 새로 정해진다. */
+  setRadius(radius: number): void {
+    if (radius === this.radius) return;
+    this.radius = radius;
+    this.centerKey = "";
+  }
 
   private key(cx: number, cz: number): string {
     return `${cx},${cz}`;
@@ -49,8 +57,8 @@ export class ChunkedWorldMesh {
 
     if (centerKey !== this.centerKey) {
       this.centerKey = centerKey;
-      const wanted = chunksInRadius(cx, cz, RENDER_RADIUS);
-      const keep = new Set(chunksInRadius(cx, cz, RENDER_RADIUS + 1).map(([a, b]) => this.key(a, b)));
+      const wanted = chunksInRadius(cx, cz, this.radius);
+      const keep = new Set(chunksInRadius(cx, cz, this.radius + 1).map(([a, b]) => this.key(a, b)));
       for (const key of [...this.meshes.keys()]) {
         if (!keep.has(key)) this.unloadChunk(key);
       }
