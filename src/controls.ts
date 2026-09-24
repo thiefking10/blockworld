@@ -6,6 +6,9 @@ export class Controls {
   moveX = 0;
   moveZ = 0;
   jump = false;
+  onBreak?: () => void;
+  onPlace?: () => void;
+  onSelectSlot?: (index: number) => void;
   private lookDeltaX = 0;
   private lookDeltaY = 0;
 
@@ -39,8 +42,31 @@ export class Controls {
     this.jumpButton.addEventListener("pointerup", releaseJump);
     this.jumpButton.addEventListener("pointercancel", releaseJump);
 
-    window.addEventListener("keydown", (e) => this.keys.add(e.code));
+    this.bindActionButton("break-button", () => this.onBreak?.());
+    this.bindActionButton("place-button", () => this.onPlace?.());
+
+    window.addEventListener("keydown", (e) => {
+      this.keys.add(e.code);
+      if (e.code === "KeyQ") this.onBreak?.();
+      if (e.code === "KeyE") this.onPlace?.();
+      const digit = /^Digit([1-9])$/.exec(e.code);
+      if (digit) this.onSelectSlot?.(Number(digit[1]) - 1);
+    });
     window.addEventListener("keyup", (e) => this.keys.delete(e.code));
+  }
+
+  /** 버튼을 누르는 순간 한 번 실행한다 (누르고 있어도 반복하지 않는다). */
+  private bindActionButton(id: string, action: () => void): void {
+    const button = document.getElementById(id) as HTMLElement;
+    button.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      button.classList.add("active");
+      action();
+    });
+    const release = () => button.classList.remove("active");
+    button.addEventListener("pointerup", release);
+    button.addEventListener("pointercancel", release);
+    button.addEventListener("pointerleave", release);
   }
 
   private onDown(e: PointerEvent): void {

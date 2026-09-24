@@ -103,6 +103,61 @@
       #jump-button.active {
         background: rgba(255, 255, 255, 0.45);
       }
+      #break-button,
+      #place-button {
+        position: absolute;
+        width: 76px;
+        height: 76px;
+        border-radius: 50%;
+        border: 2px solid rgba(255, 255, 255, 0.5);
+        color: #fff;
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: auto;
+      }
+      #break-button {
+        right: 40px;
+        bottom: 124px;
+        background: rgba(220, 70, 60, 0.4);
+      }
+      #place-button {
+        right: 130px;
+        bottom: 36px;
+        background: rgba(70, 170, 90, 0.4);
+      }
+      #break-button.active,
+      #place-button.active {
+        filter: brightness(1.6);
+      }
+      #hotbar {
+        position: absolute;
+        left: 50%;
+        bottom: 12px;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 8px;
+      }
+      .slot {
+        width: 52px;
+        height: 52px;
+        box-sizing: border-box;
+        border: 3px solid rgba(255, 255, 255, 0.3);
+        border-radius: 6px;
+        color: #fff;
+        font-size: 11px;
+        text-shadow: 0 1px 2px #000;
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        padding-bottom: 2px;
+        pointer-events: auto;
+      }
+      .slot.selected {
+        border-color: #fff;
+        transform: scale(1.12);
+      }
       #rotate-guide {
         position: fixed;
         inset: 0;
@@ -129,6 +184,9 @@
       <div id="joystick-base"></div>
       <div id="joystick-knob"></div>
       <div id="jump-button">점프</div>
+      <div id="break-button">부수기</div>
+      <div id="place-button">놓기</div>
+      <div id="hotbar"></div>
     </div>
     <div id="rotate-guide">화면을 가로로 돌려주세요</div>
     <script type="module" src="/src/main.ts"></script>

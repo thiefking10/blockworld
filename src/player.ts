@@ -43,6 +43,18 @@ export class Player {
     return false;
   }
 
+  /** 이 블록 칸이 플레이어 몸과 겹치는지. 블록을 놓을 때 자기 몸에 놓지 않도록 쓴다. */
+  intersectsBlock(bx: number, by: number, bz: number): boolean {
+    return (
+      this.x + HALF_WIDTH > bx &&
+      this.x - HALF_WIDTH < bx + 1 &&
+      this.y + HEIGHT > by &&
+      this.y < by + 1 &&
+      this.z + HALF_WIDTH > bz &&
+      this.z - HALF_WIDTH < bz + 1
+    );
+  }
+
   update(dt: number, input: PlayerInput): void {
     const sin = Math.sin(this.yaw);
     const cos = Math.cos(this.yaw);

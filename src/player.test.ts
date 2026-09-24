@@ -42,6 +42,17 @@ describe("player", () => {
     expect(player.x).toBeCloseTo(8, 3);
   });
 
+  it("자기 몸과 겹치는 칸을 알아본다", () => {
+    const player = new Player(flatWorld());
+    player.x = 8.5;
+    player.z = 8.5;
+    player.y = 1;
+    expect(player.intersectsBlock(8, 1, 8)).toBe(true);
+    expect(player.intersectsBlock(8, 2, 8)).toBe(true);
+    expect(player.intersectsBlock(8, 3, 8)).toBe(false);
+    expect(player.intersectsBlock(10, 1, 8)).toBe(false);
+  });
+
   it("벽(월드 가장자리)을 뚫고 나가지 않는다", () => {
     const player = new Player(flatWorld());
     player.x = 0.5;
