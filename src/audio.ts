@@ -1,15 +1,21 @@
 import { Block } from "./world";
 
-export type Material = "stone" | "dirt" | "sand" | "wood" | "leaves" | "water";
+export type Material = "stone" | "dirt" | "sand" | "wood" | "leaves" | "water" | "glass" | "snow";
 
 /** 블록이 어떤 재질로 들리는지. 소리를 고를 때 쓴다. */
 export function materialOf(block: number): Material {
   switch (block) {
     case Block.Stone:
+    case Block.Brick:
       return "stone";
+    case Block.Glass:
+      return "glass";
+    case Block.Snow:
+      return "snow";
     case Block.Sand:
       return "sand";
     case Block.Wood:
+    case Block.Planks:
       return "wood";
     case Block.Leaves:
       return "leaves";
@@ -126,6 +132,13 @@ class GameAudio {
         break;
       case "water":
         this.splash();
+        break;
+      case "glass":
+        this.burst({ duration: 0.22 * strength, type: "bandpass", freq: 5200, q: 2.5, gain: 0.4 });
+        this.burst({ duration: 0.12 * strength, type: "highpass", freq: 6500, gain: 0.18 });
+        break;
+      case "snow":
+        this.burst({ duration: 0.18 * strength, type: "lowpass", freq: 1500, gain: 0.35 });
         break;
     }
   }

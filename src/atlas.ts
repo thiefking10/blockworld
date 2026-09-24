@@ -11,6 +11,10 @@ export const TILE = {
   WoodTop: 6,
   Leaves: 7,
   Water: 8,
+  Planks: 9,
+  Glass: 10,
+  Brick: 11,
+  Snow: 12,
 } as const;
 
 const ATLAS_COLS = 4;
@@ -35,9 +39,24 @@ export function tileForFace(block: number, dirY: number): number {
       return TILE.Leaves;
     case Block.Water:
       return TILE.Water;
+    case Block.Planks:
+      return TILE.Planks;
+    case Block.Glass:
+      return TILE.Glass;
+    case Block.Brick:
+      return TILE.Brick;
+    case Block.Snow:
+      return TILE.Snow;
     default:
       return TILE.Stone;
   }
+}
+
+/** 블록 선택창에 보여줄 대표 무늬 타일. */
+export function iconTile(block: number): number {
+  if (block === Block.Grass) return TILE.GrassSide;
+  if (block === Block.Wood) return TILE.WoodSide;
+  return tileForFace(block, 1);
 }
 
 /** 타일 안의 (u, v)(0~1, v는 위쪽이 1)를 아틀라스 전체의 uv로 바꾼다. */
@@ -137,12 +156,66 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: number): void {
       for (let i = 0; i < 14; i++) px(Math.floor(random() * 16), Math.floor(random() * 16), shade([51, 107, 217], 40));
       break;
     }
+    case TILE.Planks: {
+      for (let y = 0; y < TILE_PIXELS; y++) {
+        const board = Math.floor(y / 4);
+        for (let x = 0; x < TILE_PIXELS; x++) {
+          const seam = y % 4 === 3 ? -34 : 0;
+          const end = (x + board * 5) % 16 === 0 ? -26 : 0;
+          px(x, y, shade([176, 132, 76], seam + end + (random() - 0.5) * 18));
+        }
+      }
+      break;
+    }
+    case TILE.Glass: {
+      // 안쪽은 투명하게 비워 두고 테두리와 반사광만 그린다.
+      for (let i = 0; i < TILE_PIXELS; i++) {
+        px(i, 0, "rgb(205,232,242)");
+        px(i, TILE_PIXELS - 1, "rgb(205,232,242)");
+        px(0, i, "rgb(205,232,242)");
+        px(TILE_PIXELS - 1, i, "rgb(205,232,242)");
+      }
+      for (let i = 3; i < 9; i++) px(i, i, "rgb(235,247,252)");
+      for (let i = 5; i < 8; i++) px(i + 3, i, "rgb(235,247,252)");
+      break;
+    }
+    case TILE.Brick: {
+      for (let y = 0; y < TILE_PIXELS; y++) {
+        const row = Math.floor(y / 4);
+        for (let x = 0; x < TILE_PIXELS; x++) {
+          const offset = row % 2 === 0 ? 0 : 4;
+          const mortar = y % 4 === 3 || (x + offset) % 8 === 7;
+          px(x, y, mortar ? shade([170, 166, 158], (random() - 0.5) * 12) : shade([158, 64, 48], (random() - 0.5) * 26));
+        }
+      }
+      break;
+    }
+    case TILE.Snow:
+      noiseFill(ctx, ox, oy, [238, 244, 250], 14, random);
+      break;
   }
+}
+
+let atlasCanvas: HTMLCanvasElement | null = null;
+
+/** 타일 하나를 확대한 작은 그림(data URL). 블록 선택창/아이템 바의 아이콘에 쓴다. */
+export function tileIconDataUrl(tile: number): string {
+  if (!atlasCanvas) return "";
+  const icon = document.createElement("canvas");
+  icon.width = 32;
+  icon.height = 32;
+  const ctx = icon.getContext("2d") as CanvasRenderingContext2D;
+  ctx.imageSmoothingEnabled = false;
+  const sx = (tile % ATLAS_COLS) * TILE_PIXELS;
+  const sy = Math.floor(tile / ATLAS_COLS) * TILE_PIXELS;
+  ctx.drawImage(atlasCanvas, sx, sy, TILE_PIXELS, TILE_PIXELS, 0, 0, 32, 32);
+  return icon.toDataURL();
 }
 
 /** 블록 무늬 타일을 한 장에 모은 그림(아틀라스)을 코드로 그려 만든다. 브라우저에서만 쓸 수 있다. */
 export function createAtlasTexture(): THREE.Texture {
   const canvas = document.createElement("canvas");
+  atlasCanvas = canvas;
   canvas.width = ATLAS_COLS * TILE_PIXELS;
   canvas.height = ATLAS_COLS * TILE_PIXELS;
   const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;

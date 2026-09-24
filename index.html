@@ -170,6 +170,88 @@
         border-color: #fff;
         transform: scale(1.12);
       }
+      .slot img {
+        width: 30px;
+        height: 30px;
+        image-rendering: pixelated;
+        margin-bottom: 1px;
+      }
+      .slot {
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding-bottom: 0;
+      }
+      #inventory-button {
+        position: absolute;
+        left: calc(50% - 176px - 72px);
+        bottom: 12px;
+        width: 60px;
+        height: 52px;
+        box-sizing: border-box;
+        border: 3px solid rgba(255, 255, 255, 0.5);
+        border-radius: 6px;
+        background: rgba(0, 0, 0, 0.45);
+        color: #fff;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: auto;
+      }
+      #inventory-panel {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        display: none;
+        flex-direction: column;
+        gap: 10px;
+        padding: 14px;
+        background: rgba(15, 15, 25, 0.93);
+        border: 2px solid rgba(255, 255, 255, 0.35);
+        border-radius: 10px;
+        color: #fff;
+        pointer-events: auto;
+        max-width: 92vw;
+        max-height: 90vh;
+        overflow: auto;
+      }
+      #inventory-panel.open {
+        display: flex;
+      }
+      #inventory-title {
+        text-align: center;
+        font-size: 15px;
+      }
+      #inventory-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 68px);
+        gap: 8px;
+      }
+      .inv-tile {
+        box-sizing: border-box;
+        height: 66px;
+        border: 2px solid rgba(255, 255, 255, 0.25);
+        border-radius: 6px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+      }
+      .inv-tile img {
+        width: 36px;
+        height: 36px;
+        image-rendering: pixelated;
+      }
+      #inventory-close {
+        align-self: center;
+        padding: 8px 26px;
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        border-radius: 6px;
+        font-size: 14px;
+      }
       #rotate-guide {
         position: fixed;
         inset: 0;
@@ -200,6 +282,12 @@
       <div id="break-button">부수기</div>
       <div id="place-button">놓기</div>
       <div id="hotbar"></div>
+      <div id="inventory-button">블록</div>
+      <div id="inventory-panel">
+        <div id="inventory-title">블록 고르기 (선택한 칸에 들어가요)</div>
+        <div id="inventory-grid"></div>
+        <div id="inventory-close">닫기</div>
+      </div>
     </div>
     <div id="rotate-guide">화면을 가로로 돌려주세요</div>
     <script type="module" src="/src/main.ts"></script>

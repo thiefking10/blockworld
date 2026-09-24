@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Block, SEA_LEVEL, SIZE_X, SIZE_Y, SIZE_Z, World, isCave, isPassable, terrainNoise } from "./world";
+import { Block, blocksLight, occludes, SEA_LEVEL, SIZE_X, SIZE_Y, SIZE_Z, World, isCave, isPassable, terrainNoise } from "./world";
 
 describe("world", () => {
   it("같은 시드면 같은 지형이 나온다", () => {
@@ -132,5 +132,15 @@ describe("world", () => {
     const world = new World();
     world.set(5, 5, 5, Block.Water);
     expect(world.isSkyLit(5, 3, 5)).toBe(true);
+  });
+
+  it("유리는 몸은 막지만 빛은 통과시키고 옆 블록 면을 가리지 않는다", () => {
+    const world = new World();
+    world.set(5, 5, 5, Block.Glass);
+    expect(world.isSolid(5, 5, 5)).toBe(true);
+    expect(world.isSkyLit(5, 3, 5)).toBe(true);
+    expect(blocksLight(Block.Glass)).toBe(false);
+    expect(occludes(Block.Glass)).toBe(false);
+    expect(occludes(Block.Stone)).toBe(true);
   });
 });

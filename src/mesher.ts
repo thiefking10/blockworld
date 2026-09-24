@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { createAtlasTexture, tileForFace, tileUV } from "./atlas";
 import { CHUNK_SIZE } from "./chunkMath";
-import { Block, BlockId, SIZE_Y, World, isOpaque } from "./world";
+import { Block, BlockId, SIZE_Y, World, occludes } from "./world";
 
 /** 하늘이 안 보이는 곳(동굴 안, 지붕 밑)의 밝기 */
 const DARK_LIGHT = 0.45;
@@ -30,7 +30,7 @@ function jitter(x: number, y: number, z: number): number {
 
 const atlas = createAtlasTexture();
 /** 밤낮에 따라 main에서 color를 바꿔 전체 밝기를 조절한다. */
-export const solidMaterial = new THREE.MeshBasicMaterial({ vertexColors: true, map: atlas });
+export const solidMaterial = new THREE.MeshBasicMaterial({ vertexColors: true, map: atlas, alphaTest: 0.5 });
 export const waterMaterial = new THREE.MeshBasicMaterial({
   vertexColors: true,
   map: atlas,
@@ -115,7 +115,9 @@ export function buildChunkMesh(world: World, chunkX: number, chunkZ: number): Ch
           const nx = x + dx;
           const ny = y + dy;
           const nz = z + dz;
-          if (isOpaque(world.get(nx, ny, nz))) continue;
+          const neighbor = world.get(nx, ny, nz);
+          if (occludes(neighbor)) continue;
+          if (block === Block.Glass && neighbor === Block.Glass) continue;
 
           const light = world.isSkyLit(nx, ny, nz) ? 1 : DARK_LIGHT;
           solid.addQuad(face.corners, x, y, z, (face.shade + noise) * light, tileForFace(block, dy), dy !== 0);

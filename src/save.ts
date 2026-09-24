@@ -8,6 +8,8 @@ export interface SaveData {
   player: { x: number; y: number; z: number; yaw: number; pitch: number };
   /** 월드에서 흐른 시간(초). 낮/밤 위치를 이어가는 데 쓴다. 예전 저장에는 없다. */
   time?: number;
+  /** 아이템 바에 넣어 둔 블록 종류(칸 순서대로). 예전 저장에는 없다. */
+  hotbar?: number[];
 }
 
 /** 플레이어가 부수거나 놓은 블록을 기록한다. 같은 자리는 마지막 값만 남는다. */
@@ -44,6 +46,7 @@ export function decodeSave(text: string | null): SaveData | null {
     const p = data.player;
     if (!p || !isFiniteNumbers([p.x, p.y, p.z, p.yaw, p.pitch])) return null;
     if (data.time !== undefined && !Number.isFinite(data.time)) return null;
+    if (data.hotbar !== undefined && !(Array.isArray(data.hotbar) && isFiniteNumbers(data.hotbar))) return null;
     if (!data.edits.every((e: unknown) => Array.isArray(e) && e.length === 4 && isFiniteNumbers(e))) return null;
     return data as SaveData;
   } catch {

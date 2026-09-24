@@ -7,6 +7,10 @@ export const Block = {
   Wood: 5,
   Leaves: 6,
   Water: 7,
+  Planks: 8,
+  Glass: 9,
+  Brick: 10,
+  Snow: 11,
 } as const;
 export type BlockId = (typeof Block)[keyof typeof Block];
 
@@ -18,6 +22,16 @@ export const SEA_LEVEL = 9;
 /** 빛을 막고 몸이 부딪히는 블록인지 (공기와 물은 아니다). */
 export function isOpaque(block: number): boolean {
   return block !== Block.Air && block !== Block.Water;
+}
+
+/** 하늘빛을 막는 블록인지. 유리는 몸은 막아도 빛은 통과시킨다. */
+export function blocksLight(block: number): boolean {
+  return isOpaque(block) && block !== Block.Glass;
+}
+
+/** 옆 블록의 면을 가려 그리지 않아도 되게 하는 블록인지 (투명한 유리는 가리지 못한다). */
+export function occludes(block: number): boolean {
+  return isOpaque(block) && block !== Block.Glass;
 }
 
 /** 지나갈 수 있고 조준이 통과하는 블록인지 (공기, 물). */
@@ -116,11 +130,11 @@ export class World {
     this.data[this.index(x, y, z)] = block;
 
     const column = x + SIZE_X * z;
-    if (isOpaque(block)) {
+    if (blocksLight(block)) {
       if (y > this.top[column]) this.top[column] = y;
     } else if (y === this.top[column]) {
       let t = y - 1;
-      while (t >= 0 && !isOpaque(this.get(x, t, z))) t--;
+      while (t >= 0 && !blocksLight(this.get(x, t, z))) t--;
       this.top[column] = t;
     }
   }

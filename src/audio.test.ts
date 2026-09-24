@@ -15,4 +15,11 @@ describe("materialOf", () => {
     expect(materialOf(Block.Grass)).toBe("dirt");
     expect(materialOf(Block.Dirt)).toBe("dirt");
   });
+
+  it("새 블록도 재질이 있다", () => {
+    expect(materialOf(Block.Planks)).toBe("wood");
+    expect(materialOf(Block.Brick)).toBe("stone");
+    expect(materialOf(Block.Glass)).toBe("glass");
+    expect(materialOf(Block.Snow)).toBe("snow");
+  });
 });

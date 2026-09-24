@@ -1,5 +1,7 @@
 import * as THREE from "three";
+import { iconTile, tileIconDataUrl } from "./atlas";
 import { audio } from "./audio";
+import { blockName, PLACEABLE_BLOCKS, sanitizeHotbar } from "./blocks";
 import { Controls } from "./controls";
 import { ambientColor, DAY_LENGTH_SECONDS, daylight, phaseFromSeconds, skyColor } from "./daycycle";
 import { solidMaterial, waterMaterial } from "./mesher";
@@ -10,15 +12,6 @@ import { decodeSave, EditLog, encodeSave, SaveData } from "./save";
 import { Block, BlockId, SIZE_X, SIZE_Z, World, isPassable } from "./world";
 
 const REACH = 5;
-
-const HOTBAR: { block: BlockId; name: string; color: string }[] = [
-  { block: Block.Grass, name: "잔디", color: "#5ba138" },
-  { block: Block.Dirt, name: "흙", color: "#785434" },
-  { block: Block.Stone, name: "돌", color: "#808085" },
-  { block: Block.Sand, name: "모래", color: "#dbcc8c" },
-  { block: Block.Wood, name: "나무", color: "#6b4724" },
-  { block: Block.Leaves, name: "잎", color: "#33802a" },
-];
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const fpsLabel = document.getElementById("fps") as HTMLElement;
@@ -57,6 +50,7 @@ const seed = seedParam ? Number(seedParam) || 1 : lastSeed > 0 ? lastSeed : Math
 writeStorage(LAST_SEED_KEY, String(seed));
 
 const saved = decodeSave(readStorage(saveKey(seed)));
+const hotbarBlocks: BlockId[] = sanitizeHotbar(saved?.hotbar);
 
 const world = new World();
 world.generate(seed);
@@ -126,11 +120,9 @@ if (saved && saved.seed === seed) {
 }
 
 let selectedSlot = 0;
-const slotElements = HOTBAR.map((slot, index) => {
+const slotElements = hotbarBlocks.map((_block, index) => {
   const element = document.createElement("div");
   element.className = "slot";
-  element.style.background = slot.color;
-  element.textContent = slot.name;
   element.addEventListener("pointerdown", (e) => {
     e.stopPropagation();
     selectSlot(index);
@@ -139,12 +131,64 @@ const slotElements = HOTBAR.map((slot, index) => {
   return element;
 });
 
+/** 아이템 바 칸마다 블록 무늬 아이콘과 이름을 그린다. */
+function refreshHotbar(): void {
+  slotElements.forEach((element, i) => {
+    const block = hotbarBlocks[i];
+    element.replaceChildren();
+    const icon = document.createElement("img");
+    icon.src = tileIconDataUrl(iconTile(block));
+    icon.alt = blockName(block);
+    const label = document.createElement("span");
+    label.textContent = blockName(block);
+    element.append(icon, label);
+    element.classList.toggle("selected", i === selectedSlot);
+  });
+}
+
 function selectSlot(index: number): void {
-  if (index < 0 || index >= HOTBAR.length) return;
+  if (index < 0 || index >= hotbarBlocks.length) return;
   selectedSlot = index;
-  slotElements.forEach((element, i) => element.classList.toggle("selected", i === index));
+  refreshHotbar();
 }
 selectSlot(0);
+
+const inventoryPanel = document.getElementById("inventory-panel") as HTMLElement;
+const inventoryGrid = document.getElementById("inventory-grid") as HTMLElement;
+
+function toggleInventory(open?: boolean): void {
+  inventoryPanel.classList.toggle("open", open);
+}
+
+for (const { block, name } of PLACEABLE_BLOCKS) {
+  const tile = document.createElement("div");
+  tile.className = "inv-tile";
+  const icon = document.createElement("img");
+  icon.src = tileIconDataUrl(iconTile(block));
+  icon.alt = name;
+  const label = document.createElement("span");
+  label.textContent = name;
+  tile.append(icon, label);
+  tile.addEventListener("pointerdown", (e) => {
+    e.stopPropagation();
+    hotbarBlocks[selectedSlot] = block;
+    refreshHotbar();
+    toggleInventory(false);
+    scheduleSave();
+  });
+  inventoryGrid.appendChild(tile);
+}
+document.getElementById("inventory-button")?.addEventListener("pointerdown", (e) => {
+  e.stopPropagation();
+  toggleInventory();
+});
+document.getElementById("inventory-close")?.addEventListener("pointerdown", (e) => {
+  e.stopPropagation();
+  toggleInventory(false);
+});
+window.addEventListener("keydown", (e) => {
+  if (e.code === "KeyB") toggleInventory();
+});
 
 function currentTarget(): RayHit | null {
   const [dx, dy, dz] = lookDirection(player.yaw, player.pitch);
@@ -167,9 +211,10 @@ function placeBlock(): void {
   const { px, py, pz } = hit;
   if (!world.inBounds(px, py, pz) || !isPassable(world.get(px, py, pz))) return;
   if (player.intersectsBlock(px, py, pz)) return;
-  audio.playPlace(HOTBAR[selectedSlot].block);
-  world.set(px, py, pz, HOTBAR[selectedSlot].block);
-  editLog.record(px, py, pz, HOTBAR[selectedSlot].block);
+  const block = hotbarBlocks[selectedSlot];
+  audio.playPlace(block);
+  world.set(px, py, pz, block);
+  editLog.record(px, py, pz, block);
   worldMesh.updateBlock(px, pz);
   scheduleSave();
 }
@@ -185,6 +230,7 @@ function saveNow(): void {
     edits: editLog.toArray(),
     player: { x: player.x, y: player.y, z: player.z, yaw: player.yaw, pitch: player.pitch },
     time: worldSeconds,
+    hotbar: hotbarBlocks,
   };
   writeStorage(saveKey(seed), encodeSave(data));
 }
