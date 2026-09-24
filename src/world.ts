@@ -14,9 +14,9 @@ export const Block = {
 } as const;
 export type BlockId = (typeof Block)[keyof typeof Block];
 
-export const SIZE_X = 128;
+export const SIZE_X = 256;
 export const SIZE_Y = 32;
-export const SIZE_Z = 128;
+export const SIZE_Z = 256;
 export const SEA_LEVEL = 9;
 
 /** 빛을 막고 몸이 부딪히는 블록인지 (공기와 물은 아니다). */

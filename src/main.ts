@@ -52,8 +52,13 @@ writeStorage(LAST_SEED_KEY, String(seed));
 const saved = decodeSave(readStorage(saveKey(seed)));
 const hotbarBlocks: BlockId[] = sanitizeHotbar(saved?.hotbar);
 
+// 월드를 만드는 동안 화면이 멈추므로, 먼저 "만드는 중" 문구가 그려지게 한 프레임 기다린다.
+await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+
 const world = new World();
+const generateStart = performance.now();
 world.generate(seed);
+const generateMs = Math.round(performance.now() - generateStart);
 
 const editLog = new EditLog();
 if (saved && saved.seed === seed) {
@@ -256,6 +261,9 @@ document.getElementById("new-world-button")?.addEventListener("pointerdown", (e)
   window.location.href = window.location.pathname;
 });
 
+worldMesh.loadAllNear(player.x, player.z);
+document.getElementById("loading")?.remove();
+
 const controls = new Controls(canvas);
 controls.onBreak = breakBlock;
 controls.onPlace = placeBlock;
@@ -321,7 +329,7 @@ function updateEnvironment(): void {
 
 // 개발용: 주소에 ?debug 를 붙이면 콘솔에서 __vox 로 월드와 플레이어를 만질 수 있다.
 if (new URLSearchParams(window.location.search).has("debug")) {
-  (window as unknown as { __vox: unknown }).__vox = { world, player, camera, scene, audio };
+  (window as unknown as { __vox: unknown }).__vox = { world, player, camera, scene, audio, generateMs, worldMesh };
 }
 
 // 브라우저는 사용자가 화면을 누르기 전에는 소리를 못 내게 막는다. 첫 터치/클릭/키 입력 때 소리를 켠다.
@@ -371,6 +379,7 @@ function frame(now: number): void {
   const beforeZ = player.z;
   player.update(dt, controls.currentInput());
   updateMovementSounds(Math.hypot(player.x - beforeX, player.z - beforeZ));
+  worldMesh.update(player.x, player.z);
 
   camera.position.set(player.x, player.y + EYE_HEIGHT, player.z);
   camera.rotation.set(player.pitch, player.yaw, 0);

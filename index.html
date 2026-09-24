@@ -252,6 +252,17 @@
         border-radius: 6px;
         font-size: 14px;
       }
+      #loading {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #000;
+        color: #eee;
+        font-size: 20px;
+        z-index: 200;
+      }
       #rotate-guide {
         position: fixed;
         inset: 0;
@@ -289,6 +300,7 @@
         <div id="inventory-close">닫기</div>
       </div>
     </div>
+    <div id="loading">월드를 만드는 중...</div>
     <div id="rotate-guide">화면을 가로로 돌려주세요</div>
     <script type="module" src="/src/main.ts"></script>
   </body>
