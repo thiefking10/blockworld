@@ -1,0 +1,70 @@
+import { describe, expect, it } from "vitest";
+import { dropFor, Inventory, Item, mobDrop, RECIPES } from "./inventory";
+import { Block } from "./world";
+
+describe("Inventory", () => {
+  it("넣고 빼며, 모자라면 빼지 못한다", () => {
+    const inv = new Inventory();
+    inv.add(Block.Stone, 3);
+    expect(inv.count(Block.Stone)).toBe(3);
+    expect(inv.remove(Block.Stone, 2)).toBe(true);
+    expect(inv.remove(Block.Stone, 2)).toBe(false);
+    expect(inv.count(Block.Stone)).toBe(1);
+    expect(inv.remove(Block.Stone)).toBe(true);
+    expect(inv.entries()).toEqual([]);
+  });
+
+  it("재료가 있을 때만 만들 수 있고, 재료가 줄고 결과가 늘어난다", () => {
+    const inv = new Inventory();
+    const planks = RECIPES.find((r) => r.name === "판자");
+    if (!planks) throw new Error("recipe");
+    expect(inv.craft(planks)).toBe(false);
+    inv.add(Block.Wood, 2);
+    expect(inv.craft(planks)).toBe(true);
+    expect(inv.count(Block.Wood)).toBe(1);
+    expect(inv.count(Block.Planks)).toBe(4);
+  });
+
+  it("몽둥이가 있으면 공격력이 오르고, 센 쪽이 우선이다", () => {
+    const inv = new Inventory();
+    expect(inv.attackDamage()).toBe(1);
+    inv.add(Item.WoodClub);
+    expect(inv.attackDamage()).toBe(2);
+    inv.add(Item.StoneClub);
+    expect(inv.attackDamage()).toBe(4);
+  });
+
+  it("저장했다가 그대로 불러온다", () => {
+    const inv = new Inventory();
+    inv.add(Block.Dirt, 5);
+    inv.add(Item.Meat, 2);
+    const copy = new Inventory();
+    copy.load(inv.entries());
+    expect(copy.entries()).toEqual(inv.entries());
+  });
+
+  it("몽둥이는 재료를 이어서 만들 수 있다 (통나무 → 판자 → 몽둥이)", () => {
+    const inv = new Inventory();
+    inv.add(Block.Wood, 1);
+    const [planks, , woodClub] = [RECIPES[0], RECIPES[1], RECIPES[3]];
+    expect(inv.craft(planks)).toBe(true);
+    expect(inv.craft(woodClub)).toBe(true);
+    expect(inv.count(Item.WoodClub)).toBe(1);
+    expect(inv.count(Block.Planks)).toBe(1);
+  });
+});
+
+describe("drops", () => {
+  it("잔디는 흙, 물과 공기는 아무것도 안 나온다", () => {
+    expect(dropFor(Block.Grass)).toEqual([Block.Dirt, 1]);
+    expect(dropFor(Block.Stone)).toEqual([Block.Stone, 1]);
+    expect(dropFor(Block.Water)).toBeNull();
+    expect(dropFor(Block.Air)).toBeNull();
+  });
+
+  it("돼지와 양은 고기를 떨구고 좀비는 안 떨군다", () => {
+    expect(mobDrop("pig", () => 0.9)?.[0]).toBe(Item.Meat);
+    expect(mobDrop("sheep", () => 0.1)?.[1]).toBe(2);
+    expect(mobDrop("zombie", () => 0.5)).toBeNull();
+  });
+});

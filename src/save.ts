@@ -10,6 +10,10 @@ export interface SaveData {
   time?: number;
   /** 아이템 바에 넣어 둔 블록 종류(칸 순서대로). 예전 저장에는 없다. */
   hotbar?: number[];
+  /** 게임 방식. 없으면(예전 저장) 블록이 무한인 "creative"로 이어간다. */
+  mode?: "survival" | "creative";
+  /** 가방 내용 [아이템 번호, 개수]. */
+  inventory?: [number, number][];
 }
 
 /** 플레이어가 부수거나 놓은 블록을 기록한다. 같은 자리는 마지막 값만 남는다. */
@@ -47,6 +51,12 @@ export function decodeSave(text: string | null): SaveData | null {
     if (!p || !isFiniteNumbers([p.x, p.y, p.z, p.yaw, p.pitch])) return null;
     if (data.time !== undefined && !Number.isFinite(data.time)) return null;
     if (data.hotbar !== undefined && !(Array.isArray(data.hotbar) && isFiniteNumbers(data.hotbar))) return null;
+    if (data.mode !== undefined && data.mode !== "survival" && data.mode !== "creative") return null;
+    if (
+      data.inventory !== undefined &&
+      !(Array.isArray(data.inventory) && data.inventory.every((e: unknown) => Array.isArray(e) && e.length === 2 && isFiniteNumbers(e)))
+    )
+      return null;
     if (!data.edits.every((e: unknown) => Array.isArray(e) && e.length === 4 && isFiniteNumbers(e))) return null;
     return data as SaveData;
   } catch {

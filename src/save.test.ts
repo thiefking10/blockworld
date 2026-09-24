@@ -45,6 +45,15 @@ describe("save", () => {
     expect(decodeSave(JSON.stringify({ ...sample, time: "a" }))).toBeNull();
   });
 
+  it("게임 방식과 가방도 같이 저장되고, 없는 예전 저장도 읽힌다", () => {
+    const full: SaveData = { ...sample, mode: "survival", inventory: [[5, 3], [100, 2]] };
+    expect(decodeSave(encodeSave(full))).toEqual(full);
+    expect(decodeSave(encodeSave(sample))?.mode).toBeUndefined();
+    expect(decodeSave(JSON.stringify({ ...sample, mode: "hard" }))).toBeNull();
+    expect(decodeSave(JSON.stringify({ ...sample, inventory: [[1]] }))).toBeNull();
+    expect(decodeSave(JSON.stringify({ ...sample, inventory: "x" }))).toBeNull();
+  });
+
   it("형식이 다르면 null이다", () => {
     expect(decodeSave(JSON.stringify({ ...sample, version: 2 }))).toBeNull();
     expect(decodeSave(JSON.stringify({ ...sample, edits: [[1, 2, 3]] }))).toBeNull();

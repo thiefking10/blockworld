@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findSpawnSpot, Mob, MobSimulation, raycastMobs } from "./mobs";
+import { findSpawnSpot, MAX_HOSTILE_COUNT, Mob, MobSimulation, raycastMobs } from "./mobs";
 import { Block, World } from "./world";
 
 function flatWorld(): World {
@@ -116,7 +116,7 @@ describe("spawn", () => {
     const world = flatWorld();
     const sim = new MobSimulation();
     sim.mobs.push(new Mob("pig", 500, 1, 500, fixed(0.5)));
-    sim.update(0.1, world, 20, 20, fixed(0.3));
+    sim.update(0.1, world, fixed(0.3), { x: 20, y: 1, z: 20 }, false);
     expect(sim.mobs.some((m) => m.x === 500)).toBe(false);
   });
 
@@ -129,5 +129,63 @@ describe("spawn", () => {
     for (let i = 0; i < 3; i++) sim.hit(mob, 0, 0);
     expect(sim.hit(mob, 0, 0)).toBe(true);
     expect(sim.mobs).toHaveLength(0);
+  });
+});
+
+describe("좀비", () => {
+  const player = { x: 20.5, y: 1, z: 20.5 };
+
+  it("밤에는 플레이어를 쫓아와서 가까워지면 피해를 입힌다", () => {
+    const world = flatWorld();
+    const sim = new MobSimulation();
+    const zombie = new Mob("zombie", 20.5, 1, 30.5, fixed(0.5));
+    sim.mobs.push(zombie);
+    let total = 0;
+    for (let i = 0; i < 60 * 10; i++) total += sim.update(1 / 60, world, fixed(0.9), player, true).damage;
+    expect(Math.hypot(zombie.x - player.x, zombie.z - player.z)).toBeLessThan(1.5);
+    expect(total).toBeGreaterThanOrEqual(3);
+  });
+
+  it("공격은 쿨타임이 있어서 매 프레임 맞지는 않는다", () => {
+    const world = flatWorld();
+    const sim = new MobSimulation();
+    sim.mobs.push(new Mob("zombie", 20.5, 1, 21.0, fixed(0.5)));
+    let hits = 0;
+    for (let i = 0; i < 60 * 3; i++) if (sim.update(1 / 60, world, fixed(0.9), player, true).damage > 0) hits++;
+    expect(hits).toBeGreaterThanOrEqual(2);
+    expect(hits).toBeLessThanOrEqual(3);
+  });
+
+  it("낮에는 쫓아오지 않고 시간이 지나면 사라진다", () => {
+    const world = flatWorld();
+    const sim = new MobSimulation();
+    sim.mobs.push(new Mob("zombie", 20.5, 1, 30.5, fixed(0.5)));
+    for (let i = 0; i < 60 * 60; i++) sim.update(1 / 60, world, () => 0.001, player, false);
+    expect(sim.mobs.some((m) => m.kind === "zombie")).toBe(false);
+  });
+
+  it("밤에는 좀비가 생기지만 최대 수를 넘지 않고, 낮에는 안 생긴다", () => {
+    const world = flatWorld();
+    let seed = 9;
+    const rng = () => {
+      seed = (seed * 16807) % 2147483647;
+      return seed / 2147483647;
+    };
+    const day = new MobSimulation();
+    for (let i = 0; i < 60 * 30; i++) day.update(1 / 60, world, rng, player, false);
+    expect(day.mobs.some((m) => m.kind === "zombie")).toBe(false);
+
+    const night = new MobSimulation();
+    for (let i = 0; i < 60 * 30; i++) night.update(1 / 60, world, rng, player, true);
+    const zombies = night.mobs.filter((m) => m.kind === "zombie").length;
+    expect(zombies).toBeGreaterThan(0);
+    expect(zombies).toBeLessThanOrEqual(MAX_HOSTILE_COUNT);
+  });
+
+  it("무기 피해만큼 체력이 깎인다", () => {
+    const zombie = new Mob("zombie", 10.5, 1, 10.5, fixed(0.5));
+    expect(zombie.hit(9, 10, 4)).toBe(false);
+    expect(zombie.hp).toBe(4);
+    expect(zombie.hit(9, 10, 4)).toBe(true);
   });
 });

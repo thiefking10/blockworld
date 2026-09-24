@@ -216,6 +216,7 @@
         max-width: 92vw;
         max-height: 90vh;
         overflow: auto;
+        touch-action: pan-y;
       }
       #inventory-panel.open {
         display: flex;
@@ -224,12 +225,92 @@
         text-align: center;
         font-size: 15px;
       }
-      #inventory-grid {
-        display: grid;
-        grid-template-columns: repeat(5, 68px);
+      #inventory-body {
+        display: flex;
+        gap: 18px;
+        align-items: flex-start;
+      }
+      .inv-column {
+        display: flex;
+        flex-direction: column;
         gap: 8px;
       }
+      .section-title {
+        font-size: 13px;
+        color: #ffd98a;
+      }
+      #inventory-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 68px);
+        gap: 8px;
+      }
+      #inventory-empty {
+        font-size: 12px;
+        color: #bbb;
+        max-width: 280px;
+        line-height: 1.5;
+      }
+      #items-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .item-chip {
+        box-sizing: border-box;
+        min-height: 44px;
+        padding: 6px 12px;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        border-radius: 6px;
+        font-size: 13px;
+        display: flex;
+        align-items: center;
+      }
+      .item-chip.eatable {
+        border-color: #ffb27a;
+        background: rgba(255, 150, 80, 0.15);
+      }
+      #craft-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        width: 250px;
+      }
+      .craft-row {
+        box-sizing: border-box;
+        min-height: 48px;
+        padding: 6px 10px;
+        border: 2px solid rgba(255, 255, 255, 0.25);
+        border-radius: 6px;
+        font-size: 13px;
+        line-height: 1.35;
+      }
+      .craft-row small {
+        display: block;
+        color: #bbb;
+        font-size: 11px;
+      }
+      .craft-row.ready {
+        border-color: #8fe08f;
+        background: rgba(90, 200, 90, 0.18);
+      }
+      .craft-row.locked {
+        opacity: 0.5;
+      }
+      #mode-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        font-size: 13px;
+      }
+      #mode-toggle {
+        padding: 8px 14px;
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        border-radius: 6px;
+        font-size: 13px;
+      }
       .inv-tile {
+        position: relative;
         box-sizing: border-box;
         height: 66px;
         border: 2px solid rgba(255, 255, 255, 0.25);
@@ -244,6 +325,74 @@
         width: 36px;
         height: 36px;
         image-rendering: pixelated;
+      }
+      .inv-tile .count,
+      .slot .count {
+        position: absolute;
+        right: 3px;
+        top: 1px;
+        font-size: 11px;
+        font-weight: bold;
+        text-shadow: 0 1px 2px #000;
+      }
+      .slot {
+        position: relative;
+      }
+      .slot.empty img {
+        opacity: 0.3;
+      }
+      #hearts {
+        position: absolute;
+        left: 50%;
+        top: 8px;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 2px;
+        font-size: 20px;
+        line-height: 1;
+        text-shadow: 0 1px 2px #000;
+      }
+      #hearts span {
+        color: #4a2a2a;
+      }
+      #hearts span.full {
+        color: #ff4d5e;
+      }
+      #hearts span.half {
+        background: linear-gradient(90deg, #ff4d5e 50%, #4a2a2a 50%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        text-shadow: none;
+      }
+      #damage-flash {
+        position: absolute;
+        inset: 0;
+        background: rgba(220, 0, 0, 0.45);
+        opacity: 0;
+        transition: opacity 0.35s;
+      }
+      #damage-flash.on {
+        opacity: 1;
+        transition: none;
+      }
+      #toast {
+        position: absolute;
+        left: 50%;
+        bottom: 84px;
+        transform: translateX(-50%);
+        padding: 8px 16px;
+        background: rgba(0, 0, 0, 0.6);
+        border-radius: 8px;
+        color: #fff;
+        font-size: 14px;
+        opacity: 0;
+        transition: opacity 0.4s;
+        white-space: nowrap;
+      }
+      #toast.on {
+        opacity: 1;
+        transition: none;
       }
       #inventory-close {
         align-self: center;
@@ -286,6 +435,9 @@
     <div id="hud">
       <div id="crosshair"></div>
       <div id="fps"></div>
+      <div id="hearts"></div>
+      <div id="damage-flash"></div>
+      <div id="toast"></div>
       <div id="new-world-button">새 월드</div>
       <div id="joystick-base"></div>
       <div id="joystick-knob"></div>
@@ -293,10 +445,26 @@
       <div id="break-button">부수기</div>
       <div id="place-button">놓기</div>
       <div id="hotbar"></div>
-      <div id="inventory-button">블록</div>
+      <div id="inventory-button">가방</div>
       <div id="inventory-panel">
-        <div id="inventory-title">블록 고르기 (선택한 칸에 들어가요)</div>
-        <div id="inventory-grid"></div>
+        <div id="inventory-title">가방</div>
+        <div id="mode-row">
+          <span id="mode-label"></span>
+          <div id="mode-toggle">방식 바꾸기</div>
+        </div>
+        <div id="inventory-body">
+          <div class="inv-column">
+            <div class="section-title" id="pick-title">블록 고르기 (선택한 칸에 들어가요)</div>
+            <div id="inventory-grid"></div>
+            <div id="inventory-empty"></div>
+            <div class="section-title" id="items-title">아이템</div>
+            <div id="items-row"></div>
+          </div>
+          <div class="inv-column" id="craft-section">
+            <div class="section-title">만들기 (초록 테두리는 만들 수 있어요)</div>
+            <div id="craft-list"></div>
+          </div>
+        </div>
         <div id="inventory-close">닫기</div>
       </div>
     </div>

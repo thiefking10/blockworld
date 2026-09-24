@@ -159,28 +159,29 @@ class GameAudio {
   }
 
   /** 동물 울음소리. volume은 0~1 (멀수록 작게). 돼지는 낮고 짧은 "꿀", 양은 떨리는 "메". */
-  playMob(kind: "pig" | "sheep", volume: number): void {
+  playMob(kind: "pig" | "sheep" | "zombie", volume: number): void {
     if (volume <= 0.01) return;
     const ctx = this.context();
     const now = ctx.currentTime;
     const pig = kind === "pig";
-    const duration = pig ? 0.22 : 0.55;
+    const zombie = kind === "zombie";
+    const duration = pig ? 0.22 : zombie ? 0.7 : 0.55;
 
     const osc = ctx.createOscillator();
     osc.type = "sawtooth";
-    osc.frequency.setValueAtTime(pig ? 240 : 420, now);
-    osc.frequency.exponentialRampToValueAtTime(pig ? 150 : 330, now + duration);
+    osc.frequency.setValueAtTime(pig ? 240 : zombie ? 120 : 420, now);
+    osc.frequency.exponentialRampToValueAtTime(pig ? 150 : zombie ? 70 : 330, now + duration);
 
     const filter = ctx.createBiquadFilter();
     filter.type = "lowpass";
-    filter.frequency.value = pig ? 700 : 1400;
+    filter.frequency.value = pig ? 700 : zombie ? 380 : 1400;
 
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0.0001, now);
     gain.gain.linearRampToValueAtTime(0.32 * volume, now + 0.03);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
 
-    if (!pig) {
+    if (kind === "sheep") {
       // 양은 소리를 빠르게 떨어서 "메에에" 느낌을 낸다.
       const tremolo = ctx.createOscillator();
       tremolo.frequency.value = 22;
@@ -203,6 +204,23 @@ class GameAudio {
   playMobHit(): void {
     this.burst({ duration: 0.12, type: "lowpass", freq: 600, gain: 0.6 });
     this.thump(200, 90, 0.1, 0.25);
+  }
+
+  /** 플레이어가 다쳤을 때 (낮고 둔한 소리). */
+  playHurt(): void {
+    this.burst({ duration: 0.18, type: "lowpass", freq: 420, gain: 0.8 });
+    this.thump(160, 60, 0.2, 0.4);
+  }
+
+  /** 아이템을 만들었을 때 (짧은 딸깍 두 번). */
+  playCraft(): void {
+    this.burst({ duration: 0.06, type: "bandpass", freq: 2200, q: 2, gain: 0.35 });
+    window.setTimeout(() => this.burst({ duration: 0.09, type: "bandpass", freq: 3000, q: 2, gain: 0.35 }), 90);
+  }
+
+  /** 고기를 먹을 때. */
+  playEat(): void {
+    for (let i = 0; i < 3; i++) window.setTimeout(() => this.burst({ duration: 0.07, type: "bandpass", freq: 900, q: 1, gain: 0.4 }), i * 110);
   }
 
   splash(): void {

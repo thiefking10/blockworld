@@ -2,6 +2,8 @@ import * as THREE from "three";
 import { iconTile, tileIconDataUrl } from "./atlas";
 import { audio } from "./audio";
 import { blockName, PLACEABLE_BLOCKS, sanitizeHotbar } from "./blocks";
+import { FallTracker, Health, MAX_HEALTH } from "./health";
+import { dropFor, Inventory, Item, ITEM_NAMES, MEAT_HEAL, mobDrop, RECIPES } from "./inventory";
 import { Controls } from "./controls";
 import { ambientColor, DAY_LENGTH_SECONDS, daylight, phaseFromSeconds, skyColor } from "./daycycle";
 import { solidMaterial, waterMaterial } from "./mesher";
@@ -53,6 +55,36 @@ writeStorage(LAST_SEED_KEY, String(seed));
 
 const saved = decodeSave(readStorage(saveKey(seed)));
 const hotbarBlocks: BlockId[] = sanitizeHotbar(saved?.hotbar);
+
+/** survival: 블록을 모아서 쓴다 / creative: 블록이 무한이다. 예전 저장(모드 없음)은 무한 그대로 이어간다. */
+let mode: "survival" | "creative" = saved && saved.seed === seed ? (saved.mode ?? "creative") : "survival";
+const inventory = new Inventory();
+if (saved && saved.seed === seed && saved.inventory) inventory.load(saved.inventory);
+const health = new Health();
+const fallTracker = new FallTracker();
+
+const toastElement = document.getElementById("toast") as HTMLElement;
+let toastTimer: number | undefined;
+function showToast(text: string, ms = 1800): void {
+  toastElement.textContent = text;
+  toastElement.classList.add("on");
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => toastElement.classList.remove("on"), ms);
+}
+
+const iconCache = new Map<number, string>();
+function iconUrl(block: number): string {
+  let url = iconCache.get(block);
+  if (!url) {
+    url = tileIconDataUrl(iconTile(block));
+    iconCache.set(block, url);
+  }
+  return url;
+}
+
+function itemLabel(item: number): string {
+  return ITEM_NAMES[item] ?? blockName(item);
+}
 
 // 월드를 만드는 동안 화면이 멈추므로, 먼저 "만드는 중" 문구가 그려지게 한 프레임 기다린다.
 await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
@@ -144,11 +176,18 @@ function refreshHotbar(): void {
     const block = hotbarBlocks[i];
     element.replaceChildren();
     const icon = document.createElement("img");
-    icon.src = tileIconDataUrl(iconTile(block));
+    icon.src = iconUrl(block);
     icon.alt = blockName(block);
     const label = document.createElement("span");
     label.textContent = blockName(block);
     element.append(icon, label);
+    if (mode === "survival") {
+      const count = document.createElement("span");
+      count.className = "count";
+      count.textContent = String(inventory.count(block));
+      element.append(count);
+    }
+    element.classList.toggle("empty", mode === "survival" && inventory.count(block) === 0);
     element.classList.toggle("selected", i === selectedSlot);
   });
 }
@@ -162,29 +201,122 @@ selectSlot(0);
 
 const inventoryPanel = document.getElementById("inventory-panel") as HTMLElement;
 const inventoryGrid = document.getElementById("inventory-grid") as HTMLElement;
+const inventoryEmpty = document.getElementById("inventory-empty") as HTMLElement;
+const itemsRow = document.getElementById("items-row") as HTMLElement;
+const itemsTitle = document.getElementById("items-title") as HTMLElement;
+const craftSection = document.getElementById("craft-section") as HTMLElement;
+const craftList = document.getElementById("craft-list") as HTMLElement;
+const modeLabel = document.getElementById("mode-label") as HTMLElement;
 
 function toggleInventory(open?: boolean): void {
-  inventoryPanel.classList.toggle("open", open);
+  const isOpen = inventoryPanel.classList.toggle("open", open);
+  if (isOpen) refreshInventoryPanel();
 }
 
-for (const { block, name } of PLACEABLE_BLOCKS) {
-  const tile = document.createElement("div");
-  tile.className = "inv-tile";
-  const icon = document.createElement("img");
-  icon.src = tileIconDataUrl(iconTile(block));
-  icon.alt = name;
-  const label = document.createElement("span");
-  label.textContent = name;
-  tile.append(icon, label);
-  tile.addEventListener("pointerdown", (e) => {
+/** 누르는 동작은 게임 화면(시점 돌리기)으로 새지 않게 막는다. */
+function onPress(element: HTMLElement, action: () => void): void {
+  element.addEventListener("pointerdown", (e) => {
     e.stopPropagation();
-    hotbarBlocks[selectedSlot] = block;
-    refreshHotbar();
-    toggleInventory(false);
-    scheduleSave();
+    action();
   });
-  inventoryGrid.appendChild(tile);
 }
+
+function eatMeat(): void {
+  if (inventory.count(Item.Meat) === 0) return;
+  if (health.hp >= MAX_HEALTH) {
+    showToast("체력이 가득이라 안 먹어도 돼요");
+    return;
+  }
+  inventory.remove(Item.Meat);
+  health.heal(MEAT_HEAL);
+  audio.playEat();
+  refreshHearts();
+  refreshInventoryPanel();
+  scheduleSave();
+}
+
+function craftRecipe(index: number): void {
+  const recipe = RECIPES[index];
+  if (!inventory.craft(recipe)) return;
+  audio.playCraft();
+  showToast(recipe.name + " ×" + recipe.output[1] + " 만들었어요");
+  refreshHotbar();
+  refreshInventoryPanel();
+  scheduleSave();
+}
+
+function refreshInventoryPanel(): void {
+  const survival = mode === "survival";
+  modeLabel.textContent = survival ? "서바이벌: 블록을 모아서 써요" : "창작: 블록이 무한이에요";
+
+  inventoryGrid.replaceChildren();
+  const shown = survival ? PLACEABLE_BLOCKS.filter((b) => inventory.count(b.block) > 0) : PLACEABLE_BLOCKS;
+  for (const { block, name } of shown) {
+    const tile = document.createElement("div");
+    tile.className = "inv-tile";
+    const icon = document.createElement("img");
+    icon.src = iconUrl(block);
+    icon.alt = name;
+    const label = document.createElement("span");
+    label.textContent = name;
+    tile.append(icon, label);
+    if (survival) {
+      const count = document.createElement("span");
+      count.className = "count";
+      count.textContent = String(inventory.count(block));
+      tile.append(count);
+    }
+    onPress(tile, () => {
+      hotbarBlocks[selectedSlot] = block;
+      refreshHotbar();
+      toggleInventory(false);
+      scheduleSave();
+    });
+    inventoryGrid.appendChild(tile);
+  }
+  inventoryEmpty.textContent = shown.length === 0 ? "아직 블록이 없어요. 나무나 흙을 부숴서 모아 보세요!" : "";
+
+  itemsRow.replaceChildren();
+  const extras = inventory.entries().filter(([item]) => item >= 100);
+  itemsTitle.style.display = survival && extras.length > 0 ? "" : "none";
+  if (survival) {
+    for (const [item, amount] of extras) {
+      const chip = document.createElement("div");
+      chip.className = "item-chip";
+      if (item === Item.Meat) {
+        chip.classList.add("eatable");
+        chip.textContent = "🍖 " + itemLabel(item) + " ×" + amount + " (눌러서 먹기)";
+        onPress(chip, eatMeat);
+      } else {
+        chip.textContent = "🔨 " + itemLabel(item) + " ×" + amount + " (자동으로 써요)";
+      }
+      itemsRow.appendChild(chip);
+    }
+  }
+
+  craftSection.style.display = survival ? "" : "none";
+  craftList.replaceChildren();
+  RECIPES.forEach((recipe, index) => {
+    const ready = inventory.canCraft(recipe);
+    const row = document.createElement("div");
+    row.className = "craft-row " + (ready ? "ready" : "locked");
+    row.textContent = recipe.name + " ×" + recipe.output[1];
+    const need = document.createElement("small");
+    need.textContent =
+      "재료: " + recipe.inputs.map(([item, amount]) => itemLabel(item) + " " + inventory.count(item) + "/" + amount).join(", ");
+    row.append(need);
+    onPress(row, () => craftRecipe(index));
+    craftList.appendChild(row);
+  });
+}
+
+onPress(document.getElementById("mode-toggle") as HTMLElement, () => {
+  mode = mode === "survival" ? "creative" : "survival";
+  showToast(mode === "survival" ? "서바이벌 방식으로 바꿨어요" : "창작 방식으로 바꿨어요");
+  refreshHotbar();
+  refreshInventoryPanel();
+  scheduleSave();
+});
 document.getElementById("inventory-button")?.addEventListener("pointerdown", (e) => {
   e.stopPropagation();
   toggleInventory();
@@ -213,7 +345,17 @@ function hitMobInSight(blockHit: RayHit | null): boolean {
   const blockDistance = blockHit ? Math.hypot(blockHit.x + 0.5 - ex, blockHit.y + 0.5 - ey, blockHit.z + 0.5 - ez) - 0.5 : Infinity;
   if (found.distance > blockDistance) return false;
   audio.playMobHit();
-  mobSim.hit(found.mob, player.x, player.z);
+  const damage = mode === "creative" ? 4 : inventory.attackDamage();
+  const kind = found.mob.kind;
+  if (mobSim.hit(found.mob, player.x, player.z, damage) && mode === "survival") {
+    const drop = mobDrop(kind, Math.random);
+    if (drop) {
+      inventory.add(drop[0], drop[1]);
+      showToast(itemLabel(drop[0]) + " ×" + drop[1] + " 얻었어요");
+      refreshHotbar();
+      scheduleSave();
+    }
+  }
   return true;
 }
 
@@ -221,7 +363,13 @@ function breakBlock(): void {
   const hit = currentTarget();
   if (hitMobInSight(hit)) return;
   if (!hit || hit.y === 0) return;
-  audio.playBreak(world.get(hit.x, hit.y, hit.z));
+  const broken = world.get(hit.x, hit.y, hit.z);
+  audio.playBreak(broken);
+  if (mode === "survival") {
+    const drop = dropFor(broken);
+    if (drop) inventory.add(drop[0], drop[1]);
+    refreshHotbar();
+  }
   world.set(hit.x, hit.y, hit.z, Block.Air);
   editLog.record(hit.x, hit.y, hit.z, Block.Air);
   worldMesh.updateBlock(hit.x, hit.z);
@@ -235,6 +383,13 @@ function placeBlock(): void {
   if (!world.inBounds(px, py, pz) || !isPassable(world.get(px, py, pz))) return;
   if (player.intersectsBlock(px, py, pz) || mobSim.intersectsBlock(px, py, pz)) return;
   const block = hotbarBlocks[selectedSlot];
+  if (mode === "survival") {
+    if (!inventory.remove(block)) {
+      showToast(blockName(block) + " 블록이 없어요");
+      return;
+    }
+    refreshHotbar();
+  }
   audio.playPlace(block);
   world.set(px, py, pz, block);
   editLog.record(px, py, pz, block);
@@ -254,6 +409,8 @@ function saveNow(): void {
     player: { x: player.x, y: player.y, z: player.z, yaw: player.yaw, pitch: player.pitch },
     time: worldSeconds,
     hotbar: hotbarBlocks,
+    mode,
+    inventory: inventory.entries(),
   };
   writeStorage(saveKey(seed), encodeSave(data));
 }
@@ -283,6 +440,44 @@ worldMesh.loadAllNear(player.x, player.z);
 
 const mobSim = new MobSimulation();
 const mobRenderer = new MobRenderer(scene);
+
+const heartsElement = document.getElementById("hearts") as HTMLElement;
+const damageFlash = document.getElementById("damage-flash") as HTMLElement;
+const heartElements = Array.from({ length: MAX_HEALTH / 2 }, () => {
+  const heart = document.createElement("span");
+  heart.textContent = "♥";
+  heartsElement.appendChild(heart);
+  return heart;
+});
+
+function refreshHearts(): void {
+  heartElements.forEach((heart, i) => {
+    heart.className = health.hp >= (i + 1) * 2 ? "full" : health.hp === i * 2 + 1 ? "half" : "";
+  });
+}
+refreshHearts();
+
+/** 플레이어가 피해를 입는다. 쓰러지면 처음 자리에서 다시 시작한다. */
+function hurt(amount: number): void {
+  if (!health.damage(amount)) return;
+  audio.playHurt();
+  damageFlash.classList.add("on");
+  window.setTimeout(() => damageFlash.classList.remove("on"), 60);
+  refreshHearts();
+  if (health.dead) respawn();
+}
+
+function respawn(): void {
+  player.x = spawnX + 0.5;
+  player.z = spawnZ + 0.5;
+  player.y = world.surfaceHeight(spawnX, spawnZ) + 0.01;
+  player.vy = 0;
+  fallTracker.reset();
+  health.reset();
+  mobSim.clearHostile();
+  refreshHearts();
+  showToast("쓰러졌어요... 처음 자리에서 다시 일어났어요", 3000);
+}
 mobSim.populate(world, player.x, player.z, 10, Math.random);
 document.getElementById("loading")?.remove();
 
@@ -351,7 +546,7 @@ function updateEnvironment(): void {
 
 // 개발용: 주소에 ?debug 를 붙이면 콘솔에서 __vox 로 월드와 플레이어를 만질 수 있다.
 if (new URLSearchParams(window.location.search).has("debug")) {
-  (window as unknown as { __vox: unknown }).__vox = { world, player, camera, scene, audio, generateMs, worldMesh, mobSim };
+  (window as unknown as { __vox: unknown }).__vox = { world, player, camera, scene, audio, generateMs, worldMesh, mobSim, health, inventory, hurt, setMode: (m: "survival" | "creative") => { mode = m; refreshHotbar(); } };
 }
 
 // 브라우저는 사용자가 화면을 누르기 전에는 소리를 못 내게 막는다. 첫 터치/클릭/키 입력 때 소리를 켠다.
@@ -386,6 +581,7 @@ function updateMovementSounds(moved: number): void {
   }
 }
 
+let shownHp = health.hp;
 let last = performance.now();
 let frames = 0;
 let fpsTimer = 0;
@@ -402,8 +598,17 @@ function frame(now: number): void {
   player.update(dt, controls.currentInput());
   updateMovementSounds(Math.hypot(player.x - beforeX, player.z - beforeZ));
   worldMesh.update(player.x, player.z);
-  for (const call of mobSim.update(dt, world, player.x, player.z, Math.random)) {
+  const fallDamage = fallTracker.update(player.y, player.onGround, player.isInWater());
+  if (fallDamage > 0) hurt(fallDamage);
+  health.update(dt);
+  const mobResult = mobSim.update(dt, world, Math.random, { x: player.x, y: player.y, z: player.z }, dayFactor < 0.3);
+  for (const call of mobResult.sounds) {
     audio.playMob(call.kind, 1 - Math.hypot(call.x - player.x, call.z - player.z) / 28);
+  }
+  if (mobResult.damage > 0) hurt(mobResult.damage);
+  if (health.hp !== shownHp) {
+    shownHp = health.hp;
+    refreshHearts();
   }
   mobRenderer.update(mobSim.mobs, solidMaterial.color);
 

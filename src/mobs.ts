@@ -1,11 +1,30 @@
 import { Block, World } from "./world";
 
-export type MobKind = "pig" | "sheep";
+export type MobKind = "pig" | "sheep" | "zombie";
 
-export const MOB_SPECS: Record<MobKind, { halfWidth: number; height: number; speed: number; hp: number }> = {
-  pig: { halfWidth: 0.4, height: 0.9, speed: 1.1, hp: 4 },
-  sheep: { halfWidth: 0.42, height: 1.0, speed: 1.0, hp: 4 },
+export interface MobSpec {
+  halfWidth: number;
+  height: number;
+  speed: number;
+  /** 플레이어를 쫓아올 때의 속도 (적대적인 동물만) */
+  chaseSpeed: number;
+  hp: number;
+  hostile: boolean;
+}
+
+export const MOB_SPECS: Record<MobKind, MobSpec> = {
+  pig: { halfWidth: 0.4, height: 0.9, speed: 1.1, chaseSpeed: 1.1, hp: 4, hostile: false },
+  sheep: { halfWidth: 0.42, height: 1.0, speed: 1.0, chaseSpeed: 1.0, hp: 4, hostile: false },
+  zombie: { halfWidth: 0.3, height: 1.8, speed: 1.0, chaseSpeed: 2.3, hp: 8, hostile: true },
 };
+
+export const MAX_HOSTILE_COUNT = 5;
+export const CHASE_RANGE = 18;
+export const ATTACK_RANGE = 1.1;
+export const ATTACK_DAMAGE = 3;
+export const ATTACK_COOLDOWN = 1.2;
+/** 낮에는 적대적인 동물이 이 비율(초당)로 사라진다. */
+const DAY_DESPAWN_RATE = 0.25;
 
 const GRAVITY = 26;
 const HOP_SPEED = 8;
@@ -34,6 +53,7 @@ export class Mob {
   walkPhase = 0;
   onGround = false;
   soundTimer: number;
+  attackCooldown = 0;
 
   private timer = 0;
   private knockX = 0;
@@ -83,8 +103,8 @@ export class Mob {
   }
 
   /** 맞았을 때 뒤로 밀려나고 잠깐 멈춘다. 죽었으면 true. */
-  hit(fromX: number, fromZ: number): boolean {
-    this.hp -= 1;
+  hit(fromX: number, fromZ: number, damage = 1): boolean {
+    this.hp -= damage;
     this.hurtTimer = HURT_SECONDS;
     this.moving = false;
     const dx = this.x - fromX;
@@ -96,13 +116,21 @@ export class Mob {
     return this.hp <= 0;
   }
 
-  update(dt: number, world: World, rng: Rng): void {
+  update(dt: number, world: World, rng: Rng, chase: { x: number; z: number } | null = null): void {
     this.hurtTimer = Math.max(0, this.hurtTimer - dt);
+    this.attackCooldown = Math.max(0, this.attackCooldown - dt);
     this.timer -= dt;
-    if (this.timer <= 0) this.decide(rng);
 
     const spec = MOB_SPECS[this.kind];
-    const speed = this.moving && this.hurtTimer <= 0 ? spec.speed : 0;
+    if (chase) {
+      this.yaw = Math.atan2(-(chase.x - this.x), -(chase.z - this.z));
+      // 플레이어 몸속까지 파고들지 않고, 바로 앞에서 멈춘다.
+      this.moving = Math.hypot(chase.x - this.x, chase.z - this.z) > 0.85;
+      this.timer = 0.5;
+    } else if (this.timer <= 0) {
+      this.decide(rng);
+    }
+    const speed = this.moving && this.hurtTimer <= 0 ? (chase ? spec.chaseSpeed : spec.speed) : 0;
     const dx = -Math.sin(this.yaw) * speed * dt + this.knockX * dt;
     const dz = -Math.cos(this.yaw) * speed * dt + this.knockZ * dt;
     const decay = Math.exp(-6 * dt);
@@ -120,7 +148,7 @@ export class Mob {
       const aheadX = this.x - Math.sin(this.yaw) * 0.5;
       const aheadZ = this.z - Math.cos(this.yaw) * 0.5;
       if (this.onGround && !this.collides(world, aheadX, this.y + 1.05, aheadZ)) this.vy = HOP_SPEED;
-      else this.timer = 0;
+      else if (!chase) this.timer = 0;
     }
 
     const inWater = world.get(Math.floor(this.x), Math.floor(this.y + 0.4), Math.floor(this.z)) === Block.Water;
@@ -186,6 +214,7 @@ export function findSpawnSpot(
   centerX: number,
   centerZ: number,
   rng: Rng,
+  hostile = false,
 ): { x: number; y: number; z: number; kind: MobKind } | null {
   for (let attempt = 0; attempt < 24; attempt++) {
     const angle = rng() * Math.PI * 2;
@@ -196,6 +225,11 @@ export function findSpawnSpot(
 
     const groundY = world.surfaceHeight(x, z) - 1;
     const ground = world.get(x, groundY, z);
+    if (hostile) {
+      if (!world.isSolid(x, groundY, z) || ground === Block.Leaves || ground === Block.Cactus) continue;
+      if (world.isSolid(x, groundY + 1, z) || world.isSolid(x, groundY + 2, z)) continue;
+      return { x: x + 0.5, y: groundY + 1, z: z + 0.5, kind: "zombie" };
+    }
     if (ground !== Block.Grass && ground !== Block.Snow) continue;
     if (world.isSolid(x, groundY + 1, z) || world.isSolid(x, groundY + 2, z)) continue;
     if (world.get(x, groundY + 1, z) === Block.Water) continue;
@@ -216,19 +250,38 @@ export class MobSimulation {
     for (let i = 0; i < count; i++) this.trySpawn(world, centerX, centerZ, rng);
   }
 
-  private trySpawn(world: World, centerX: number, centerZ: number, rng: Rng): boolean {
-    const spot = findSpawnSpot(world, centerX, centerZ, rng);
+  private trySpawn(world: World, centerX: number, centerZ: number, rng: Rng, hostile = false): boolean {
+    const spot = findSpawnSpot(world, centerX, centerZ, rng, hostile);
     if (!spot) return false;
     this.mobs.push(new Mob(spot.kind, spot.x, spot.y, spot.z, rng));
     return true;
   }
 
-  /** 한 프레임 진행하고, 이번에 울음소리를 낸 동물들을 돌려준다. */
-  update(dt: number, world: World, playerX: number, playerZ: number, rng: Rng): MobSound[] {
+  /**
+   * 한 프레임 진행한다. 이번에 울음소리를 낸 동물들과, 적대적인 동물이 플레이어에게 입힌 피해를 돌려준다.
+   * night가 true면 적대적인 동물이 나타나 플레이어를 쫓고, 아니면 서서히 사라진다.
+   */
+  update(
+    dt: number,
+    world: World,
+    rng: Rng,
+    player: { x: number; y: number; z: number },
+    night: boolean,
+  ): { sounds: MobSound[]; damage: number } {
     const sounds: MobSound[] = [];
+    let damage = 0;
 
     for (const mob of this.mobs) {
-      mob.update(dt, world, rng);
+      const spec = MOB_SPECS[mob.kind];
+      const distance = Math.hypot(mob.x - player.x, mob.z - player.z);
+      const chase = spec.hostile && night && distance < CHASE_RANGE ? player : null;
+      mob.update(dt, world, rng, chase);
+
+      if (spec.hostile && distance < ATTACK_RANGE && Math.abs(mob.y - player.y) < 1.5 && mob.attackCooldown <= 0) {
+        mob.attackCooldown = ATTACK_COOLDOWN;
+        damage += ATTACK_DAMAGE;
+      }
+
       mob.soundTimer -= dt;
       if (mob.soundTimer <= 0) {
         mob.soundTimer = 6 + rng() * 10;
@@ -238,20 +291,31 @@ export class MobSimulation {
 
     for (let i = this.mobs.length - 1; i >= 0; i--) {
       const mob = this.mobs[i];
-      if (Math.hypot(mob.x - playerX, mob.z - playerZ) > DESPAWN_DISTANCE || mob.y < -5) this.mobs.splice(i, 1);
+      const far = Math.hypot(mob.x - player.x, mob.z - player.z) > DESPAWN_DISTANCE || mob.y < -5;
+      const sunrise = MOB_SPECS[mob.kind].hostile && !night && rng() < dt * DAY_DESPAWN_RATE;
+      if (far || sunrise) this.mobs.splice(i, 1);
     }
 
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
       this.spawnTimer = 1;
-      if (this.mobs.length < TARGET_MOB_COUNT) this.trySpawn(world, playerX, playerZ, rng);
+      const hostileCount = this.mobs.filter((m) => MOB_SPECS[m.kind].hostile).length;
+      if (night && hostileCount < MAX_HOSTILE_COUNT) this.trySpawn(world, player.x, player.z, rng, true);
+      if (this.mobs.length - hostileCount < TARGET_MOB_COUNT) this.trySpawn(world, player.x, player.z, rng);
     }
-    return sounds;
+    return { sounds, damage };
+  }
+
+  /** 적대적인 동물을 전부 없앤다 (플레이어가 쓰러져서 다시 시작할 때). */
+  clearHostile(): void {
+    for (let i = this.mobs.length - 1; i >= 0; i--) {
+      if (MOB_SPECS[this.mobs[i].kind].hostile) this.mobs.splice(i, 1);
+    }
   }
 
   /** 때린다. 죽으면 목록에서 지우고 true. */
-  hit(mob: Mob, fromX: number, fromZ: number): boolean {
-    const died = mob.hit(fromX, fromZ);
+  hit(mob: Mob, fromX: number, fromZ: number, damage = 1): boolean {
+    const died = mob.hit(fromX, fromZ, damage);
     if (died) {
       const index = this.mobs.indexOf(mob);
       if (index >= 0) this.mobs.splice(index, 1);
