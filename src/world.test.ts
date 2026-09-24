@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Block, blocksLight, occludes, SEA_LEVEL, SIZE_X, SIZE_Y, SIZE_Z, World, isCave, isPassable, terrainNoise } from "./world";
+import { Block, biomeAt, blocksLight, occludes, SEA_LEVEL, SIZE_X, SIZE_Y, SIZE_Z, World, isCave, isPassable, terrainNoise } from "./world";
 
 describe("world", () => {
   it("같은 시드면 같은 지형이 나온다", () => {
@@ -57,7 +57,7 @@ describe("world", () => {
           if (world.get(x, y, z) !== Block.Wood) continue;
           woods++;
           const below = world.get(x, y - 1, z);
-          expect([Block.Grass, Block.Wood]).toContain(below);
+          expect([Block.Grass, Block.Snow, Block.Wood]).toContain(below);
         }
       }
     }
@@ -142,5 +142,52 @@ describe("world", () => {
     expect(blocksLight(Block.Glass)).toBe(false);
     expect(occludes(Block.Glass)).toBe(false);
     expect(occludes(Block.Stone)).toBe(true);
+  });
+
+  it("환경(바이옴)이 네 종류 모두 나타난다", () => {
+    const found = new Set<string>();
+    for (let x = 0; x < SIZE_X; x += 8) for (let z = 0; z < SIZE_Z; z += 8) found.add(biomeAt(x, z, 7));
+    expect(found).toEqual(new Set(["plains", "forest", "desert", "snow"]));
+  });
+
+  it("같은 시드면 같은 환경이 나온다", () => {
+    expect(biomeAt(50, 90, 12)).toBe(biomeAt(50, 90, 12));
+  });
+
+  it("사막 땅은 모래이고 선인장은 모래 위에만 선다", () => {
+    const world = new World();
+    world.generate(7);
+    let cacti = 0;
+    let sandColumns = 0;
+    for (let x = 0; x < SIZE_X; x++) {
+      for (let z = 0; z < SIZE_Z; z++) {
+        if (biomeAt(x, z, 7) === "desert") {
+          const top = world.surfaceHeight(x, z) - 1;
+          const block = world.get(x, top, z);
+          if (block === Block.Sand) sandColumns++;
+        }
+        for (let y = 1; y < SIZE_Y; y++) {
+          if (world.get(x, y, z) !== Block.Cactus) continue;
+          cacti++;
+          expect([Block.Sand, Block.Cactus]).toContain(world.get(x, y - 1, z));
+        }
+      }
+    }
+    expect(sandColumns).toBeGreaterThan(500);
+    expect(cacti).toBeGreaterThan(5);
+  });
+
+  it("눈 환경의 땅 위는 눈이다", () => {
+    const world = new World();
+    world.generate(7);
+    let snowTops = 0;
+    for (let x = 0; x < SIZE_X; x += 3) {
+      for (let z = 0; z < SIZE_Z; z += 3) {
+        if (biomeAt(x, z, 7) !== "snow") continue;
+        const top = world.surfaceHeight(x, z) - 1;
+        if (world.get(x, top, z) === Block.Snow) snowTops++;
+      }
+    }
+    expect(snowTops).toBeGreaterThan(200);
   });
 });

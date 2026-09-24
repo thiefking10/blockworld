@@ -11,6 +11,7 @@ export const Block = {
   Glass: 9,
   Brick: 10,
   Snow: 11,
+  Cactus: 12,
 } as const;
 export type BlockId = (typeof Block)[keyof typeof Block];
 
@@ -107,6 +108,20 @@ export function isCave(x: number, y: number, z: number, seed: number): boolean {
   return Math.abs(a - 0.5) < 0.075 && Math.abs(b - 0.5) < 0.075;
 }
 
+export type Biome = "plains" | "forest" | "desert" | "snow";
+
+/** 아주 넓은 물결 두 개(온도, 습도)로 지역의 환경을 정한다. */
+export function biomeAt(x: number, z: number, seed: number): Biome {
+  const temperature = valueNoise(x / 70, z / 70, seed + 4001);
+  const moisture = valueNoise(x / 55 + 300, z / 55 + 300, seed + 5003);
+  if (temperature > 0.62) return "desert";
+  if (temperature < 0.38) return "snow";
+  return moisture > 0.55 ? "forest" : "plains";
+}
+
+/** 환경별 나무(사막은 선인장) 심는 확률 */
+const PLANT_DENSITY: Record<Biome, number> = { plains: 0.012, forest: 0.04, desert: 0.01, snow: 0.006 };
+
 export class World {
   readonly data = new Uint8Array(SIZE_X * SIZE_Y * SIZE_Z);
   /** 열(x,z)마다 가장 높은 "빛을 막는 블록"의 높이. 없으면 -1. 동굴 안을 어둡게 그릴 때 쓴다. */
@@ -176,9 +191,18 @@ export class World {
   private plantTrees(seed: number): void {
     for (let x = 3; x < SIZE_X - 3; x++) {
       for (let z = 3; z < SIZE_Z - 3; z++) {
-        if (hash2(x, z, seed + 999) > 0.012) continue;
+        const biome = biomeAt(x, z, seed);
+        if (hash2(x, z, seed + 999) > PLANT_DENSITY[biome]) continue;
         const ground = this.surfaceHeight(x, z) - 1;
-        if (this.get(x, ground, z) !== Block.Grass) continue;
+        const groundBlock = this.get(x, ground, z);
+
+        if (biome === "desert") {
+          if (groundBlock !== Block.Sand || ground < SEA_LEVEL + 2) continue;
+          const cactusHeight = 2 + Math.floor(hash2(x, z, seed + 77) * 2);
+          for (let y = ground + 1; y <= ground + cactusHeight; y++) this.set(x, y, z, Block.Cactus);
+          continue;
+        }
+        if (groundBlock !== Block.Grass && groundBlock !== Block.Snow) continue;
 
         const top = ground + 4 + Math.floor(hash2(x, z, seed + 5) * 2);
         if (top + 2 >= SIZE_Y) continue;
@@ -202,10 +226,14 @@ export class World {
     for (let x = 0; x < SIZE_X; x++) {
       for (let z = 0; z < SIZE_Z; z++) {
         const height = Math.floor(5 + terrainNoise(x, z, seed) * 16);
+        const biome = biomeAt(x, z, seed);
+        const sandy = height <= SEA_LEVEL || biome === "desert";
+        const topBlock: BlockId = sandy ? Block.Sand : biome === "snow" ? Block.Snow : Block.Grass;
+        const underBlock: BlockId = sandy ? Block.Sand : Block.Dirt;
         for (let y = 0; y <= height && y < SIZE_Y; y++) {
           let block: BlockId = Block.Stone;
-          if (y === height) block = height <= SEA_LEVEL ? Block.Sand : Block.Grass;
-          else if (y >= height - 3) block = height <= SEA_LEVEL ? Block.Sand : Block.Dirt;
+          if (y === height) block = topBlock;
+          else if (y >= height - 3) block = underBlock;
           this.set(x, y, z, block);
         }
         for (let y = height + 1; y <= SEA_LEVEL; y++) this.set(x, y, z, Block.Water);

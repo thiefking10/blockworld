@@ -18,6 +18,7 @@ export function materialOf(block: number): Material {
     case Block.Planks:
       return "wood";
     case Block.Leaves:
+    case Block.Cactus:
       return "leaves";
     case Block.Water:
       return "water";

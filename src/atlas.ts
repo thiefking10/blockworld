@@ -15,6 +15,8 @@ export const TILE = {
   Glass: 10,
   Brick: 11,
   Snow: 12,
+  CactusSide: 13,
+  CactusTop: 14,
 } as const;
 
 const ATLAS_COLS = 4;
@@ -47,6 +49,8 @@ export function tileForFace(block: number, dirY: number): number {
       return TILE.Brick;
     case Block.Snow:
       return TILE.Snow;
+    case Block.Cactus:
+      return dirY !== 0 ? TILE.CactusTop : TILE.CactusSide;
     default:
       return TILE.Stone;
   }
@@ -193,6 +197,21 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: number): void {
     case TILE.Snow:
       noiseFill(ctx, ox, oy, [238, 244, 250], 14, random);
       break;
+    case TILE.CactusSide: {
+      noiseFill(ctx, ox, oy, [52, 132, 60], 22, random);
+      for (let x = 0; x < TILE_PIXELS; x += 5) for (let y = 0; y < TILE_PIXELS; y++) px(x, y, shade([28, 92, 40], (random() - 0.5) * 12));
+      for (let i = 0; i < 14; i++) px(Math.floor(random() * 16), Math.floor(random() * 16), "rgb(214,226,170)");
+      break;
+    }
+    case TILE.CactusTop: {
+      for (let y = 0; y < TILE_PIXELS; y++) {
+        for (let x = 0; x < TILE_PIXELS; x++) {
+          const edge = x === 0 || y === 0 || x === 15 || y === 15;
+          px(x, y, shade(edge ? [28, 92, 40] : [70, 156, 74], (random() - 0.5) * 14));
+        }
+      }
+      break;
+    }
   }
 }
 

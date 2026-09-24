@@ -22,4 +22,8 @@ describe("materialOf", () => {
     expect(materialOf(Block.Glass)).toBe("glass");
     expect(materialOf(Block.Snow)).toBe("snow");
   });
+
+  it("선인장은 풀잎 소리에 가깝다", () => {
+    expect(materialOf(Block.Cactus)).toBe("leaves");
+  });
 });

@@ -17,6 +17,7 @@ export const PLACEABLE_BLOCKS: PlaceableBlock[] = [
   { block: Block.Glass, name: "유리" },
   { block: Block.Brick, name: "벽돌" },
   { block: Block.Snow, name: "눈" },
+  { block: Block.Cactus, name: "선인장" },
 ];
 
 export const HOTBAR_SIZE = 6;
