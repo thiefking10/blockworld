@@ -619,6 +619,8 @@ let worldSeconds = freezeTime
     ? saved.time
     : 0.3 * DAY_LENGTH_SECONDS;
 let dayFactor = 1;
+const clockElement = document.getElementById("clock") as HTMLElement;
+let shownClock = "";
 
 function makeDisc(color: number, size: number): THREE.Mesh {
   const disc = new THREE.Mesh(
@@ -640,6 +642,11 @@ function updateEnvironment(): void {
   waterMaterial.color.setRGB(ar, ag, ab);
   dayFactor = daylight(phase);
   audio.setNight(dayFactor < 0.3);
+  const clockText = dayFactor < 0.3 ? "🌙 밤" : phase < 0.5 ? "🌅 아침" : phase < 0.7 ? "☀ 낮" : "🌇 저녁";
+  if (clockText !== shownClock) {
+    shownClock = clockText;
+    clockElement.textContent = clockText;
+  }
 
   const angle = phase * Math.PI * 2;
   const direction = new THREE.Vector3(Math.sin(angle), -Math.cos(angle), 0.3).normalize().multiplyScalar(85);
@@ -678,6 +685,16 @@ onPress(document.getElementById("achievement-button") as HTMLElement, () => {
   if (open) refreshAchievementPanel();
 });
 onPress(document.getElementById("achievement-close") as HTMLElement, () => achievementPanel.classList.remove("open"));
+
+const helpPanel = document.getElementById("help-panel") as HTMLElement;
+const HELP_KEY = "voxelgame:help-seen";
+onPress(document.getElementById("help-button") as HTMLElement, () => helpPanel.classList.toggle("open"));
+onPress(document.getElementById("help-close") as HTMLElement, () => helpPanel.classList.remove("open"));
+// 처음 접속했을 때 한 번만 도움말을 자동으로 보여준다.
+if (readStorage(HELP_KEY) === null) {
+  helpPanel.classList.add("open");
+  writeStorage(HELP_KEY, "1");
+}
 
 const LOOK_KEY = "voxelgame:look";
 const lookSlider = document.getElementById("look-slider") as HTMLInputElement;
