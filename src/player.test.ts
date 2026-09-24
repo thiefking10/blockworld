@@ -62,4 +62,28 @@ describe("player", () => {
     for (let i = 0; i < 120; i++) player.update(1 / 60, { moveX: 0, moveZ: 1, jump: false });
     expect(player.x).toBeGreaterThan(0);
   });
+
+  it("물속에서는 천천히 가라앉는다", () => {
+    const world = flatWorld();
+    for (let x = 0; x < 16; x++) for (let z = 0; z < 16; z++) for (let y = 1; y < 12; y++) world.set(x, y, z, Block.Water);
+    const player = new Player(world);
+    player.x = 8;
+    player.z = 8;
+    player.y = 10;
+    for (let i = 0; i < 30; i++) player.update(1 / 60, idle);
+    expect(player.isInWater()).toBe(true);
+    expect(player.vy).toBeGreaterThan(-3.01);
+    expect(player.y).toBeGreaterThan(8);
+  });
+
+  it("물속에서 점프를 누르면 위로 헤엄친다", () => {
+    const world = flatWorld();
+    for (let x = 0; x < 16; x++) for (let z = 0; z < 16; z++) for (let y = 1; y < 12; y++) world.set(x, y, z, Block.Water);
+    const player = new Player(world);
+    player.x = 8;
+    player.z = 8;
+    player.y = 2;
+    for (let i = 0; i < 30; i++) player.update(1 / 60, { moveX: 0, moveZ: 0, jump: true });
+    expect(player.y).toBeGreaterThan(2.5);
+  });
 });

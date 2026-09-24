@@ -1,4 +1,4 @@
-import { Block, World } from "./world";
+import { World, isPassable } from "./world";
 
 export interface RayHit {
   /** 맞은 블록 */
@@ -46,7 +46,7 @@ export function raycast(
   let tMaxZ = dz > 0 ? (z + 1 - oz) / dz : dz < 0 ? (oz - z) / -dz : Infinity;
 
   for (let guard = 0; guard < 200; guard++) {
-    if (world.get(x, y, z) !== Block.Air) return { x, y, z, px, py, pz };
+    if (!isPassable(world.get(x, y, z))) return { x, y, z, px, py, pz };
 
     px = x;
     py = y;

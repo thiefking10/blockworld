@@ -1,4 +1,4 @@
-import { World } from "./world";
+import { Block, World } from "./world";
 
 const HALF_WIDTH = 0.3;
 const HEIGHT = 1.8;
@@ -6,6 +6,11 @@ export const EYE_HEIGHT = 1.62;
 const MOVE_SPEED = 4.3;
 const GRAVITY = 26;
 const JUMP_SPEED = 8.2;
+const WATER_SPEED_FACTOR = 0.6;
+const WATER_GRAVITY = 6;
+const WATER_SWIM_UP = 30;
+const WATER_MAX_RISE = 3.4;
+const WATER_MAX_SINK = 3;
 
 export interface PlayerInput {
   /** 좌우(오른쪽 +), 앞뒤(앞 +). 각각 -1~1 */
@@ -43,6 +48,11 @@ export class Player {
     return false;
   }
 
+  /** 몸 한가운데가 물속인지. */
+  isInWater(): boolean {
+    return this.world.get(Math.floor(this.x), Math.floor(this.y + 0.9), Math.floor(this.z)) === Block.Water;
+  }
+
   /** 이 블록 칸이 플레이어 몸과 겹치는지. 블록을 놓을 때 자기 몸에 놓지 않도록 쓴다. */
   intersectsBlock(bx: number, by: number, bz: number): boolean {
     return (
@@ -63,14 +73,21 @@ export class Player {
     const rightX = cos;
     const rightZ = -sin;
 
-    const dx = (forwardX * input.moveZ + rightX * input.moveX) * MOVE_SPEED * dt;
-    const dz = (forwardZ * input.moveZ + rightZ * input.moveX) * MOVE_SPEED * dt;
+    const inWater = this.isInWater();
+    const speed = inWater ? MOVE_SPEED * WATER_SPEED_FACTOR : MOVE_SPEED;
+    const dx = (forwardX * input.moveZ + rightX * input.moveX) * speed * dt;
+    const dz = (forwardZ * input.moveZ + rightZ * input.moveX) * speed * dt;
 
     if (!this.collides(this.x + dx, this.y, this.z)) this.x += dx;
     if (!this.collides(this.x, this.y, this.z + dz)) this.z += dz;
 
-    if (input.jump && this.onGround) this.vy = JUMP_SPEED;
-    this.vy -= GRAVITY * dt;
+    if (inWater) {
+      if (input.jump) this.vy = Math.min(this.vy + WATER_SWIM_UP * dt, WATER_MAX_RISE);
+      else this.vy = Math.max(this.vy - WATER_GRAVITY * dt, -WATER_MAX_SINK);
+    } else {
+      if (input.jump && this.onGround) this.vy = JUMP_SPEED;
+      this.vy -= GRAVITY * dt;
+    }
 
     const dy = this.vy * dt;
     this.onGround = false;

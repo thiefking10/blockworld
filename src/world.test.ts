@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Block, SIZE_X, SIZE_Z, World, terrainNoise } from "./world";
+import { Block, SEA_LEVEL, SIZE_X, SIZE_Y, SIZE_Z, World, isCave, isPassable, terrainNoise } from "./world";
 
 describe("world", () => {
   it("같은 시드면 같은 지형이 나온다", () => {
@@ -71,5 +71,66 @@ describe("world", () => {
     expect(world.get(3, 3, 3)).toBe(Block.Stone);
     world.set(3, 3, 3, Block.Air);
     expect(world.get(3, 3, 3)).toBe(Block.Air);
+  });
+
+  it("바다 높이 아래 낮은 곳은 물로 차 있고, 그 위에는 물이 없다", () => {
+    const world = new World();
+    world.generate(7);
+    let waters = 0;
+    for (let x = 0; x < SIZE_X; x++) {
+      for (let z = 0; z < SIZE_Z; z++) {
+        for (let y = 0; y < SIZE_Y; y++) {
+          if (world.get(x, y, z) !== Block.Water) continue;
+          waters++;
+          expect(y).toBeLessThanOrEqual(SEA_LEVEL);
+        }
+      }
+    }
+    expect(waters).toBeGreaterThan(50);
+  });
+
+  it("물은 몸을 막지 않고 조준도 통과한다", () => {
+    const world = new World();
+    world.set(3, 3, 3, Block.Water);
+    expect(world.isSolid(3, 3, 3)).toBe(false);
+    expect(isPassable(Block.Water)).toBe(true);
+    expect(isPassable(Block.Stone)).toBe(false);
+  });
+
+  it("땅 밑에 동굴이 적당히 파여 있다", () => {
+    const world = new World();
+    world.generate(7);
+    let carved = 0;
+    let candidates = 0;
+    for (let x = 0; x < SIZE_X; x += 2) {
+      for (let z = 0; z < SIZE_Z; z += 2) {
+        for (let y = 3; y < 8; y++) {
+          candidates++;
+          if (world.get(x, y, z) === Block.Air) carved++;
+        }
+      }
+    }
+    const ratio = carved / candidates;
+    expect(ratio).toBeGreaterThan(0.002);
+    expect(ratio).toBeLessThan(0.2);
+  });
+
+  it("같은 시드면 같은 동굴이다", () => {
+    expect(isCave(10, 5, 10, 7)).toBe(isCave(10, 5, 10, 7));
+  });
+
+  it("지붕이 있으면 어둡고, 지붕을 없애면 밝아진다", () => {
+    const world = new World();
+    world.set(5, 5, 5, Block.Stone);
+    expect(world.isSkyLit(5, 4, 5)).toBe(false);
+    expect(world.isSkyLit(5, 6, 5)).toBe(true);
+    world.set(5, 5, 5, Block.Air);
+    expect(world.isSkyLit(5, 4, 5)).toBe(true);
+  });
+
+  it("물은 빛을 막지 않는다", () => {
+    const world = new World();
+    world.set(5, 5, 5, Block.Water);
+    expect(world.isSkyLit(5, 3, 5)).toBe(true);
   });
 });

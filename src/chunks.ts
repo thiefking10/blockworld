@@ -6,7 +6,7 @@ import { World } from "./world";
 /** 월드를 구역 단위 메쉬로 관리한다. 블록이 바뀌면 관련된 구역만 다시 만든다. */
 export class ChunkedWorldMesh {
   readonly group = new THREE.Group();
-  private readonly meshes = new Map<string, THREE.Mesh>();
+  private readonly meshes = new Map<string, THREE.Mesh[]>();
 
   constructor(private readonly world: World) {
     for (let cx = 0; cx < CHUNKS_X; cx++) {
@@ -16,18 +16,15 @@ export class ChunkedWorldMesh {
 
   private rebuildChunk(cx: number, cz: number): void {
     const key = `${cx},${cz}`;
-    const old = this.meshes.get(key);
-    if (old) {
+    for (const old of this.meshes.get(key) ?? []) {
       this.group.remove(old);
       old.geometry.dispose();
-      this.meshes.delete(key);
     }
 
-    const mesh = buildChunkMesh(this.world, cx, cz);
-    if (mesh) {
-      this.group.add(mesh);
-      this.meshes.set(key, mesh);
-    }
+    const { solid, water } = buildChunkMesh(this.world, cx, cz);
+    const created = [solid, water].filter((mesh): mesh is THREE.Mesh => mesh !== null);
+    for (const mesh of created) this.group.add(mesh);
+    this.meshes.set(key, created);
   }
 
   /** (x, z) 자리의 블록이 바뀌었을 때 호출한다. */

@@ -4,7 +4,7 @@ import { ChunkedWorldMesh } from "./chunks";
 import { EYE_HEIGHT, Player } from "./player";
 import { lookDirection, raycast, RayHit } from "./raycast";
 import { decodeSave, EditLog, encodeSave, SaveData } from "./save";
-import { Block, BlockId, SIZE_X, SIZE_Z, World } from "./world";
+import { Block, BlockId, SIZE_X, SIZE_Z, World, isPassable } from "./world";
 
 const REACH = 5;
 
@@ -161,7 +161,7 @@ function placeBlock(): void {
   const hit = currentTarget();
   if (!hit) return;
   const { px, py, pz } = hit;
-  if (!world.inBounds(px, py, pz) || world.get(px, py, pz) !== Block.Air) return;
+  if (!world.inBounds(px, py, pz) || !isPassable(world.get(px, py, pz))) return;
   if (player.intersectsBlock(px, py, pz)) return;
   world.set(px, py, pz, HOTBAR[selectedSlot].block);
   editLog.record(px, py, pz, HOTBAR[selectedSlot].block);
@@ -209,6 +209,29 @@ controls.onBreak = breakBlock;
 controls.onPlace = placeBlock;
 controls.onSelectSlot = selectSlot;
 
+const fog = scene.fog as THREE.Fog;
+const underwaterColor = new THREE.Color(0x1a4f8f);
+
+/** 눈이 물속에 있으면 시야를 파랗고 짧게 만든다. */
+function applyUnderwaterLook(underwater: boolean): void {
+  if (underwater) {
+    fog.color.copy(underwaterColor);
+    fog.near = 0.5;
+    fog.far = 16;
+    scene.background = underwaterColor;
+  } else {
+    fog.color.copy(sky);
+    fog.near = 30;
+    fog.far = 70;
+    scene.background = sky;
+  }
+}
+
+// 개발용: 주소에 ?debug 를 붙이면 콘솔에서 __vox 로 월드와 플레이어를 만질 수 있다.
+if (new URLSearchParams(window.location.search).has("debug")) {
+  (window as unknown as { __vox: unknown }).__vox = { world, player, camera, scene };
+}
+
 let last = performance.now();
 let frames = 0;
 let fpsTimer = 0;
@@ -228,6 +251,8 @@ function frame(now: number): void {
   const target = currentTarget();
   outline.visible = target !== null;
   if (target) outline.position.set(target.x + 0.5, target.y + 0.5, target.z + 0.5);
+
+  applyUnderwaterLook(world.get(Math.floor(camera.position.x), Math.floor(camera.position.y), Math.floor(camera.position.z)) === Block.Water);
 
   renderer.render(scene, camera);
 
