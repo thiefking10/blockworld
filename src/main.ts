@@ -576,6 +576,7 @@ function respawn(): void {
   player.z = spawnZ + 0.5;
   player.y = world.surfaceHeight(spawnX, spawnZ) + 0.01;
   player.vy = 0;
+  player.flying = false;
   fallTracker.reset();
   health.reset();
   mobSim.clearHostile();
@@ -586,6 +587,20 @@ mobSim.populate(world, player.x, player.z, 10, Math.random);
 document.getElementById("loading")?.remove();
 
 const controls = new Controls(canvas);
+const descendButton = document.getElementById("descend-button") as HTMLElement;
+
+/** 창작 방식에서 점프를 0.35초 안에 두 번 누르면 비행을 켜거나 끈다. */
+let lastJumpPress = -1;
+controls.onJumpPress = () => {
+  const now = performance.now();
+  if (mode === "creative" && now - lastJumpPress < 350) {
+    player.flying = !player.flying;
+    showToast(player.flying ? "비행 시작! 점프는 위로, 내려가기는 아래로" : "비행을 끝냈어요");
+    lastJumpPress = -1;
+  } else {
+    lastJumpPress = now;
+  }
+};
 controls.onBreak = breakBlock;
 controls.onPlace = placeBlock;
 controls.onSelectSlot = selectSlot;
@@ -806,6 +821,9 @@ function frame(now: number): void {
       scheduleSave();
     }
   }
+  if (mode !== "creative") player.flying = false;
+  descendButton.classList.toggle("show", player.flying);
+  if (player.flying) fallTracker.reset();
   const fallDamage = fallTracker.update(player.y, player.onGround, player.isInWater());
   if (fallDamage > 0) hurt(fallDamage);
   health.update(dt);

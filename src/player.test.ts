@@ -10,6 +10,63 @@ function flatWorld(): World {
 
 const idle = { moveX: 0, moveZ: 0, jump: false };
 
+describe("비행", () => {
+  const still = { moveX: 0, moveZ: 0, jump: false, descend: false };
+
+  function flyer(): Player {
+    const player = new Player(flatWorld());
+    player.x = 8;
+    player.z = 8;
+    player.y = 6;
+    player.flying = true;
+    return player;
+  }
+
+  it("가만히 있으면 떨어지지 않고 떠 있다", () => {
+    const player = flyer();
+    for (let i = 0; i < 120; i++) player.update(1 / 60, still);
+    expect(player.y).toBeCloseTo(6, 3);
+    expect(player.flying).toBe(true);
+  });
+
+  it("점프는 위로, 내려가기는 아래로 움직인다", () => {
+    const player = flyer();
+    for (let i = 0; i < 30; i++) player.update(1 / 60, { ...still, jump: true });
+    expect(player.y).toBeGreaterThan(9);
+    const high = player.y;
+    for (let i = 0; i < 30; i++) player.update(1 / 60, { ...still, descend: true });
+    expect(player.y).toBeLessThan(high - 2);
+    expect(player.flying).toBe(true);
+  });
+
+  it("걷기보다 두 배 빠르게 날아간다", () => {
+    const flying = flyer();
+    const walking = new Player(flatWorld());
+    walking.x = 8;
+    walking.z = 8;
+    walking.y = 1;
+    for (let i = 0; i < 30; i++) {
+      flying.update(1 / 60, { ...still, moveZ: 1 });
+      walking.update(1 / 60, { ...still, moveZ: 1 });
+    }
+    expect(8 - flying.z).toBeCloseTo(2 * (8 - walking.z), 1);
+  });
+
+  it("내려가서 땅에 닿으면 비행이 저절로 끝난다", () => {
+    const player = flyer();
+    for (let i = 0; i < 120; i++) player.update(1 / 60, { ...still, descend: true });
+    expect(player.flying).toBe(false);
+    expect(player.y).toBeCloseTo(1, 1);
+  });
+
+  it("비행이 끝나면 다시 중력을 받는다", () => {
+    const player = flyer();
+    player.flying = false;
+    for (let i = 0; i < 120; i++) player.update(1 / 60, still);
+    expect(player.y).toBeCloseTo(1, 1);
+  });
+});
+
 describe("자동 점프", () => {
   function walkForward(player: Player, seconds: number): void {
     for (let i = 0; i < seconds * 60; i++) player.update(1 / 60, { moveX: 0, moveZ: 1, jump: false });

@@ -8,6 +8,10 @@ export class Controls {
   moveX = 0;
   moveZ = 0;
   jump = false;
+  /** 비행 중 내려가기 버튼/키를 누르고 있는지 */
+  descend = false;
+  /** 점프 버튼이나 스페이스를 새로 누른 순간 (두 번 빨리 누르면 비행 전환에 쓴다) */
+  onJumpPress?: () => void;
   /** 시점 돌리는 속도 배율 (설정에서 바꾼다). */
   lookScale = 1;
   onBreak?: () => void;
@@ -38,7 +42,22 @@ export class Controls {
       e.stopPropagation();
       this.jump = true;
       this.jumpButton.classList.add("active");
+      this.onJumpPress?.();
     });
+
+    const descendButton = document.getElementById("descend-button") as HTMLElement;
+    descendButton.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      this.descend = true;
+      descendButton.classList.add("active");
+    });
+    const releaseDescend = () => {
+      this.descend = false;
+      descendButton.classList.remove("active");
+    };
+    descendButton.addEventListener("pointerup", releaseDescend);
+    descendButton.addEventListener("pointercancel", releaseDescend);
+    descendButton.addEventListener("pointerleave", releaseDescend);
     const releaseJump = () => {
       this.jump = false;
       this.jumpButton.classList.remove("active");
@@ -51,6 +70,7 @@ export class Controls {
 
     window.addEventListener("keydown", (e) => {
       this.keys.add(e.code);
+      if (e.code === "Space" && !e.repeat) this.onJumpPress?.();
       if (e.code === "KeyQ") this.onBreak?.();
       if (e.code === "KeyE") this.onPlace?.();
       const digit = /^Digit([1-9])$/.exec(e.code);
@@ -148,7 +168,7 @@ export class Controls {
   }
 
   /** 터치 입력과 키보드 입력을 합친 이동값. */
-  currentInput(): { moveX: number; moveZ: number; jump: boolean } {
+  currentInput(): { moveX: number; moveZ: number; jump: boolean; descend: boolean } {
     let moveX = this.moveX;
     let moveZ = this.moveZ;
     if (this.keys.has("KeyW")) moveZ += 1;
@@ -160,6 +180,11 @@ export class Controls {
       moveX /= length;
       moveZ /= length;
     }
-    return { moveX, moveZ, jump: this.jump || this.keys.has("Space") };
+    return {
+      moveX,
+      moveZ,
+      jump: this.jump || this.keys.has("Space"),
+      descend: this.descend || this.keys.has("ShiftLeft") || this.keys.has("KeyC"),
+    };
   }
 }
