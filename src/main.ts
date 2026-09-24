@@ -3,6 +3,7 @@ import { Controls } from "./controls";
 import { ChunkedWorldMesh } from "./chunks";
 import { EYE_HEIGHT, Player } from "./player";
 import { lookDirection, raycast, RayHit } from "./raycast";
+import { decodeSave, EditLog, encodeSave, SaveData } from "./save";
 import { Block, BlockId, SIZE_X, SIZE_Z, World } from "./world";
 
 const REACH = 5;
@@ -20,11 +21,48 @@ const canvas = document.getElementById("game") as HTMLCanvasElement;
 const fpsLabel = document.getElementById("fps") as HTMLElement;
 const hotbarElement = document.getElementById("hotbar") as HTMLElement;
 
+const LAST_SEED_KEY = "voxelgame:last-seed";
+const saveKey = (worldSeed: number): string => `voxelgame:save:${worldSeed}`;
+
+function readStorage(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStorage(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // 저장이 막힌 환경(시크릿 모드 등)에서는 저장 없이 그냥 계속한다.
+  }
+}
+
+function removeStorage(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // 위와 같다.
+  }
+}
+
 const seedParam = new URLSearchParams(window.location.search).get("seed");
-const seed = seedParam ? Number(seedParam) || 1 : Math.floor(Math.random() * 100000);
+const lastSeed = Number(readStorage(LAST_SEED_KEY));
+const seed = seedParam ? Number(seedParam) || 1 : lastSeed > 0 ? lastSeed : Math.floor(Math.random() * 100000) + 1;
+writeStorage(LAST_SEED_KEY, String(seed));
+
+const saved = decodeSave(readStorage(saveKey(seed)));
 
 const world = new World();
 world.generate(seed);
+
+const editLog = new EditLog();
+if (saved && saved.seed === seed) {
+  editLog.load(saved.edits);
+  for (const [x, y, z, block] of saved.edits) world.set(x, y, z, block as BlockId);
+}
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -76,6 +114,13 @@ const [spawnX, spawnZ] = findSpawn();
 player.x = spawnX + 0.5;
 player.z = spawnZ + 0.5;
 player.y = world.surfaceHeight(spawnX, spawnZ) + 0.01;
+if (saved && saved.seed === seed) {
+  player.x = saved.player.x;
+  player.y = saved.player.y;
+  player.z = saved.player.z;
+  player.yaw = saved.player.yaw;
+  player.pitch = saved.player.pitch;
+}
 
 let selectedSlot = 0;
 const slotElements = HOTBAR.map((slot, index) => {
@@ -107,7 +152,9 @@ function breakBlock(): void {
   const hit = currentTarget();
   if (!hit || hit.y === 0) return;
   world.set(hit.x, hit.y, hit.z, Block.Air);
+  editLog.record(hit.x, hit.y, hit.z, Block.Air);
   worldMesh.updateBlock(hit.x, hit.z);
+  scheduleSave();
 }
 
 function placeBlock(): void {
@@ -117,8 +164,45 @@ function placeBlock(): void {
   if (!world.inBounds(px, py, pz) || world.get(px, py, pz) !== Block.Air) return;
   if (player.intersectsBlock(px, py, pz)) return;
   world.set(px, py, pz, HOTBAR[selectedSlot].block);
+  editLog.record(px, py, pz, HOTBAR[selectedSlot].block);
   worldMesh.updateBlock(px, pz);
+  scheduleSave();
 }
+
+let resetting = false;
+let saveTimer: number | undefined;
+
+function saveNow(): void {
+  if (resetting) return;
+  const data: SaveData = {
+    version: 1,
+    seed,
+    edits: editLog.toArray(),
+    player: { x: player.x, y: player.y, z: player.z, yaw: player.yaw, pitch: player.pitch },
+  };
+  writeStorage(saveKey(seed), encodeSave(data));
+}
+
+/** 블록을 바꾼 뒤 1초 안에 또 바꾸면 모아서 한 번만 저장한다. */
+function scheduleSave(): void {
+  window.clearTimeout(saveTimer);
+  saveTimer = window.setTimeout(saveNow, 1000);
+}
+
+window.addEventListener("pagehide", saveNow);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) saveNow();
+});
+window.setInterval(saveNow, 5000);
+
+document.getElementById("new-world-button")?.addEventListener("pointerdown", (e) => {
+  e.stopPropagation();
+  if (!window.confirm("지금 월드를 지우고 새로 시작할까요?")) return;
+  resetting = true;
+  removeStorage(saveKey(seed));
+  removeStorage(LAST_SEED_KEY);
+  window.location.href = window.location.pathname;
+});
 
 const controls = new Controls(canvas);
 controls.onBreak = breakBlock;
