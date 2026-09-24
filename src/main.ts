@@ -6,6 +6,8 @@ import { Controls } from "./controls";
 import { ambientColor, DAY_LENGTH_SECONDS, daylight, phaseFromSeconds, skyColor } from "./daycycle";
 import { solidMaterial, waterMaterial } from "./mesher";
 import { ChunkedWorldMesh } from "./chunks";
+import { MobRenderer } from "./mobRender";
+import { MobSimulation, raycastMobs } from "./mobs";
 import { EYE_HEIGHT, Player } from "./player";
 import { lookDirection, raycast, RayHit } from "./raycast";
 import { decodeSave, EditLog, encodeSave, SaveData } from "./save";
@@ -200,8 +202,24 @@ function currentTarget(): RayHit | null {
   return raycast(world, player.x, player.y + EYE_HEIGHT, player.z, dx, dy, dz, REACH);
 }
 
+/** 눈앞의 동물을 때린다. 동물이 블록보다 가까이 있을 때만 맞고, 때렸으면 true. */
+function hitMobInSight(blockHit: RayHit | null): boolean {
+  const ex = player.x;
+  const ey = player.y + EYE_HEIGHT;
+  const ez = player.z;
+  const [dx, dy, dz] = lookDirection(player.yaw, player.pitch);
+  const found = raycastMobs(mobSim.mobs, ex, ey, ez, dx, dy, dz, REACH);
+  if (!found) return false;
+  const blockDistance = blockHit ? Math.hypot(blockHit.x + 0.5 - ex, blockHit.y + 0.5 - ey, blockHit.z + 0.5 - ez) - 0.5 : Infinity;
+  if (found.distance > blockDistance) return false;
+  audio.playMobHit();
+  mobSim.hit(found.mob, player.x, player.z);
+  return true;
+}
+
 function breakBlock(): void {
   const hit = currentTarget();
+  if (hitMobInSight(hit)) return;
   if (!hit || hit.y === 0) return;
   audio.playBreak(world.get(hit.x, hit.y, hit.z));
   world.set(hit.x, hit.y, hit.z, Block.Air);
@@ -215,7 +233,7 @@ function placeBlock(): void {
   if (!hit) return;
   const { px, py, pz } = hit;
   if (!world.inBounds(px, py, pz) || !isPassable(world.get(px, py, pz))) return;
-  if (player.intersectsBlock(px, py, pz)) return;
+  if (player.intersectsBlock(px, py, pz) || mobSim.intersectsBlock(px, py, pz)) return;
   const block = hotbarBlocks[selectedSlot];
   audio.playPlace(block);
   world.set(px, py, pz, block);
@@ -262,6 +280,10 @@ document.getElementById("new-world-button")?.addEventListener("pointerdown", (e)
 });
 
 worldMesh.loadAllNear(player.x, player.z);
+
+const mobSim = new MobSimulation();
+const mobRenderer = new MobRenderer(scene);
+mobSim.populate(world, player.x, player.z, 10, Math.random);
 document.getElementById("loading")?.remove();
 
 const controls = new Controls(canvas);
@@ -329,7 +351,7 @@ function updateEnvironment(): void {
 
 // 개발용: 주소에 ?debug 를 붙이면 콘솔에서 __vox 로 월드와 플레이어를 만질 수 있다.
 if (new URLSearchParams(window.location.search).has("debug")) {
-  (window as unknown as { __vox: unknown }).__vox = { world, player, camera, scene, audio, generateMs, worldMesh };
+  (window as unknown as { __vox: unknown }).__vox = { world, player, camera, scene, audio, generateMs, worldMesh, mobSim };
 }
 
 // 브라우저는 사용자가 화면을 누르기 전에는 소리를 못 내게 막는다. 첫 터치/클릭/키 입력 때 소리를 켠다.
@@ -380,6 +402,10 @@ function frame(now: number): void {
   player.update(dt, controls.currentInput());
   updateMovementSounds(Math.hypot(player.x - beforeX, player.z - beforeZ));
   worldMesh.update(player.x, player.z);
+  for (const call of mobSim.update(dt, world, player.x, player.z, Math.random)) {
+    audio.playMob(call.kind, 1 - Math.hypot(call.x - player.x, call.z - player.z) / 28);
+  }
+  mobRenderer.update(mobSim.mobs, solidMaterial.color);
 
   camera.position.set(player.x, player.y + EYE_HEIGHT, player.z);
   camera.rotation.set(player.pitch, player.yaw, 0);

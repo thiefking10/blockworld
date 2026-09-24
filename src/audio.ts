@@ -158,6 +158,53 @@ class GameAudio {
     this.burst({ duration: 0.08, type: soft.type, freq: soft.freq, q: soft.q, gain: 0.32 });
   }
 
+  /** 동물 울음소리. volume은 0~1 (멀수록 작게). 돼지는 낮고 짧은 "꿀", 양은 떨리는 "메". */
+  playMob(kind: "pig" | "sheep", volume: number): void {
+    if (volume <= 0.01) return;
+    const ctx = this.context();
+    const now = ctx.currentTime;
+    const pig = kind === "pig";
+    const duration = pig ? 0.22 : 0.55;
+
+    const osc = ctx.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(pig ? 240 : 420, now);
+    osc.frequency.exponentialRampToValueAtTime(pig ? 150 : 330, now + duration);
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.value = pig ? 700 : 1400;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(0.32 * volume, now + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+    if (!pig) {
+      // 양은 소리를 빠르게 떨어서 "메에에" 느낌을 낸다.
+      const tremolo = ctx.createOscillator();
+      tremolo.frequency.value = 22;
+      const depth = ctx.createGain();
+      depth.gain.value = 40;
+      tremolo.connect(depth);
+      depth.connect(osc.frequency);
+      tremolo.start(now);
+      tremolo.stop(now + duration + 0.02);
+    }
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.master as GainNode);
+    osc.start(now);
+    osc.stop(now + duration + 0.02);
+  }
+
+  /** 동물을 때렸을 때의 퍽 소리. */
+  playMobHit(): void {
+    this.burst({ duration: 0.12, type: "lowpass", freq: 600, gain: 0.6 });
+    this.thump(200, 90, 0.1, 0.25);
+  }
+
   splash(): void {
     this.burst({ duration: 0.4, type: "lowpass", freq: 900, gain: 0.5 });
     this.burst({ duration: 0.22, type: "highpass", freq: 2800, gain: 0.2 });
