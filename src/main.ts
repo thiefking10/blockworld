@@ -12,6 +12,8 @@ const HOTBAR: { block: BlockId; name: string; color: string }[] = [
   { block: Block.Dirt, name: "흙", color: "#785434" },
   { block: Block.Stone, name: "돌", color: "#808085" },
   { block: Block.Sand, name: "모래", color: "#dbcc8c" },
+  { block: Block.Wood, name: "나무", color: "#6b4724" },
+  { block: Block.Leaves, name: "잎", color: "#33802a" },
 ];
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
@@ -53,10 +55,27 @@ function resize(): void {
 window.addEventListener("resize", resize);
 resize();
 
+/** 월드 가운데에서 가장 가까운, 잔디가 맨 위인 자리(나무 위가 아닌 곳)를 찾는다. */
+function findSpawn(): [number, number] {
+  const cx = SIZE_X / 2;
+  const cz = SIZE_Z / 2;
+  for (let r = 0; r < 30; r++) {
+    for (let dx = -r; dx <= r; dx++) {
+      for (let dz = -r; dz <= r; dz++) {
+        const x = cx + dx;
+        const z = cz + dz;
+        if (world.get(x, world.surfaceHeight(x, z) - 1, z) === Block.Grass) return [x, z];
+      }
+    }
+  }
+  return [cx, cz];
+}
+
 const player = new Player(world);
-player.x = SIZE_X / 2;
-player.z = SIZE_Z / 2;
-player.y = world.surfaceHeight(Math.floor(player.x), Math.floor(player.z)) + 1;
+const [spawnX, spawnZ] = findSpawn();
+player.x = spawnX + 0.5;
+player.z = spawnZ + 0.5;
+player.y = world.surfaceHeight(spawnX, spawnZ) + 0.01;
 
 let selectedSlot = 0;
 const slotElements = HOTBAR.map((slot, index) => {

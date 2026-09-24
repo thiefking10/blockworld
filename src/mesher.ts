@@ -7,6 +7,8 @@ const BLOCK_COLOR: Record<number, [number, number, number]> = {
   [Block.Dirt]: [0.47, 0.33, 0.2],
   [Block.Stone]: [0.5, 0.5, 0.52],
   [Block.Sand]: [0.86, 0.8, 0.55],
+  [Block.Wood]: [0.42, 0.28, 0.14],
+  [Block.Leaves]: [0.2, 0.5, 0.16],
 };
 
 /** [이웃 방향, 밝기, 네 꼭짓점]. 꼭짓점은 바깥에서 봤을 때 반시계 방향. */

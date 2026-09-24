@@ -4,6 +4,8 @@ export const Block = {
   Dirt: 2,
   Stone: 3,
   Sand: 4,
+  Wood: 5,
+  Leaves: 6,
 } as const;
 export type BlockId = (typeof Block)[keyof typeof Block];
 
@@ -83,6 +85,32 @@ export class World {
     return 0;
   }
 
+  /** 잔디 위 여기저기에 나무(기둥 + 잎)를 심는다. 시드가 같으면 같은 자리에 심긴다. */
+  private plantTrees(seed: number): void {
+    for (let x = 3; x < SIZE_X - 3; x++) {
+      for (let z = 3; z < SIZE_Z - 3; z++) {
+        if (hash2(x, z, seed + 999) > 0.012) continue;
+        const ground = this.surfaceHeight(x, z) - 1;
+        if (this.get(x, ground, z) !== Block.Grass) continue;
+
+        const top = ground + 4 + Math.floor(hash2(x, z, seed + 5) * 2);
+        if (top + 2 >= SIZE_Y) continue;
+
+        for (let y = ground + 1; y <= top; y++) this.set(x, y, z, Block.Wood);
+        for (let dx = -2; dx <= 2; dx++) {
+          for (let dz = -2; dz <= 2; dz++) {
+            for (let y = top - 1; y <= top + 1; y++) {
+              const far = Math.max(Math.abs(dx), Math.abs(dz));
+              if (Math.abs(dx) === 2 && Math.abs(dz) === 2) continue;
+              if (y === top + 1 && far > 1) continue;
+              if (this.get(x + dx, y, z + dz) === Block.Air) this.set(x + dx, y, z + dz, Block.Leaves);
+            }
+          }
+        }
+      }
+    }
+  }
+
   generate(seed: number): void {
     for (let x = 0; x < SIZE_X; x++) {
       for (let z = 0; z < SIZE_Z; z++) {
@@ -95,5 +123,6 @@ export class World {
         }
       }
     }
+    this.plantTrees(seed);
   }
 }

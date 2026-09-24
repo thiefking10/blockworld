@@ -45,6 +45,26 @@ describe("world", () => {
     expect(world.isSolid(5, 20, 5)).toBe(false);
   });
 
+  it("나무가 자라고, 기둥은 잔디 위에 서 있다", () => {
+    const world = new World();
+    world.generate(7);
+    let woods = 0;
+    let leaves = 0;
+    for (let x = 0; x < SIZE_X; x++) {
+      for (let z = 0; z < SIZE_Z; z++) {
+        for (let y = 1; y < 32; y++) {
+          if (world.get(x, y, z) === Block.Leaves) leaves++;
+          if (world.get(x, y, z) !== Block.Wood) continue;
+          woods++;
+          const below = world.get(x, y - 1, z);
+          expect([Block.Grass, Block.Wood]).toContain(below);
+        }
+      }
+    }
+    expect(woods).toBeGreaterThan(20);
+    expect(leaves).toBeGreaterThan(woods);
+  });
+
   it("블록을 놓고 지울 수 있다", () => {
     const world = new World();
     world.set(3, 3, 3, Block.Stone);
