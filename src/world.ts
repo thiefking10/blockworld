@@ -7,9 +7,9 @@ export const Block = {
 } as const;
 export type BlockId = (typeof Block)[keyof typeof Block];
 
-export const SIZE_X = 64;
+export const SIZE_X = 128;
 export const SIZE_Y = 32;
-export const SIZE_Z = 64;
+export const SIZE_Z = 128;
 export const SEA_LEVEL = 9;
 
 function hash2(x: number, z: number, seed: number): number {

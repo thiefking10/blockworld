@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { Controls } from "./controls";
-import { buildMesh } from "./mesher";
+import { ChunkedWorldMesh } from "./chunks";
 import { EYE_HEIGHT, Player } from "./player";
 import { lookDirection, raycast, RayHit } from "./raycast";
 import { Block, BlockId, SIZE_X, SIZE_Z, World } from "./world";
@@ -32,16 +32,8 @@ const scene = new THREE.Scene();
 scene.background = sky;
 scene.fog = new THREE.Fog(sky, 30, 70);
 
-let worldMesh = buildMesh(world);
-scene.add(worldMesh);
-
-/** 블록이 바뀌면 지형 메쉬를 다시 만든다. */
-function rebuildWorldMesh(): void {
-  scene.remove(worldMesh);
-  worldMesh.geometry.dispose();
-  worldMesh = buildMesh(world);
-  scene.add(worldMesh);
-}
+const worldMesh = new ChunkedWorldMesh(world);
+scene.add(worldMesh.group);
 
 const outline = new THREE.LineSegments(
   new THREE.EdgesGeometry(new THREE.BoxGeometry(1.004, 1.004, 1.004)),
@@ -96,7 +88,7 @@ function breakBlock(): void {
   const hit = currentTarget();
   if (!hit || hit.y === 0) return;
   world.set(hit.x, hit.y, hit.z, Block.Air);
-  rebuildWorldMesh();
+  worldMesh.updateBlock(hit.x, hit.z);
 }
 
 function placeBlock(): void {
@@ -106,7 +98,7 @@ function placeBlock(): void {
   if (!world.inBounds(px, py, pz) || world.get(px, py, pz) !== Block.Air) return;
   if (player.intersectsBlock(px, py, pz)) return;
   world.set(px, py, pz, HOTBAR[selectedSlot].block);
-  rebuildWorldMesh();
+  worldMesh.updateBlock(px, pz);
 }
 
 const controls = new Controls(canvas);

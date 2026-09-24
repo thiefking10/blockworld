@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import { Block, BlockId, SIZE_X, SIZE_Y, SIZE_Z, World } from "./world";
+import { CHUNK_SIZE } from "./chunkMath";
+import { Block, BlockId, SIZE_Y, World } from "./world";
 
 const BLOCK_COLOR: Record<number, [number, number, number]> = {
   [Block.Grass]: [0.36, 0.63, 0.22],
@@ -24,15 +25,20 @@ function jitter(x: number, y: number, z: number): number {
   return (((h ^ (h >>> 13)) >>> 0) / 4294967296) * 0.12 - 0.06;
 }
 
-/** 눈에 보이는 면(공기와 맞닿은 면)만 모아 메쉬 하나로 만든다. */
-export function buildMesh(world: World): THREE.Mesh {
+const chunkMaterial = new THREE.MeshBasicMaterial({ vertexColors: true });
+
+/** 구역(chunk) 하나의 눈에 보이는 면(공기와 맞닿은 면)만 모아 메쉬로 만든다. 블록이 하나도 안 보이면 null. */
+export function buildChunkMesh(world: World, chunkX: number, chunkZ: number): THREE.Mesh | null {
   const positions: number[] = [];
   const colors: number[] = [];
   const indices: number[] = [];
 
+  const startX = chunkX * CHUNK_SIZE;
+  const startZ = chunkZ * CHUNK_SIZE;
+
   for (let y = 0; y < SIZE_Y; y++) {
-    for (let z = 0; z < SIZE_Z; z++) {
-      for (let x = 0; x < SIZE_X; x++) {
+    for (let z = startZ; z < startZ + CHUNK_SIZE; z++) {
+      for (let x = startX; x < startX + CHUNK_SIZE; x++) {
         const block: BlockId = world.get(x, y, z);
         if (block === Block.Air) continue;
         const base = BLOCK_COLOR[block];
@@ -54,11 +60,13 @@ export function buildMesh(world: World): THREE.Mesh {
     }
   }
 
+  if (indices.length === 0) return null;
+
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
   geometry.setIndex(indices);
   geometry.computeBoundingSphere();
 
-  return new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ vertexColors: true }));
+  return new THREE.Mesh(geometry, chunkMaterial);
 }
