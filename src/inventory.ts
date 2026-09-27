@@ -84,30 +84,94 @@ export function mobDrops(kind: string, rng: () => number): [number, number][] {
   return drops;
 }
 
-/** 가방. 아이템 번호마다 개수를 세고, 도구는 지금 쓰는 한 개의 남은 내구도를 기억한다. */
+/** 한 칸에 쌓을 수 있는 최대 개수 (도구는 내구도가 서로 달라질 수 있어 한 칸에 하나만 넣는다). */
+export const STACK_MAX = 64;
+
+/** 가방 칸 수. 실제 마인크래프트(27칸 보관 + 9칸 아이템 바)와 같은 27칸으로 맞췄다 (아이템 바는 이 칸과 별개로 6칸이다). */
+export const SLOT_COUNT = 27;
+
+interface Slot {
+  item: number;
+  count: number;
+}
+
+/**
+ * 가방. 정해진 칸 수(SLOT_COUNT) 안에서만 아이템을 들 수 있고, 한 칸에는 STACK_MAX개까지만 쌓인다.
+ * 도구(곡괭이·도끼·삽·검)는 내구도가 서로 다를 수 있어 한 칸에 하나만 들어가고, 같은 종류를 두 개 갖고 다니지 않는다.
+ */
 export class Inventory {
-  private readonly counts = new Map<number, number>();
-  /** 도구 번호 → 지금 쓰고 있는 도구 하나의 남은 내구도 (안 쓴 도구는 항목이 없다) */
+  private slots: (Slot | null)[] = new Array(SLOT_COUNT).fill(null);
+  /** 도구 번호 → 지금 가진 그 도구의 남은 내구도 */
   private readonly wear = new Map<number, number>();
 
-  count(item: number): number {
-    return this.counts.get(item) ?? 0;
+  private maxStack(item: number): number {
+    return TOOL_BY_ID.has(item) ? 1 : STACK_MAX;
   }
 
-  add(item: number, amount = 1): void {
-    if (amount <= 0) return;
-    this.counts.set(item, this.count(item) + amount);
+  count(item: number): number {
+    let total = 0;
+    for (const slot of this.slots) if (slot && slot.item === item) total += slot.count;
+    return total;
+  }
+
+  /** 이 아이템을 지금 몇 개나 더 넣을 수 있는지 (칸이 다 차면 0). */
+  freeSpace(item: number): number {
+    const max = this.maxStack(item);
+    if (max === 1) return this.count(item) > 0 ? 0 : this.slots.some((s) => s === null) ? 1 : 0;
+    let free = 0;
+    for (const slot of this.slots) {
+      if (slot === null) free += max;
+      else if (slot.item === item) free += max - slot.count;
+    }
+    return free;
+  }
+
+  /** 실제로 넣은 개수를 돌려준다. 가방이 모자라면 들어가는 만큼만 넣는다. */
+  add(item: number, amount = 1): number {
+    if (amount <= 0) return 0;
+    const max = this.maxStack(item);
+
+    if (max === 1) {
+      if (this.count(item) > 0) return 0;
+      const empty = this.slots.indexOf(null);
+      if (empty < 0) return 0;
+      this.slots[empty] = { item, count: 1 };
+      return 1;
+    }
+
+    let remaining = amount;
+    for (const slot of this.slots) {
+      if (remaining <= 0) break;
+      if (slot && slot.item === item && slot.count < max) {
+        const added = Math.min(max - slot.count, remaining);
+        slot.count += added;
+        remaining -= added;
+      }
+    }
+    for (let i = 0; i < this.slots.length && remaining > 0; i++) {
+      if (this.slots[i] === null) {
+        const added = Math.min(max, remaining);
+        this.slots[i] = { item, count: added };
+        remaining -= added;
+      }
+    }
+    return amount - remaining;
   }
 
   /** 충분히 있으면 빼고 true, 모자라면 아무것도 안 하고 false. */
   remove(item: number, amount = 1): boolean {
     if (this.count(item) < amount) return false;
-    const left = this.count(item) - amount;
-    if (left === 0) {
-      this.counts.delete(item);
-      this.wear.delete(item);
-    } else {
-      this.counts.set(item, left);
+    let remaining = amount;
+    for (let i = 0; i < this.slots.length && remaining > 0; i++) {
+      const slot = this.slots[i];
+      if (!slot || slot.item !== item) continue;
+      const taken = Math.min(slot.count, remaining);
+      slot.count -= taken;
+      remaining -= taken;
+      if (slot.count === 0) {
+        this.slots[i] = null;
+        this.wear.delete(item);
+      }
     }
     return true;
   }
@@ -116,26 +180,29 @@ export class Inventory {
     return recipe.inputs.every(([item, amount]) => this.count(item) >= amount);
   }
 
+  /** 재료가 있어도 결과를 넣을 자리가 없으면 만들지 않는다 (재료를 잃지 않도록). */
   craft(recipe: Recipe): boolean {
     if (!this.canCraft(recipe)) return false;
+    const [outItem, outAmount] = recipe.output;
+    if (this.freeSpace(outItem) < outAmount) return false;
     for (const [item, amount] of recipe.inputs) this.remove(item, amount);
-    this.add(recipe.output[0], recipe.output[1]);
+    this.add(outItem, outAmount);
     return true;
   }
 
-  /** 지금 쓰는 도구 하나의 남은 내구도 (없는 도구면 0). */
+  /** 지금 가진 도구 하나의 남은 내구도 (없는 도구면 0). */
   toolLeft(item: number): number {
     const tool = TOOL_BY_ID.get(item);
     if (!tool || this.count(item) === 0) return 0;
     return this.wear.get(item) ?? toolDurability(tool);
   }
 
-  /** 도구를 한 번 쓴다. 다 닳아서 부러졌으면 true (같은 도구가 더 있으면 새것을 쓰기 시작한다). */
+  /** 도구를 한 번 쓴다. 다 닳아서 부러졌으면 true. */
   useTool(item: number): boolean {
     if (!TOOL_BY_ID.has(item) || this.count(item) === 0) return false;
     const left = this.toolLeft(item) - 1;
     if (left <= 0) {
-      this.remove(item);
+      this.remove(item, 1);
       this.wear.delete(item);
       return true;
     }
@@ -149,9 +216,20 @@ export class Inventory {
     return sword ? SWORD_DAMAGE[sword.tier] : 1;
   }
 
-  /** 가진 아이템을 [번호, 개수] 목록으로 (번호 순). */
+  /** 가진 아이템을 종류별 [번호, 총 개수] 목록으로 (번호 순). */
   entries(): [number, number][] {
-    return [...this.counts.entries()].sort((a, b) => a[0] - b[0]);
+    const totals = new Map<number, number>();
+    for (const slot of this.slots) if (slot) totals.set(slot.item, (totals.get(slot.item) ?? 0) + slot.count);
+    return [...totals.entries()].sort((a, b) => a[0] - b[0]);
+  }
+
+  /** 쓰고 있는 칸 수 (화면에 "24/27칸"처럼 보여줄 때 쓴다). */
+  get slotsUsed(): number {
+    return this.slots.filter((s) => s !== null).length;
+  }
+
+  get slotCount(): number {
+    return this.slots.length;
   }
 
   /** 저장용: 닳은 도구의 [번호, 남은 내구도] 목록 */
@@ -159,8 +237,12 @@ export class Inventory {
     return [...this.wear.entries()].filter(([item]) => this.count(item) > 0);
   }
 
+  /**
+   * 저장된 목록을 불러온다. 예전(칸 제한이 없던) 저장에 지금 칸 수보다 많은 아이템이 있었다면,
+   * 넘치는 만큼은 어쩔 수 없이 사라진다.
+   */
   load(entries: [number, number][], wear: [number, number][] = []): void {
-    this.counts.clear();
+    this.slots = new Array(SLOT_COUNT).fill(null);
     this.wear.clear();
     for (const [item, amount] of entries) this.add(item, amount);
     for (const [item, left] of wear) {

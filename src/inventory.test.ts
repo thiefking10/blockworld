@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dropsFor, FOOD_HEAL, Inventory, Item, mobDrops, RECIPES } from "./inventory";
+import { dropsFor, FOOD_HEAL, Inventory, Item, mobDrops, RECIPES, SLOT_COUNT, STACK_MAX } from "./inventory";
 import { Block } from "./world";
 
 describe("Inventory", () => {
@@ -69,16 +69,22 @@ describe("Inventory", () => {
     expect(inv.count(Item.WoodPickaxe)).toBe(1);
   });
 
-  it("도구는 쓸 때마다 닳고, 다 닳으면 부러져서 하나가 줄어든다", () => {
+  it("도구는 쓸 때마다 닳고, 다 닳으면 부러져서 사라진다 (도구는 한 개만 들 수 있다)", () => {
     const inv = new Inventory();
-    inv.add(Item.WoodPickaxe, 2);
+    expect(inv.add(Item.WoodPickaxe, 2)).toBe(1); // 도구는 한 개까지만 들어간다
     expect(inv.toolLeft(Item.WoodPickaxe)).toBe(59);
     for (let i = 0; i < 58; i++) expect(inv.useTool(Item.WoodPickaxe)).toBe(false);
     expect(inv.toolLeft(Item.WoodPickaxe)).toBe(1);
     expect(inv.useTool(Item.WoodPickaxe)).toBe(true);
-    expect(inv.count(Item.WoodPickaxe)).toBe(1);
-    expect(inv.toolLeft(Item.WoodPickaxe)).toBe(59);
+    expect(inv.count(Item.WoodPickaxe)).toBe(0);
     expect(inv.useTool(Item.Meat)).toBe(false);
+  });
+
+  it("같은 도구를 두 개 가질 수는 없다", () => {
+    const inv = new Inventory();
+    expect(inv.add(Item.StoneAxe, 1)).toBe(1);
+    expect(inv.add(Item.StoneAxe, 1)).toBe(0);
+    expect(inv.count(Item.StoneAxe)).toBe(1);
   });
 
   it("닳은 정도도 저장했다가 그대로 불러온다", () => {
@@ -91,6 +97,50 @@ describe("Inventory", () => {
     const broken = new Inventory();
     broken.load([[Item.StoneAxe, 1]], [[Item.StoneAxe, 9999]]);
     expect(broken.toolLeft(Item.StoneAxe)).toBe(131);
+  });
+
+  it("한 칸에는 64개까지만 쌓이고, 넘치면 다음 칸으로 나뉜다", () => {
+    const inv = new Inventory();
+    expect(inv.add(Block.Stone, STACK_MAX)).toBe(STACK_MAX);
+    expect(inv.slotsUsed).toBe(1);
+    expect(inv.add(Block.Stone, 5)).toBe(5);
+    expect(inv.slotsUsed).toBe(2);
+    expect(inv.count(Block.Stone)).toBe(STACK_MAX + 5);
+  });
+
+  it("가방 칸이 다 차면 넣던 만큼만 들어가고 나머지는 못 넣는다", () => {
+    const inv = new Inventory();
+    expect(inv.slotCount).toBe(SLOT_COUNT);
+    // 칸을 서로 다른 아이템으로 전부 채운다 (블록 종류는 충분히 많다)
+    for (let i = 0; i < SLOT_COUNT; i++) inv.add(Block.Stone + i, 1);
+    expect(inv.slotsUsed).toBe(SLOT_COUNT);
+    expect(inv.freeSpace(Block.Dirt)).toBe(0);
+    expect(inv.add(Block.Dirt, 3)).toBe(0);
+    expect(inv.count(Block.Dirt)).toBe(0);
+    // 이미 가방에 있는 종류는 기존 칸에 더 쌓을 수 있다
+    expect(inv.freeSpace(Block.Stone)).toBe(STACK_MAX - 1);
+    expect(inv.add(Block.Stone, 3)).toBe(3);
+    expect(inv.count(Block.Stone)).toBe(4);
+  });
+
+  it("도구는 freeSpace가 이미 있으면 0, 빈 칸 있으면 1이다", () => {
+    const inv = new Inventory();
+    expect(inv.freeSpace(Item.WoodPickaxe)).toBe(1);
+    inv.add(Item.WoodPickaxe, 1);
+    expect(inv.freeSpace(Item.WoodPickaxe)).toBe(0);
+  });
+
+  it("만든 결과를 넣을 칸이 없으면 만들지 못하고 재료도 그대로다", () => {
+    const inv = new Inventory();
+    inv.add(Block.Wood, 1);
+    // 판자가 들어갈 칸만 남기고 나머지를 다른 아이템으로 채운다
+    for (let i = 0; i < SLOT_COUNT - 1; i++) inv.add(Item.IronIngot + i, 1);
+    expect(inv.slotsUsed).toBe(SLOT_COUNT);
+    const planks = recipe("판자");
+    expect(inv.canCraft(planks)).toBe(true);
+    expect(inv.craft(planks)).toBe(false);
+    expect(inv.count(Block.Wood)).toBe(1);
+    expect(inv.count(Block.Planks)).toBe(0);
   });
 });
 

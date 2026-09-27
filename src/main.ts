@@ -322,6 +322,7 @@ const itemsTitle = document.getElementById("items-title") as HTMLElement;
 const craftSection = document.getElementById("craft-section") as HTMLElement;
 const craftList = document.getElementById("craft-list") as HTMLElement;
 const modeLabel = document.getElementById("mode-label") as HTMLElement;
+const slotLabel = document.getElementById("slot-label") as HTMLElement;
 
 function toggleInventory(open?: boolean): void {
   const isOpen = inventoryPanel.classList.toggle("open", open);
@@ -376,7 +377,11 @@ function sleepInBed(): void {
 
 function craftRecipe(index: number): void {
   const recipe = RECIPES[index];
-  if (!inventory.craft(recipe)) return;
+  const hadMaterials = inventory.canCraft(recipe);
+  if (!inventory.craft(recipe)) {
+    if (hadMaterials) showToast("가방이 가득 찼어요", 2000);
+    return;
+  }
   audio.playCraft();
   showToast(recipe.name + " ×" + recipe.output[1] + " 만들었어요");
   refreshHotbar();
@@ -484,6 +489,10 @@ function refreshFurnacePanel(): void {
   if (furnace.input) {
     inputButtons.push(
       furnaceButton("빼기", () => {
+        if (inventory.freeSpace(furnace.input!.item) < furnace.input!.count) {
+          showToast("가방이 가득 찼어요", 2000);
+          return;
+        }
         const taken = furnace.takeInput();
         if (taken) inventory.add(taken.item, taken.count);
         changed();
@@ -505,6 +514,10 @@ function refreshFurnacePanel(): void {
   if (furnace.fuel) {
     fuelButtons.push(
       furnaceButton("빼기", () => {
+        if (inventory.freeSpace(furnace.fuel!.item) < furnace.fuel!.count) {
+          showToast("가방이 가득 찼어요", 2000);
+          return;
+        }
         const taken = furnace.takeFuel();
         if (taken) inventory.add(taken.item, taken.count);
         changed();
@@ -517,6 +530,10 @@ function refreshFurnacePanel(): void {
   if (furnace.output) {
     outputButtons.push(
       furnaceButton("꺼내기", () => {
+        if (inventory.freeSpace(furnace.output!.item) < furnace.output!.count) {
+          showToast("가방이 가득 찼어요", 2000);
+          return;
+        }
         const taken = furnace.takeOutput();
         if (!taken) return;
         inventory.add(taken.item, taken.count);
@@ -555,6 +572,7 @@ function useBlock(): void {
 function refreshInventoryPanel(): void {
   const survival = mode === "survival";
   modeLabel.textContent = survival ? "서바이벌: 블록을 모아서 써요" : "창작: 블록이 무한이에요";
+  slotLabel.textContent = survival ? "가방 " + inventory.slotsUsed + "/" + inventory.slotCount + "칸" : "";
 
   inventoryGrid.replaceChildren();
   const shown = survival ? PLACEABLE_BLOCKS.filter((b) => inventory.count(b.block) > 0) : PLACEABLE_BLOCKS;
@@ -1141,6 +1159,7 @@ function updateMovementSounds(moved: number): void {
 let shownHp = health.hp;
 let shownHunger = hunger.value;
 let shownHungerMode = mode;
+let lastFullBagToast = -Infinity;
 let cropTimer = 0;
 let last = performance.now();
 let frames = 0;
@@ -1222,13 +1241,17 @@ function frame(now: number): void {
   }
   mobRenderer.update(mobSim.mobs, solidMaterial.color, worldSeconds);
   if (mode === "survival") {
-    const result = drops.update(dt, world, player.x, player.y, player.z, () => Infinity);
+    const result = drops.update(dt, world, player.x, player.y, player.z, (item) => inventory.freeSpace(item));
     if (result.picked.length > 0) {
       for (const [item, amount] of result.picked) inventory.add(item, amount);
       audio.playPickup();
       refreshHotbar();
       refreshOpenPanels();
       scheduleSave();
+    }
+    if (result.blocked && worldSeconds - lastFullBagToast > 5) {
+      lastFullBagToast = worldSeconds;
+      showToast("가방이 가득 찼어요", 2000);
     }
   }
   dropRenderer.update(drops.drops, worldSeconds, solidMaterial.color);
