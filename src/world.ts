@@ -20,6 +20,7 @@ export const Block = {
   Wheat: 18,
   CraftingTable: 19,
   Furnace: 20,
+  Torch: 21,
 } as const;
 export type BlockId = (typeof Block)[keyof typeof Block];
 
@@ -28,9 +29,18 @@ export const SIZE_Y = 32;
 export const SIZE_Z = 256;
 export const SEA_LEVEL = 9;
 
-/** 꽃, 밀 같은 식물 블록인지. 십자 모양으로 그려지고, 몸은 지나가며 빛도 막지 않는다. */
+/** 빛의 최댓값 (횃불 바로 옆). 한 칸 지날 때마다 1씩 줄어든다. */
+export const MAX_LIGHT = 15;
+
+/** 꽃, 밀, 횃불처럼 십자 모양으로 그려지는 블록인지. 몸은 지나가며 빛도 막지 않고, 밑받침이 사라지면 같이 떨어진다. */
 export function isPlant(block: number): boolean {
-  return block === Block.Flower || block === Block.YellowFlower || block === Block.Sprout || block === Block.Wheat;
+  return (
+    block === Block.Flower ||
+    block === Block.YellowFlower ||
+    block === Block.Sprout ||
+    block === Block.Wheat ||
+    block === Block.Torch
+  );
 }
 
 /** 빛을 막고 몸이 부딪히는 블록인지 (공기, 물, 식물은 아니다). */
@@ -135,10 +145,24 @@ export function biomeAt(x: number, z: number, seed: number): Biome {
 /** 환경별 나무(사막은 선인장) 심는 확률 */
 const PLANT_DENSITY: Record<Biome, number> = { plains: 0.012, forest: 0.04, desert: 0.01, snow: 0.006 };
 
+/** 빛이 퍼지는 여섯 방향 */
+const LIGHT_NEIGHBORS: readonly [number, number, number][] = [
+  [1, 0, 0],
+  [-1, 0, 0],
+  [0, 1, 0],
+  [0, -1, 0],
+  [0, 0, 1],
+  [0, 0, -1],
+];
+
 export class World {
   readonly data = new Uint8Array(SIZE_X * SIZE_Y * SIZE_Z);
   /** 열(x,z)마다 가장 높은 "빛을 막는 블록"의 높이. 없으면 -1. 동굴 안을 어둡게 그릴 때 쓴다. */
   private readonly top = new Int16Array(SIZE_X * SIZE_Z).fill(-1);
+  /** 횃불에서 퍼진 빛(0~15). 횃불이 하나도 없으면 전부 0이고 계산도 건너뛴다. */
+  private readonly light = new Uint8Array(SIZE_X * SIZE_Y * SIZE_Z);
+  /** 지금 세워진 횃불 개수. 0이면 set()에서 빛 계산을 건너뛰어 세계를 만들 때 느려지지 않는다. */
+  private torchCount = 0;
 
   private index(x: number, y: number, z: number): number {
     return x + SIZE_X * (z + SIZE_Z * y);
@@ -153,9 +177,80 @@ export class World {
     return this.data[this.index(x, y, z)] as BlockId;
   }
 
-  set(x: number, y: number, z: number, block: BlockId): void {
+  /** 이 자리에 횃불빛이 얼마나 닿는지 (0~15, 범위 밖이거나 안 닿으면 0). */
+  lightAt(x: number, y: number, z: number): number {
+    if (!this.inBounds(x, y, z)) return 0;
+    return this.light[this.index(x, y, z)];
+  }
+
+  /** level만큼(기본 최댓값) (x,y,z)에서 사방으로 빛을 퍼뜨린다. 막힌 곳은 넘지 못하고, 이미 더 밝으면 그대로 둔다. */
+  private addLight(x: number, y: number, z: number, level: number = MAX_LIGHT): void {
     if (!this.inBounds(x, y, z)) return;
-    this.data[this.index(x, y, z)] = block;
+    const idx = this.index(x, y, z);
+    if (this.light[idx] >= level) return;
+    this.light[idx] = level;
+    this.spread([[x, y, z, level]]);
+  }
+
+  private spread(queue: [number, number, number, number][]): void {
+    while (queue.length > 0) {
+      const [x, y, z, level] = queue.shift() as [number, number, number, number];
+      if (level <= 1) continue;
+      const nextLevel = level - 1;
+      for (const [dx, dy, dz] of LIGHT_NEIGHBORS) {
+        const nx = x + dx;
+        const ny = y + dy;
+        const nz = z + dz;
+        if (!this.inBounds(nx, ny, nz) || blocksLight(this.get(nx, ny, nz))) continue;
+        const idx = this.index(nx, ny, nz);
+        if (this.light[idx] >= nextLevel) continue;
+        this.light[idx] = nextLevel;
+        queue.push([nx, ny, nz, nextLevel]);
+      }
+    }
+  }
+
+  /**
+   * (x,y,z)의 빛의 근원이 사라졌을 때 부른다. 이 자리에서 나온 빛을 거둬들이고,
+   * 다른 횃불이 여전히 비추고 있는 자리는 그 빛으로 다시 채운다 (표준 2단계 빛 제거 방식).
+   */
+  private removeLight(x: number, y: number, z: number): void {
+    if (!this.inBounds(x, y, z)) return;
+    const idx = this.index(x, y, z);
+    const startLevel = this.light[idx];
+    if (startLevel === 0) return;
+    this.light[idx] = 0;
+
+    const removalQueue: [number, number, number, number][] = [[x, y, z, startLevel]];
+    const refillSeeds: [number, number, number, number][] = [];
+    while (removalQueue.length > 0) {
+      const [cx, cy, cz, level] = removalQueue.shift() as [number, number, number, number];
+      for (const [dx, dy, dz] of LIGHT_NEIGHBORS) {
+        const nx = cx + dx;
+        const ny = cy + dy;
+        const nz = cz + dz;
+        if (!this.inBounds(nx, ny, nz)) continue;
+        const nIdx = this.index(nx, ny, nz);
+        const nLevel = this.light[nIdx];
+        if (nLevel === 0) continue;
+        if (nLevel < level) {
+          this.light[nIdx] = 0;
+          removalQueue.push([nx, ny, nz, nLevel]);
+        } else {
+          refillSeeds.push([nx, ny, nz, nLevel]);
+        }
+      }
+    }
+    this.spread(refillSeeds);
+  }
+
+  /** 블록을 놓거나 지운다. 빛(횃불)이 달라졌으면 true를 돌려준다 (화면을 얼마나 넓게 다시 그릴지 정할 때 쓴다). */
+  set(x: number, y: number, z: number, block: BlockId): boolean {
+    if (!this.inBounds(x, y, z)) return false;
+    const idx = this.index(x, y, z);
+    const oldBlock = this.data[idx] as BlockId;
+    if (oldBlock === block) return false;
+    this.data[idx] = block;
 
     const column = x + SIZE_X * z;
     if (blocksLight(block)) {
@@ -165,6 +260,37 @@ export class World {
       while (t >= 0 && !blocksLight(this.get(x, t, z))) t--;
       this.top[column] = t;
     }
+
+    if (oldBlock === Block.Torch) this.torchCount--;
+    if (block === Block.Torch) this.torchCount++;
+    // 횃불이 세상에 하나도 없고 이번 일도 횃불과 상관없다면, 빛 계산은 아예 건너뛴다 (세계 생성이 느려지지 않도록).
+    if (this.torchCount === 0 && block !== Block.Torch && oldBlock !== Block.Torch) return false;
+
+    let lightChanged = false;
+    if (oldBlock === Block.Torch) {
+      this.removeLight(x, y, z);
+      lightChanged = true;
+    }
+    if (blocksLight(oldBlock) !== blocksLight(block)) {
+      if (blocksLight(block)) {
+        if (this.lightAt(x, y, z) > 0) {
+          this.removeLight(x, y, z);
+          lightChanged = true;
+        }
+      } else {
+        let best = 0;
+        for (const [dx, dy, dz] of LIGHT_NEIGHBORS) best = Math.max(best, this.lightAt(x + dx, y + dy, z + dz) - 1);
+        if (best > 0) {
+          this.addLight(x, y, z, best);
+          lightChanged = true;
+        }
+      }
+    }
+    if (block === Block.Torch) {
+      this.addLight(x, y, z, MAX_LIGHT);
+      lightChanged = true;
+    }
+    return lightChanged;
   }
 
   /** 걸어다닐 때 막히는 블록인지. 월드 옆면과 바닥은 벽으로 친다. 물은 막지 않는다. */

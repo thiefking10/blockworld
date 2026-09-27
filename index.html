@@ -568,6 +568,26 @@
         color: transparent;
         text-shadow: none;
       }
+      #hunger {
+        position: absolute;
+        left: 50%;
+        top: 30px;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 2px;
+        font-size: 17px;
+        line-height: 1;
+        text-shadow: 0 1px 2px #000;
+      }
+      #hunger span {
+        filter: grayscale(1) brightness(0.55);
+      }
+      #hunger span.full {
+        filter: none;
+      }
+      #hunger span.half {
+        filter: grayscale(0.5) brightness(0.75);
+      }
       #damage-flash {
         position: absolute;
         inset: 0;
@@ -642,6 +662,7 @@
       <div id="clock"></div>
       <div id="fullscreen-button">전체화면</div>
       <div id="hearts"></div>
+      <div id="hunger"></div>
       <div id="damage-flash"></div>
       <div id="toast"></div>
       <div id="help-button">?</div>
@@ -666,6 +687,8 @@
           <b>가방</b> 모은 블록으로 판자, 막대, 곡괭이, 검, 침대, 빵 같은 것을 만들어요. 도구는 쓸수록 닳아요. 고기와 빵은 눌러서 먹어요.<br />
           <b>밤</b>에는 좀비, 해골, 크리퍼가 나와요. 해골은 멀리서 화살을 쏘고, 크리퍼는 가까이 오면 몇 초 뒤 터져요(멀어지면 취소돼요). 검을 만들어 싸우거나, 침대를 만들어 밤을 건너뛰어요.<br />
           <b>농사</b> 잔디를 부수면 가끔 밀 씨앗이 나와요. 풀이나 흙 위에 심으면 자라서 밀이 돼요.<br />
+          <b>배고픔</b> 하트 밑의 닭다리 게이지예요. 걷거나 시간이 지나면 줄고, 다 떨어지면 체력이 조금씩 깎여요. 음식을 먹어서 채우고, 가득 차 있어야 체력이 저절로 회복돼요.<br />
+          <b>횃불</b> 막대와 나무로 만들어요(가방에서 바로). 놓으면 주변이 밤에도, 동굴 속에서도 계속 밝아요.<br />
           <b>화면이 작다면</b> 왼쪽 위 <b>전체화면</b> 버튼을 눌러요. 아이폰은 사파리 공유 버튼 → <b>홈 화면에 추가</b>로 열면 주소창 없이 열려요.<br />
           <b>도전</b> 버튼에서 해 볼 만한 일을 확인해요. 컴퓨터에서는 WASD, 스페이스, Q(부수기), E(놓기), 1~6, B(가방)를 써요.
         </div>

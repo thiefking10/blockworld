@@ -1,4 +1,4 @@
-import { Block, BlockId, isPlant } from "./world";
+import { Block, BlockId, isOpaque, isPlant } from "./world";
 
 export interface PlaceableBlock {
   block: BlockId;
@@ -25,10 +25,12 @@ export const PLACEABLE_BLOCKS: PlaceableBlock[] = [
   { block: Block.Sprout, name: "밀 씨앗" },
   { block: Block.CraftingTable, name: "제작대" },
   { block: Block.Furnace, name: "화로" },
+  { block: Block.Torch, name: "횃불" },
 ];
 
-/** 이 블록을 놓으려는 칸 바로 아래 블록이 (below) 받쳐 줄 수 있는지. 식물은 풀이나 흙 위에만 심는다. */
+/** 이 블록을 놓으려는 칸 바로 아래 블록이 (below) 받쳐 줄 수 있는지. 꽃과 씨앗은 풀이나 흙 위에, 횃불은 어떤 단단한 블록 위에도 세울 수 있다. */
 export function canPlaceAt(block: number, below: number): boolean {
+  if (block === Block.Torch) return isOpaque(below);
   if (isPlant(block)) return below === Block.Grass || below === Block.Dirt;
   return true;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Block, biomeAt, blocksLight, occludes, SEA_LEVEL, SIZE_X, SIZE_Y, SIZE_Z, World, isCave, isPassable, terrainNoise } from "./world";
+import { Block, BlockId, biomeAt, blocksLight, MAX_LIGHT, occludes, SEA_LEVEL, SIZE_X, SIZE_Y, SIZE_Z, World, isCave, isPassable, terrainNoise } from "./world";
 
 describe("world", () => {
   it("같은 시드면 같은 지형이 나온다", () => {
@@ -207,5 +207,86 @@ describe("world", () => {
       }
     }
     expect(ore).toBeGreaterThan(200);
+  });
+});
+
+/** 사방이 트인 32칸 짜리 빈 방. 가운데(16,5,16)에서 빛 실험을 한다. */
+function emptyRoom(): World {
+  const world = new World();
+  for (let x = 0; x < 32; x++) {
+    for (let z = 0; z < 32; z++) {
+      world.set(x, 0, z, Block.Stone);
+      world.set(x, 10, z, Block.Stone);
+    }
+  }
+  for (let x = 0; x < 32; x++) for (let y = 1; y < 10; y++) world.set(x, y, 0, Block.Stone);
+  return world;
+}
+
+describe("횃불 빛", () => {
+  it("횃불 자리는 가장 밝고(15), 한 칸마다 1씩 어두워진다", () => {
+    const world = emptyRoom();
+    world.set(16, 5, 16, Block.Torch);
+    expect(world.lightAt(16, 5, 16)).toBe(MAX_LIGHT);
+    expect(world.lightAt(17, 5, 16)).toBe(MAX_LIGHT - 1);
+    expect(world.lightAt(19, 5, 16)).toBe(MAX_LIGHT - 3);
+  });
+
+  /** x=17 한 면 전체를 채운 진짜 벽을 세운다 (한 칸만 막으면 옆이나 위아래로 돌아갈 수 있다). */
+  function buildWall(world: World, atBlock: BlockId): void {
+    for (let y = 0; y < SIZE_Y; y++) for (let z = 0; z < 32; z++) world.set(17, y, z, atBlock);
+  }
+
+  it("돌 벽은 넘지 못하지만 유리는 통과한다", () => {
+    const world = emptyRoom();
+    world.set(16, 5, 16, Block.Torch);
+    buildWall(world, Block.Stone);
+    expect(world.lightAt(18, 5, 16)).toBe(0);
+
+    const glassWorld = emptyRoom();
+    glassWorld.set(16, 5, 16, Block.Torch);
+    buildWall(glassWorld, Block.Glass);
+    expect(glassWorld.lightAt(18, 5, 16)).toBe(MAX_LIGHT - 2);
+  });
+
+  it("횃불을 없애면 빛도 사라진다", () => {
+    const world = emptyRoom();
+    world.set(16, 5, 16, Block.Torch);
+    expect(world.lightAt(17, 5, 16)).toBeGreaterThan(0);
+    world.set(16, 5, 16, Block.Air);
+    expect(world.lightAt(16, 5, 16)).toBe(0);
+    expect(world.lightAt(17, 5, 16)).toBe(0);
+  });
+
+  it("횃불 두 개가 겹치면 더 밝은 쪽 값을 따르고, 하나를 없애도 남은 쪽 빛은 그대로다", () => {
+    const world = emptyRoom();
+    world.set(15, 5, 16, Block.Torch);
+    world.set(19, 5, 16, Block.Torch);
+    const middleBefore = world.lightAt(17, 5, 16);
+    expect(middleBefore).toBe(MAX_LIGHT - 2);
+    world.set(19, 5, 16, Block.Air);
+    expect(world.lightAt(17, 5, 16)).toBe(MAX_LIGHT - 2); // 왼쪽 횃불이 여전히 비춘다
+    expect(world.lightAt(19, 5, 16)).toBe(MAX_LIGHT - 4);
+  });
+
+  it("벽을 나중에 부수면 그 틈으로 빛이 새로 들어온다", () => {
+    const world = emptyRoom();
+    world.set(16, 5, 16, Block.Torch);
+    buildWall(world, Block.Stone);
+    expect(world.lightAt(18, 5, 16)).toBe(0);
+    world.set(17, 5, 16, Block.Air);
+    expect(world.lightAt(17, 5, 16)).toBe(MAX_LIGHT - 1);
+    expect(world.lightAt(18, 5, 16)).toBe(MAX_LIGHT - 2);
+  });
+
+  it("횃불이 하나도 없으면 blockLight를 계산하지 않아 set()이 빛을 바꾸지 않았다고 알려준다", () => {
+    const world = emptyRoom();
+    expect(world.set(5, 5, 5, Block.Dirt)).toBe(false);
+  });
+
+  it("횃불을 놓거나 없애면 set()이 빛이 바뀌었다고 알려준다", () => {
+    const world = emptyRoom();
+    expect(world.set(16, 5, 16, Block.Torch)).toBe(true);
+    expect(world.set(16, 5, 16, Block.Air)).toBe(true);
   });
 });

@@ -23,6 +23,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: "ironclub", name: "대장장이", hint: "철 검을 만들어요" },
   { id: "harvest", name: "첫 수확", hint: "씨앗을 심어 밀을 거둬요" },
   { id: "bread", name: "따끈한 빵", hint: "밀로 빵을 만들어요" },
+  { id: "torch", name: "불 밝히기", hint: "횃불을 만들어요" },
 ];
 
 /** 달성한 도전 과제를 기억한다. 한 번 달성하면 그대로다. */

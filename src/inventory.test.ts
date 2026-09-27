@@ -119,10 +119,20 @@ describe("drops", () => {
     expect(inv.count(Item.Bread)).toBe(1);
   });
 
-  it("가방에서 바로 만드는 것은 판자·막대·제작대뿐이고, 나머지는 제작대가 필요하다", () => {
-    expect(RECIPES.filter((r) => !r.station).map((r) => r.name)).toEqual(["판자", "막대", "제작대"]);
+  it("가방에서 바로 만드는 것은 판자·막대·횃불·제작대뿐이고, 나머지는 제작대가 필요하다", () => {
+    expect(RECIPES.filter((r) => !r.station).map((r) => r.name)).toEqual(["판자", "막대", "횃불", "제작대"]);
     expect(RECIPES.find((r) => r.name === "화로")?.station).toBe("table");
     expect(RECIPES.find((r) => r.name === "철 곡괭이")?.inputs[0][0]).toBe(Item.IronIngot);
+  });
+
+  it("횃불은 막대와 나무로 네 개가 만들어진다", () => {
+    const inv = new Inventory();
+    inv.add(Item.Stick, 1);
+    inv.add(Block.Wood, 1);
+    const torch = RECIPES.find((r) => r.name === "횃불");
+    if (!torch) throw new Error("recipe");
+    expect(inv.craft(torch)).toBe(true);
+    expect(inv.count(Block.Torch)).toBe(4);
   });
 
   it("돼지는 고기, 양은 고기와 양털, 해골은 뼈, 크리퍼는 화약을 떨구고 좀비는 안 떨군다", () => {

@@ -61,6 +61,13 @@ describe("save", () => {
     expect(decodeSave(JSON.stringify({ ...sample, achievements: [1] }))).toBeNull();
   });
 
+  it("배고픔도 저장되고, 없는 예전 저장도 읽힌다", () => {
+    const full: SaveData = { ...sample, hunger: 14 };
+    expect(decodeSave(encodeSave(full))).toEqual(full);
+    expect(decodeSave(encodeSave(sample))?.hunger).toBeUndefined();
+    expect(decodeSave(JSON.stringify({ ...sample, hunger: "많이" }))).toBeNull();
+  });
+
   it("형식이 다르면 null이다", () => {
     expect(decodeSave(JSON.stringify({ ...sample, version: 2 }))).toBeNull();
     expect(decodeSave(JSON.stringify({ ...sample, edits: [[1, 2, 3]] }))).toBeNull();

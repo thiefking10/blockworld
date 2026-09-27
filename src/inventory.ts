@@ -14,6 +14,13 @@ export const FOOD_HEAL: Record<number, number> = {
   [Item.Bread]: 10,
 };
 
+/** 먹을 수 있는 아이템이 채워 주는 배고픔 (0~20 중). */
+export const FOOD_HUNGER: Record<number, number> = {
+  [Item.Meat]: 3,
+  [Item.CookedMeat]: 6,
+  [Item.Bread]: 5,
+};
+
 export interface Recipe {
   name: string;
   /** 이 작업대가 있어야 만들 수 있다. 없으면 가방에서 바로 만든다. */
@@ -30,6 +37,8 @@ export interface Recipe {
 export const RECIPES: Recipe[] = [
   { name: "판자", inputs: [[Block.Wood, 1]], output: [Block.Planks, 4] },
   { name: "막대", inputs: [[Block.Planks, 2]], output: [Item.Stick, 4] },
+  // 원래는 석탄이 있어야 하지만, 아직 석탄이 없어 나무로 불을 붙이는 것으로 단순화했다.
+  { name: "횃불", inputs: [[Item.Stick, 1], [Block.Wood, 1]], output: [Block.Torch, 4] },
   { name: "제작대", inputs: [[Block.Planks, 4]], output: [Block.CraftingTable, 1] },
   { name: "화로", station: "table", inputs: [[Block.Stone, 8]], output: [Block.Furnace, 1] },
   { name: "벽돌", station: "table", inputs: [[Block.Stone, 2]], output: [Block.Brick, 2] },

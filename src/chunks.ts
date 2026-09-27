@@ -40,8 +40,8 @@ export class ChunkedWorldMesh {
     const key = this.key(cx, cz);
     this.unloadChunk(key);
 
-    const { solid, water } = buildChunkMesh(this.world, cx, cz);
-    const created = [solid, water].filter((mesh): mesh is THREE.Mesh => mesh !== null);
+    const { solid, water, lit } = buildChunkMesh(this.world, cx, cz);
+    const created = [solid, water, lit].filter((mesh): mesh is THREE.Mesh => mesh !== null);
     for (const mesh of created) this.group.add(mesh);
     this.meshes.set(key, created);
   }
@@ -80,6 +80,22 @@ export class ChunkedWorldMesh {
   updateBlock(x: number, z: number): void {
     for (const [cx, cz] of affectedChunks(x, z)) {
       if (this.meshes.has(this.key(cx, cz))) this.rebuildChunk(cx, cz);
+    }
+  }
+
+  /**
+   * (x, z) 중심으로 radius칸 안의 구역을 모두 다시 그린다. 횃불을 놓거나 없앴을 때 쓴다.
+   * 빛은 최대 15칸까지 퍼지므로, 구역 하나(16칸)를 넘어 옆 구역까지 밝아지거나 어두워질 수 있다.
+   */
+  updateArea(x: number, z: number, radius: number): void {
+    const cx0 = Math.floor((x - radius) / CHUNK_SIZE);
+    const cx1 = Math.floor((x + radius) / CHUNK_SIZE);
+    const cz0 = Math.floor((z - radius) / CHUNK_SIZE);
+    const cz1 = Math.floor((z + radius) / CHUNK_SIZE);
+    for (let cx = cx0; cx <= cx1; cx++) {
+      for (let cz = cz0; cz <= cz1; cz++) {
+        if (this.meshes.has(this.key(cx, cz))) this.rebuildChunk(cx, cz);
+      }
     }
   }
 }

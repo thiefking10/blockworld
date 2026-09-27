@@ -5,7 +5,8 @@ import { Achievements, ACHIEVEMENTS } from "./achievements";
 import { blockName, canPlaceAt, PLACEABLE_BLOCKS, sanitizeHotbar } from "./blocks";
 import { CropField } from "./crops";
 import { FallTracker, Health, MAX_HEALTH } from "./health";
-import { dropsFor, FOOD_HEAL, Inventory, Item, ITEM_NAMES, mobDrops, RECIPES, type Recipe } from "./inventory";
+import { Hunger, MAX_HUNGER } from "./hunger";
+import { dropsFor, FOOD_HEAL, FOOD_HUNGER, Inventory, Item, ITEM_NAMES, mobDrops, RECIPES, type Recipe } from "./inventory";
 import { Controls } from "./controls";
 import { ambientColor, DAY_LENGTH_SECONDS, daylight, nextMorning, phaseFromSeconds, skyColor } from "./daycycle";
 import { solidMaterial, waterMaterial } from "./mesher";
@@ -68,6 +69,7 @@ let mode: "survival" | "creative" = saved && saved.seed === seed ? (saved.mode ?
 const inventory = new Inventory();
 if (saved && saved.seed === seed && saved.inventory) inventory.load(saved.inventory, saved.durability ?? []);
 const health = new Health();
+const hunger = saved && saved.seed === seed && saved.hunger !== undefined ? Hunger.fromValue(saved.hunger) : new Hunger();
 const fallTracker = new FallTracker();
 const achievements = new Achievements();
 if (saved && saved.seed === seed && saved.achievements) achievements.load(saved.achievements);
@@ -131,6 +133,7 @@ function checkInventoryAchievements(): void {
   if (has(Item.IronClub)) unlockAchievement("ironclub");
   if (has(Item.Grain)) unlockAchievement("harvest");
   if (has(Item.Bread)) unlockAchievement("bread");
+  if (has(Block.Torch)) unlockAchievement("torch");
 }
 
 // 월드를 만드는 동안 화면이 멈추므로, 먼저 "만드는 중" 문구가 그려지게 한 프레임 기다린다.
@@ -336,14 +339,16 @@ function onPress(element: HTMLElement, action: () => void): void {
 function eat(item: number): void {
   const heal = FOOD_HEAL[item];
   if (heal === undefined || inventory.count(item) === 0) return;
-  if (health.hp >= MAX_HEALTH) {
-    showToast("체력이 가득이라 안 먹어도 돼요");
+  if (health.hp >= MAX_HEALTH && hunger.full) {
+    showToast("배가 가득 불러서 더 안 먹어도 돼요");
     return;
   }
   inventory.remove(item);
   health.heal(heal);
+  hunger.eat(FOOD_HUNGER[item] ?? 0);
   audio.playEat();
   refreshHearts();
+  refreshHunger();
   refreshInventoryPanel();
   scheduleSave();
 }
@@ -671,8 +676,14 @@ function attackMob(mob: Mob): void {
   }
 }
 
+/** 빛(횃불)이 바뀌었으면 15칸 너머까지, 아니면 그 자리만 다시 그린다. */
+function refreshMesh(x: number, z: number, lightChanged: boolean): void {
+  if (lightChanged) worldMesh.updateArea(x, z, 16);
+  else worldMesh.updateBlock(x, z);
+}
+
 /** 블록 하나를 없앤다. 서바이벌이면 (얻을 수 있을 때) 나오는 것들을 가방에 넣는다. */
-function removeBlock(x: number, y: number, z: number, harvest = true): void {
+function removeBlock(x: number, y: number, z: number, harvest = true): boolean {
   const broken = world.get(x, y, z);
   if (broken === Block.Furnace) {
     const contents = furnaces.remove(x, y, z, worldSeconds);
@@ -687,9 +698,10 @@ function removeBlock(x: number, y: number, z: number, harvest = true): void {
     }
     refreshHotbar();
   }
-  world.set(x, y, z, Block.Air);
+  const lightChanged = world.set(x, y, z, Block.Air);
   editLog.record(x, y, z, Block.Air);
   crops.remove(x, y, z);
+  return lightChanged;
 }
 
 /** 블록 하나를 다 캐서 없앤다 (소리, 아이템, 도구 닳기 포함). */
@@ -698,12 +710,12 @@ function breakAt(hit: RayHit, tool: ToolDef | null): void {
   audio.playBreak(broken);
   const survival = mode === "survival";
   const harvest = !survival || canHarvest(broken, tool);
-  removeBlock(hit.x, hit.y, hit.z, harvest);
+  const lightChanged = removeBlock(hit.x, hit.y, hit.z, harvest);
   if (survival && !harvest) showToast("맞는 곡괭이가 없어서 아무것도 안 나왔어요");
   if (survival && tool && breakSeconds(broken, null) > 0 && inventory.useTool(tool.id)) toolBroke(tool);
   // 밑이 사라진 식물은 서 있을 곳이 없으니 같이 뽑힌다.
   if (isPlant(world.get(hit.x, hit.y + 1, hit.z))) removeBlock(hit.x, hit.y + 1, hit.z);
-  worldMesh.updateBlock(hit.x, hit.z);
+  refreshMesh(hit.x, hit.z, lightChanged);
   scheduleSave();
 }
 
@@ -784,7 +796,7 @@ function placeBlock(): void {
   if (player.intersectsBlock(px, py, pz) || mobSim.intersectsBlock(px, py, pz)) return;
   const block = hotbarBlocks[selectedSlot];
   if (isPlant(block) && (world.get(px, py, pz) !== Block.Air || !canPlaceAt(block, world.get(px, py - 1, pz)))) {
-    showToast(blockName(block) + "은(는) 풀이나 흙 위에만 심을 수 있어요");
+    showToast(blockName(block) + (block === Block.Torch ? "은(는) 물 밖의 단단한 블록 위에만 세울 수 있어요" : "은(는) 풀이나 흙 위에만 심을 수 있어요"));
     return;
   }
   if (mode === "survival") {
@@ -795,10 +807,10 @@ function placeBlock(): void {
     refreshHotbar();
   }
   audio.playPlace(block);
-  world.set(px, py, pz, block);
+  const lightChanged = world.set(px, py, pz, block);
   editLog.record(px, py, pz, block);
   if (block === Block.Sprout) crops.plant(px, py, pz, worldSeconds);
-  worldMesh.updateBlock(px, pz);
+  refreshMesh(px, pz, lightChanged);
   scheduleSave();
 }
 
@@ -819,6 +831,7 @@ function saveNow(): void {
     furnaces: furnaces.toArray(),
     drops: drops.toArray(),
     achievements: achievements.toArray(),
+    hunger: hunger.value,
   };
   writeStorage(saveKey(seed), encodeSave(data));
 }
@@ -866,6 +879,22 @@ function refreshHearts(): void {
 }
 refreshHearts();
 
+const hungerElement = document.getElementById("hunger") as HTMLElement;
+const hungerElements = Array.from({ length: MAX_HUNGER / 2 }, () => {
+  const drumstick = document.createElement("span");
+  drumstick.textContent = "🍗";
+  hungerElement.appendChild(drumstick);
+  return drumstick;
+});
+
+function refreshHunger(): void {
+  hungerElement.style.display = mode === "creative" ? "none" : "";
+  hungerElements.forEach((drumstick, i) => {
+    drumstick.className = hunger.value >= (i + 1) * 2 ? "full" : hunger.value === i * 2 + 1 ? "half" : "";
+  });
+}
+refreshHunger();
+
 /** 플레이어가 피해를 입는다. 쓰러지면 처음 자리에서 다시 시작한다. */
 function hurt(amount: number): void {
   // 창작 모드에서는 다치지 않는다 (낙하, 좀비 모두).
@@ -886,8 +915,10 @@ function respawn(): void {
   player.flying = false;
   fallTracker.reset();
   health.reset();
+  hunger.eat(MAX_HUNGER);
   mobSim.clearHostile();
   refreshHearts();
+  refreshHunger();
   showToast("쓰러졌어요... 처음 자리에서 다시 일어났어요", 3000);
 }
 mobSim.populate(world, player.x, player.z, 10, Math.random);
@@ -981,7 +1012,7 @@ function updateEnvironment(): void {
 
 // 개발용: 주소에 ?debug 를 붙이면 콘솔에서 __vox 로 월드와 플레이어를 만질 수 있다.
 if (new URLSearchParams(window.location.search).has("debug")) {
-  (window as unknown as { __vox: unknown }).__vox = { world, player, camera, scene, audio, generateMs, worldMesh, mobSim, health, applyQuality, crops, achievements, inventory, hurt, setMode: (m: "survival" | "creative") => { mode = m; refreshHotbar(); }, drops, furnaces, controls, currentTarget, getMode: () => mode, getMining: () => ({ mining, miningProgress }), stepMining: updateMining, stepDrops: (dt: number) => drops.update(dt, world, player.x, player.y, player.z, () => Infinity), dropRenderer, renderNow: () => { camera.position.set(player.x, player.y + EYE_HEIGHT, player.z); camera.rotation.set(player.pitch, player.yaw, 0); dropRenderer.update(drops.drops, worldSeconds, solidMaterial.color); mobRenderer.update(mobSim.mobs, solidMaterial.color, worldSeconds); renderer.render(scene, camera); }, mobRenderer, spawnArrow, spawnExplosion };
+  (window as unknown as { __vox: unknown }).__vox = { world, player, camera, scene, audio, generateMs, worldMesh, mobSim, health, applyQuality, crops, achievements, inventory, hurt, setMode: (m: "survival" | "creative") => { mode = m; refreshHotbar(); }, drops, furnaces, controls, currentTarget, getMode: () => mode, getMining: () => ({ mining, miningProgress }), stepMining: updateMining, stepDrops: (dt: number) => drops.update(dt, world, player.x, player.y, player.z, () => Infinity), dropRenderer, renderNow: () => { camera.position.set(player.x, player.y + EYE_HEIGHT, player.z); camera.rotation.set(player.pitch, player.yaw, 0); dropRenderer.update(drops.drops, worldSeconds, solidMaterial.color); mobRenderer.update(mobSim.mobs, solidMaterial.color, worldSeconds); renderer.render(scene, camera); }, mobRenderer, spawnArrow, spawnExplosion, hunger, refreshHunger, placeBlock, breakAt, currentTargetPlace: () => currentTarget(), Block, hotbarBlocks, selectSlot, selectedSlotGet: () => selectedSlot, solidMaterial, waterMaterial };
 }
 
 const achievementPanel = document.getElementById("achievement-panel") as HTMLElement;
@@ -1108,6 +1139,8 @@ function updateMovementSounds(moved: number): void {
 }
 
 let shownHp = health.hp;
+let shownHunger = hunger.value;
+let shownHungerMode = mode;
 let cropTimer = 0;
 let last = performance.now();
 let frames = 0;
@@ -1123,7 +1156,8 @@ function frame(now: number): void {
   const beforeX = player.x;
   const beforeZ = player.z;
   player.update(dt, controls.currentInput());
-  updateMovementSounds(Math.hypot(player.x - beforeX, player.z - beforeZ));
+  const moved = Math.hypot(player.x - beforeX, player.z - beforeZ);
+  updateMovementSounds(moved);
   updateMining(dt);
   worldMesh.update(player.x, player.z);
   cropTimer += dt;
@@ -1143,7 +1177,16 @@ function frame(now: number): void {
   if (player.flying) fallTracker.reset();
   const fallDamage = fallTracker.update(player.y, player.onGround, player.isInWater());
   if (fallDamage > 0) hurt(fallDamage);
-  health.update(dt);
+  if (mode === "survival") {
+    hunger.update(dt, moved);
+    if (hunger.starveTick(dt, health.hp)) {
+      health.hp = Math.max(1, health.hp - 1);
+      audio.playHurt();
+      damageFlash.classList.add("on");
+      window.setTimeout(() => damageFlash.classList.remove("on"), 60);
+    }
+  }
+  if (mode !== "survival" || !hunger.empty) health.update(dt);
   const mobResult = mobSim.update(dt, world, Math.random, { x: player.x, y: player.y, z: player.z }, dayFactor < 0.3, mode !== "creative");
   for (const call of mobResult.sounds) {
     audio.playMob(call.kind, 1 - Math.hypot(call.x - player.x, call.z - player.z) / 28);
@@ -1171,6 +1214,11 @@ function frame(now: number): void {
   if (health.hp !== shownHp) {
     shownHp = health.hp;
     refreshHearts();
+  }
+  if (hunger.value !== shownHunger || mode !== shownHungerMode) {
+    shownHunger = hunger.value;
+    shownHungerMode = mode;
+    refreshHunger();
   }
   mobRenderer.update(mobSim.mobs, solidMaterial.color, worldSeconds);
   if (mode === "survival") {

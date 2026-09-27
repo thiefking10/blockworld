@@ -1,10 +1,17 @@
 import * as THREE from "three";
 import { createAtlasTexture, tileForFace, tileUV } from "./atlas";
 import { CHUNK_SIZE } from "./chunkMath";
-import { Block, BlockId, SIZE_Y, World, isPlant, occludes } from "./world";
+import { Block, BlockId, MAX_LIGHT, SIZE_Y, World, isPlant, occludes } from "./world";
 
 /** 하늘이 안 보이는 곳(동굴 안, 지붕 밑)의 밝기 */
 const DARK_LIGHT = 0.45;
+
+/** 하늘빛과 횃불빛 중 더 밝은 쪽을 0~1로 돌려준다. */
+function faceBrightness(world: World, x: number, y: number, z: number): number {
+  const skyBright = world.isSkyLit(x, y, z) ? 1 : DARK_LIGHT;
+  const torchBright = world.lightAt(x, y, z) / MAX_LIGHT;
+  return Math.max(skyBright, torchBright);
+}
 /** 물 윗면을 살짝 낮춰서 물결 높이처럼 보이게 한다 */
 const WATER_TOP = 0.88;
 
@@ -38,6 +45,8 @@ export const waterMaterial = new THREE.MeshBasicMaterial({
   opacity: 0.6,
   depthWrite: false,
 });
+/** 횃불빛이 닿는 자리에 쓰는 재질. 색이 낮밤에 따라 바뀌지 않아서, 밤에도 횃불 주변은 계속 밝다. */
+export const litMaterial = new THREE.MeshBasicMaterial({ vertexColors: true, map: atlas, alphaTest: 0.5 });
 
 /** 식물은 X 모양으로 엇갈린 두 장의 판을 앞뒤로 그린다. */
 const PLANT_QUADS: number[][][] = [
@@ -87,15 +96,19 @@ class MeshData {
 export interface ChunkMeshes {
   solid: THREE.Mesh | null;
   water: THREE.Mesh | null;
+  /** 횃불빛이 닿아 낮밤과 상관없이 밝게 그려야 하는 면들 */
+  lit: THREE.Mesh | null;
 }
 
 /**
  * 구역(chunk) 하나의 눈에 보이는 면만 모아 메쉬로 만든다.
  * 단단한 블록은 공기/물과 맞닿은 면, 물은 공기와 맞닿은 면만 그린다.
+ * 횃불빛이 닿는 면은 낮밤 색이 안 타는 별도 메쉬(lit)로 나뉜다.
  */
 export function buildChunkMesh(world: World, chunkX: number, chunkZ: number): ChunkMeshes {
   const solid = new MeshData();
   const water = new MeshData();
+  const lit = new MeshData();
 
   const startX = chunkX * CHUNK_SIZE;
   const startZ = chunkZ * CHUNK_SIZE;
@@ -120,8 +133,10 @@ export function buildChunkMesh(world: World, chunkX: number, chunkZ: number): Ch
         }
 
         if (isPlant(block)) {
-          const brightness = (0.95 + noise) * (world.isSkyLit(x, y, z) ? 1 : DARK_LIGHT);
-          for (const corners of PLANT_QUADS) solid.addQuad(corners, x, y, z, brightness, tileForFace(block, 0), false);
+          const torchLevel = world.lightAt(x, y, z);
+          const brightness = (0.95 + noise) * faceBrightness(world, x, y, z);
+          const target = torchLevel > 0 ? lit : solid;
+          for (const corners of PLANT_QUADS) target.addQuad(corners, x, y, z, brightness, tileForFace(block, 0), false);
           continue;
         }
 
@@ -134,8 +149,14 @@ export function buildChunkMesh(world: World, chunkX: number, chunkZ: number): Ch
           if (occludes(neighbor)) continue;
           if (block === Block.Glass && neighbor === Block.Glass) continue;
 
-          const light = world.isSkyLit(nx, ny, nz) ? 1 : DARK_LIGHT;
-          solid.addQuad(face.corners, x, y, z, (face.shade + noise) * light, tileForFace(block, dy), dy !== 0);
+          const torchLevel = world.lightAt(nx, ny, nz);
+          if (torchLevel > 0) {
+            const brightness = (face.shade + noise) * faceBrightness(world, nx, ny, nz);
+            lit.addQuad(face.corners, x, y, z, brightness, tileForFace(block, dy), dy !== 0);
+          } else {
+            const light = world.isSkyLit(nx, ny, nz) ? 1 : DARK_LIGHT;
+            solid.addQuad(face.corners, x, y, z, (face.shade + noise) * light, tileForFace(block, dy), dy !== 0);
+          }
         }
       }
     }
@@ -143,5 +164,5 @@ export function buildChunkMesh(world: World, chunkX: number, chunkZ: number): Ch
 
   const waterMesh = water.toMesh(waterMaterial);
   if (waterMesh) waterMesh.renderOrder = 1;
-  return { solid: solid.toMesh(solidMaterial), water: waterMesh };
+  return { solid: solid.toMesh(solidMaterial), water: waterMesh, lit: lit.toMesh(litMaterial) };
 }

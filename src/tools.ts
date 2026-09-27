@@ -56,6 +56,7 @@ export const HARDNESS: Record<number, number> = {
   [Block.YellowFlower]: 0,
   [Block.Sprout]: 0,
   [Block.Wheat]: 0,
+  [Block.Torch]: 0,
 };
 
 /** 블록마다 빨리 캐지는 도구 */

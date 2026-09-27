@@ -27,9 +27,10 @@ export const TILE = {
   CraftSide: 22,
   FurnaceFront: 23,
   FurnaceTop: 24,
+  Torch: 25,
 } as const;
 
-export const ATLAS_COLS = 5;
+export const ATLAS_COLS = 6;
 const TILE_PIXELS = 16;
 /** 타일 가장자리 색이 옆 타일에서 번지지 않게 살짝 안쪽만 쓴다. */
 const EDGE = 0.002;
@@ -77,6 +78,8 @@ export function tileForFace(block: number, dirY: number): number {
       return dirY === 1 ? TILE.CraftTop : TILE.CraftSide;
     case Block.Furnace:
       return dirY !== 0 ? TILE.FurnaceTop : TILE.FurnaceFront;
+    case Block.Torch:
+      return TILE.Torch;
     default:
       return TILE.Stone;
   }
@@ -321,6 +324,32 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: number): void {
           const edge = x === 0 || y === 0 || x === 15 || y === 15;
           px(x, y, shade(edge ? [28, 92, 40] : [70, 156, 74], (random() - 0.5) * 14));
         }
+      }
+      break;
+    }
+    case TILE.Torch: {
+      // 배경은 그대로 비워 둬서(투명) 십자 모양으로 보이게 한다.
+      for (let y = 6; y < 15; y++) {
+        px(7, y, shade([120, 84, 52], (random() - 0.5) * 20));
+        px(8, y, shade([100, 68, 40], (random() - 0.5) * 20));
+      }
+      for (const [x, y, color] of [
+        [7, 2, [255, 224, 120]],
+        [8, 2, [255, 224, 120]],
+        [6, 3, [255, 190, 70]],
+        [7, 3, [255, 240, 160]],
+        [8, 3, [255, 240, 160]],
+        [9, 3, [255, 190, 70]],
+        [6, 4, [230, 130, 30]],
+        [7, 4, [255, 170, 50]],
+        [8, 4, [255, 170, 50]],
+        [9, 4, [230, 130, 30]],
+        [6, 5, [200, 90, 20]],
+        [7, 5, [230, 140, 40]],
+        [8, 5, [230, 140, 40]],
+        [9, 5, [200, 90, 20]],
+      ] as [number, number, RGB][]) {
+        px(x, y, shade(color, (random() - 0.5) * 14));
       }
       break;
     }

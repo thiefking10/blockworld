@@ -26,6 +26,8 @@ export interface SaveData {
   drops?: [number, number, number, number, number, number][];
   /** 달성한 도전 과제 번호. */
   achievements?: string[];
+  /** 배고픔 (0~20). 없으면(예전 저장) 가득 찬 채로 이어간다. */
+  hunger?: number;
 }
 
 /** 플레이어가 부수거나 놓은 블록을 기록한다. 같은 자리는 마지막 값만 남는다. */
@@ -89,6 +91,7 @@ export function decodeSave(text: string | null): SaveData | null {
       return null;
     if (data.crops !== undefined && !(Array.isArray(data.crops) && data.crops.every((e: unknown) => Array.isArray(e) && e.length === 4 && isFiniteNumbers(e)))) return null;
     if (data.achievements !== undefined && !(Array.isArray(data.achievements) && data.achievements.every((a: unknown) => typeof a === "string"))) return null;
+    if (data.hunger !== undefined && !Number.isFinite(data.hunger)) return null;
     if (!data.edits.every((e: unknown) => Array.isArray(e) && e.length === 4 && isFiniteNumbers(e))) return null;
     return data as SaveData;
   } catch {
