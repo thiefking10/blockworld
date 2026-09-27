@@ -143,6 +143,51 @@
       #jump-button.active {
         background: rgba(255, 255, 255, 0.45);
       }
+      #use-button {
+        position: absolute;
+        right: 222px;
+        bottom: 78px;
+        width: 68px;
+        height: 68px;
+        border-radius: 50%;
+        border: 2px solid rgba(255, 255, 255, 0.55);
+        background: rgba(230, 180, 60, 0.5);
+        color: #fff;
+        font-size: 15px;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        pointer-events: auto;
+      }
+      #use-button.show {
+        display: flex;
+      }
+      #use-button.active {
+        filter: brightness(1.6);
+      }
+      #furnace-body {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        min-width: 320px;
+      }
+      .furnace-bar {
+        height: 12px;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.15);
+        overflow: hidden;
+      }
+      .furnace-bar > div {
+        height: 100%;
+        background: #ff9f1c;
+      }
+      .furnace-line {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+      }
       #descend-button {
         position: absolute;
         right: 130px;
@@ -251,7 +296,9 @@
       }
       #inventory-panel,
       #achievement-panel,
-      #help-panel {
+      #help-panel,
+      #station-panel,
+      #furnace-panel {
         position: absolute;
         left: 50%;
         top: 50%;
@@ -272,7 +319,9 @@
       }
       #inventory-panel.open,
       #achievement-panel.open,
-      #help-panel.open {
+      #help-panel.open,
+      #station-panel.open,
+      #furnace-panel.open {
         display: flex;
       }
       #inventory-title {
@@ -323,7 +372,8 @@
         border-color: #ffb27a;
         background: rgba(255, 150, 80, 0.15);
       }
-      #craft-list {
+      #craft-list,
+      #station-list {
         display: grid;
         grid-template-columns: repeat(2, 160px);
         gap: 6px;
@@ -604,6 +654,7 @@
       <div id="descend-button">내려가기</div>
       <div id="break-button">부수기</div>
       <div id="place-button">놓기</div>
+      <div id="use-button">사용</div>
       <div id="hotbar"></div>
       <div id="inventory-button">가방</div>
       <div id="help-panel">
@@ -611,6 +662,7 @@
           <b>움직이기</b> 화면 왼쪽을 누른 채 끌면 걷고, 오른쪽을 끌면 둘러봐요. 한 칸 턱은 저절로 올라가요.<br />
           <b>부수기 / 놓기</b> 십자 표시가 가리키는 블록은 <b>부수기를 꾹 누르고 있으면</b> 조금씩 부서져요. 곡괭이·도끼·삽이 있으면 알아서 골라 써서 빨라지고, 돌은 곡괭이로 캐야 나와요. 놓기는 아래 칸에서 고른 블록을 놓아요.<br />
           <b>비행</b> 창작 방식에서 점프를 두 번 빠르게 누르면 날아요. 점프는 위로, 내려가기는 아래로, 땅에 닿으면 끝나요. 컴퓨터는 Shift로 내려가요.<br />
+          <b>제작대 / 화로</b> 통나무 → 판자 → 제작대를 만들어 놓고, 가리킨 채 <b>사용</b> 버튼(컴퓨터는 F)을 누르면 도구를 만들 수 있어요. 화로에 철광석·모래·고기와 연료(통나무, 판자, 막대)를 넣으면 구워요.<br />
           <b>가방</b> 모은 블록으로 판자, 막대, 곡괭이, 검, 침대, 빵 같은 것을 만들어요. 도구는 쓸수록 닳아요. 고기와 빵은 눌러서 먹어요.<br />
           <b>밤</b>에는 좀비가 나와요. 검을 만들어 싸우거나, 침대를 만들어 밤을 건너뛰어요.<br />
           <b>농사</b> 잔디를 부수면 가끔 밀 씨앗이 나와요. 풀이나 흙 위에 심으면 자라서 밀이 돼요.<br />
@@ -618,6 +670,16 @@
           <b>도전</b> 버튼에서 해 볼 만한 일을 확인해요. 컴퓨터에서는 WASD, 스페이스, Q(부수기), E(놓기), 1~6, B(가방)를 써요.
         </div>
         <div id="help-close" class="close-button">알겠어요</div>
+      </div>
+      <div id="station-panel">
+        <div class="section-title">제작대 (초록 테두리는 만들 수 있어요)</div>
+        <div id="station-list"></div>
+        <div id="station-close" class="close-button">닫기</div>
+      </div>
+      <div id="furnace-panel">
+        <div class="section-title">화로 (재료와 연료를 넣으면 알아서 구워요)</div>
+        <div id="furnace-body"></div>
+        <div id="furnace-close" class="close-button">닫기</div>
       </div>
       <div id="achievement-panel">
         <div id="achievement-title"></div>

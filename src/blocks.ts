@@ -23,6 +23,8 @@ export const PLACEABLE_BLOCKS: PlaceableBlock[] = [
   { block: Block.Flower, name: "붉은 꽃" },
   { block: Block.YellowFlower, name: "노란 꽃" },
   { block: Block.Sprout, name: "밀 씨앗" },
+  { block: Block.CraftingTable, name: "제작대" },
+  { block: Block.Furnace, name: "화로" },
 ];
 
 /** 이 블록을 놓으려는 칸 바로 아래 블록이 (below) 받쳐 줄 수 있는지. 식물은 풀이나 흙 위에만 심는다. */

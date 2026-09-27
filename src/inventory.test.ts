@@ -109,20 +109,20 @@ describe("drops", () => {
     expect(dropsFor(Block.Sprout, () => 0.5)).toEqual([[Block.Sprout, 1]]);
   });
 
-  it("고기는 구워서 회복이 커지고, 밀 3개는 빵이 된다", () => {
+  it("구운 고기는 회복이 더 크고, 밀 3개는 빵이 된다", () => {
     expect(FOOD_HEAL[Item.CookedMeat]).toBeGreaterThan(FOOD_HEAL[Item.Meat]);
     const inv = new Inventory();
-    inv.add(Item.Meat, 1);
-    inv.add(Block.Wood, 1);
     inv.add(Item.Grain, 3);
-    const cook = RECIPES.find((r) => r.name === "구운 고기");
     const bread = RECIPES.find((r) => r.name === "빵");
-    if (!cook || !bread) throw new Error("recipe");
-    expect(inv.craft(cook)).toBe(true);
+    if (!bread) throw new Error("recipe");
     expect(inv.craft(bread)).toBe(true);
-    expect(inv.count(Item.CookedMeat)).toBe(1);
     expect(inv.count(Item.Bread)).toBe(1);
-    expect(inv.count(Item.Meat)).toBe(0);
+  });
+
+  it("가방에서 바로 만드는 것은 판자·막대·제작대뿐이고, 나머지는 제작대가 필요하다", () => {
+    expect(RECIPES.filter((r) => !r.station).map((r) => r.name)).toEqual(["판자", "막대", "제작대"]);
+    expect(RECIPES.find((r) => r.name === "화로")?.station).toBe("table");
+    expect(RECIPES.find((r) => r.name === "철 곡괭이")?.inputs[0][0]).toBe(Item.IronIngot);
   });
 
   it("돼지는 고기, 양은 고기와 양털을 떨구고 좀비는 안 떨군다", () => {
@@ -133,7 +133,7 @@ describe("drops", () => {
 
   it("철광석은 철 검이 되고 가장 센 무기로 쓰인다", () => {
     const inv = new Inventory();
-    inv.add(Block.IronOre, 2);
+    inv.add(Item.IronIngot, 2);
     inv.add(Item.Stick, 1);
     const iron = RECIPES.find((r) => r.name === "철 검");
     if (!iron) throw new Error("recipe");

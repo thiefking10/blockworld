@@ -9,6 +9,7 @@ export function materialOf(block: number): Material {
     case Block.Stone:
     case Block.Brick:
     case Block.IronOre:
+    case Block.Furnace:
       return "stone";
     case Block.Glass:
       return "glass";
@@ -19,6 +20,7 @@ export function materialOf(block: number): Material {
       return "sand";
     case Block.Wood:
     case Block.Planks:
+    case Block.CraftingTable:
       return "wood";
     case Block.Leaves:
     case Block.Cactus:

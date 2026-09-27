@@ -16,34 +16,37 @@ export const FOOD_HEAL: Record<number, number> = {
 
 export interface Recipe {
   name: string;
+  /** 이 작업대가 있어야 만들 수 있다. 없으면 가방에서 바로 만든다. */
+  station?: "table";
   inputs: [number, number][];
   output: [number, number];
 }
 
 /**
- * 만들 수 있는 것들. 철 도구는 아직 화로가 없어서 철광석을 그대로 쓴다.
- * (도구와 검의 종류·재질은 tools.ts, 아이템 번호는 items.ts)
+ * 만들 수 있는 것들. 가방에서는 판자, 막대, 제작대만 바로 만들고 (마인크래프트의 2×2),
+ * 나머지는 제작대를 가리키고 "사용"을 눌러서 만든다 (3×3).
+ * 유리, 구운 고기, 철 주괴는 화로에서 굽는다 (furnace.ts).
  */
 export const RECIPES: Recipe[] = [
   { name: "판자", inputs: [[Block.Wood, 1]], output: [Block.Planks, 4] },
   { name: "막대", inputs: [[Block.Planks, 2]], output: [Item.Stick, 4] },
-  { name: "유리", inputs: [[Block.Sand, 2]], output: [Block.Glass, 2] },
-  { name: "벽돌", inputs: [[Block.Stone, 2]], output: [Block.Brick, 2] },
-  { name: "나무 곡괭이", inputs: [[Block.Planks, 3], [Item.Stick, 2]], output: [Item.WoodPickaxe, 1] },
-  { name: "나무 도끼", inputs: [[Block.Planks, 3], [Item.Stick, 2]], output: [Item.WoodAxe, 1] },
-  { name: "나무 삽", inputs: [[Block.Planks, 1], [Item.Stick, 2]], output: [Item.WoodShovel, 1] },
-  { name: "나무 검", inputs: [[Block.Planks, 2], [Item.Stick, 1]], output: [Item.WoodClub, 1] },
-  { name: "돌 곡괭이", inputs: [[Block.Stone, 3], [Item.Stick, 2]], output: [Item.StonePickaxe, 1] },
-  { name: "돌 도끼", inputs: [[Block.Stone, 3], [Item.Stick, 2]], output: [Item.StoneAxe, 1] },
-  { name: "돌 삽", inputs: [[Block.Stone, 1], [Item.Stick, 2]], output: [Item.StoneShovel, 1] },
-  { name: "돌 검", inputs: [[Block.Stone, 2], [Item.Stick, 1]], output: [Item.StoneClub, 1] },
-  { name: "철 곡괭이", inputs: [[Block.IronOre, 3], [Item.Stick, 2]], output: [Item.IronPickaxe, 1] },
-  { name: "철 도끼", inputs: [[Block.IronOre, 3], [Item.Stick, 2]], output: [Item.IronAxe, 1] },
-  { name: "철 삽", inputs: [[Block.IronOre, 1], [Item.Stick, 2]], output: [Item.IronShovel, 1] },
-  { name: "철 검", inputs: [[Block.IronOre, 2], [Item.Stick, 1]], output: [Item.IronClub, 1] },
-  { name: "침대", inputs: [[Block.Wool, 3], [Block.Planks, 3]], output: [Item.Bed, 1] },
-  { name: "구운 고기", inputs: [[Item.Meat, 1], [Block.Wood, 1]], output: [Item.CookedMeat, 1] },
-  { name: "빵", inputs: [[Item.Grain, 3]], output: [Item.Bread, 1] },
+  { name: "제작대", inputs: [[Block.Planks, 4]], output: [Block.CraftingTable, 1] },
+  { name: "화로", station: "table", inputs: [[Block.Stone, 8]], output: [Block.Furnace, 1] },
+  { name: "벽돌", station: "table", inputs: [[Block.Stone, 2]], output: [Block.Brick, 2] },
+  { name: "나무 곡괭이", station: "table", inputs: [[Block.Planks, 3], [Item.Stick, 2]], output: [Item.WoodPickaxe, 1] },
+  { name: "나무 도끼", station: "table", inputs: [[Block.Planks, 3], [Item.Stick, 2]], output: [Item.WoodAxe, 1] },
+  { name: "나무 삽", station: "table", inputs: [[Block.Planks, 1], [Item.Stick, 2]], output: [Item.WoodShovel, 1] },
+  { name: "나무 검", station: "table", inputs: [[Block.Planks, 2], [Item.Stick, 1]], output: [Item.WoodClub, 1] },
+  { name: "돌 곡괭이", station: "table", inputs: [[Block.Stone, 3], [Item.Stick, 2]], output: [Item.StonePickaxe, 1] },
+  { name: "돌 도끼", station: "table", inputs: [[Block.Stone, 3], [Item.Stick, 2]], output: [Item.StoneAxe, 1] },
+  { name: "돌 삽", station: "table", inputs: [[Block.Stone, 1], [Item.Stick, 2]], output: [Item.StoneShovel, 1] },
+  { name: "돌 검", station: "table", inputs: [[Block.Stone, 2], [Item.Stick, 1]], output: [Item.StoneClub, 1] },
+  { name: "철 곡괭이", station: "table", inputs: [[Item.IronIngot, 3], [Item.Stick, 2]], output: [Item.IronPickaxe, 1] },
+  { name: "철 도끼", station: "table", inputs: [[Item.IronIngot, 3], [Item.Stick, 2]], output: [Item.IronAxe, 1] },
+  { name: "철 삽", station: "table", inputs: [[Item.IronIngot, 1], [Item.Stick, 2]], output: [Item.IronShovel, 1] },
+  { name: "철 검", station: "table", inputs: [[Item.IronIngot, 2], [Item.Stick, 1]], output: [Item.IronClub, 1] },
+  { name: "침대", station: "table", inputs: [[Block.Wool, 3], [Block.Planks, 3]], output: [Item.Bed, 1] },
+  { name: "빵", station: "table", inputs: [[Item.Grain, 3]], output: [Item.Bread, 1] },
 ];
 
 /**

@@ -18,6 +18,8 @@ export const Block = {
   YellowFlower: 16,
   Sprout: 17,
   Wheat: 18,
+  CraftingTable: 19,
+  Furnace: 20,
 } as const;
 export type BlockId = (typeof Block)[keyof typeof Block];
 

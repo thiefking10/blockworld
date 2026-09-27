@@ -23,6 +23,10 @@ export const TILE = {
   YellowFlower: 18,
   Sprout: 19,
   Wheat: 20,
+  CraftTop: 21,
+  CraftSide: 22,
+  FurnaceFront: 23,
+  FurnaceTop: 24,
 } as const;
 
 export const ATLAS_COLS = 5;
@@ -69,6 +73,10 @@ export function tileForFace(block: number, dirY: number): number {
       return TILE.Sprout;
     case Block.Wheat:
       return TILE.Wheat;
+    case Block.CraftingTable:
+      return dirY === 1 ? TILE.CraftTop : TILE.CraftSide;
+    case Block.Furnace:
+      return dirY !== 0 ? TILE.FurnaceTop : TILE.FurnaceFront;
     default:
       return TILE.Stone;
   }
@@ -272,6 +280,39 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: number): void {
           px(x, y, shade([236, 200, 86], (random() - 0.5) * 20));
         }
       }
+      break;
+    }
+    case TILE.CraftTop: {
+      for (let y = 0; y < TILE_PIXELS; y++) {
+        for (let x = 0; x < TILE_PIXELS; x++) {
+          const line = x % 5 === 0 || y % 5 === 0 || x === 15 || y === 15;
+          px(x, y, line ? shade([96, 64, 34], (random() - 0.5) * 10) : shade([186, 142, 84], (random() - 0.5) * 16));
+        }
+      }
+      break;
+    }
+    case TILE.CraftSide: {
+      for (let y = 0; y < TILE_PIXELS; y++) {
+        for (let x = 0; x < TILE_PIXELS; x++) {
+          const seam = y % 4 === 3 ? -30 : 0;
+          px(x, y, shade([176, 132, 76], seam + (random() - 0.5) * 16));
+        }
+      }
+      for (let x = 3; x < 13; x++) for (const y of [4, 5]) px(x, y, shade([150, 150, 158], (random() - 0.5) * 12));
+      for (let y = 6; y < 12; y++) px(4, y, shade([90, 60, 30], 6));
+      for (let y = 6; y < 12; y++) px(11, y, shade([90, 60, 30], 6));
+      break;
+    }
+    case TILE.FurnaceFront: {
+      noiseFill(ctx, ox, oy, [128, 128, 132], 26, random);
+      for (let y = 4; y < 11; y++) for (let x = 4; x < 12; x++) px(x, y, y >= 9 ? shade([255, 140, 30], (random() - 0.5) * 40) : "rgb(28,28,30)");
+      for (let x = 3; x < 13; x++) px(x, 3, shade([90, 90, 96], 4));
+      for (let x = 4; x < 12; x++) px(x, 12, shade([90, 90, 96], 4));
+      break;
+    }
+    case TILE.FurnaceTop: {
+      noiseFill(ctx, ox, oy, [116, 116, 120], 24, random);
+      for (let y = 3; y < 13; y++) for (let x = 3; x < 13; x++) if (x === 3 || x === 12 || y === 3 || y === 12) px(x, y, shade([70, 70, 76], 4));
       break;
     }
     case TILE.CactusTop: {

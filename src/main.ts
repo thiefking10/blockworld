@@ -5,12 +5,13 @@ import { Achievements, ACHIEVEMENTS } from "./achievements";
 import { blockName, canPlaceAt, PLACEABLE_BLOCKS, sanitizeHotbar } from "./blocks";
 import { CropField } from "./crops";
 import { FallTracker, Health, MAX_HEALTH } from "./health";
-import { dropsFor, FOOD_HEAL, Inventory, Item, ITEM_NAMES, mobDrops, RECIPES } from "./inventory";
+import { dropsFor, FOOD_HEAL, Inventory, Item, ITEM_NAMES, mobDrops, RECIPES, type Recipe } from "./inventory";
 import { Controls } from "./controls";
 import { ambientColor, DAY_LENGTH_SECONDS, daylight, nextMorning, phaseFromSeconds, skyColor } from "./daycycle";
 import { solidMaterial, waterMaterial } from "./mesher";
 import { ChunkedWorldMesh } from "./chunks";
 import { MobRenderer } from "./mobRender";
+import { FUELS, FurnaceField, SMELTS } from "./furnace";
 import { MOB_SPECS, MobSimulation, raycastMobs, type Mob } from "./mobs";
 import { bestSword, bestTool, breakSeconds, canHarvest, SWORD_DAMAGE, TOOL_BY_ID, toolDurability, type ToolDef } from "./tools";
 import { AdaptiveQuality, fogFar, QUALITY_LEVELS } from "./quality";
@@ -70,6 +71,8 @@ const achievements = new Achievements();
 if (saved && saved.seed === seed && saved.achievements) achievements.load(saved.achievements);
 const crops = new CropField();
 if (saved && saved.seed === seed && saved.crops) crops.load(saved.crops);
+const furnaces = new FurnaceField();
+if (saved && saved.seed === seed && saved.furnaces) furnaces.load(saved.furnaces);
 
 let resetting = false;
 let saveTimer: number | undefined;
@@ -113,6 +116,8 @@ function checkInventoryAchievements(): void {
   const has = (item: number): boolean => inventory.count(item) > 0;
   if (has(Block.Wood)) unlockAchievement("wood");
   if (has(Block.Planks)) unlockAchievement("planks");
+  if (has(Block.CraftingTable)) unlockAchievement("table");
+  if (has(Item.IronIngot)) unlockAchievement("ingot");
   if (has(Item.WoodClub) || has(Item.StoneClub) || has(Item.IronClub)) unlockAchievement("club");
   if (has(Item.WoodPickaxe) || has(Item.StonePickaxe) || has(Item.IronPickaxe)) unlockAchievement("pickaxe");
   if (has(Item.Meat) || has(Item.CookedMeat)) unlockAchievement("meat");
@@ -335,8 +340,176 @@ function craftRecipe(index: number): void {
   audio.playCraft();
   showToast(recipe.name + " ×" + recipe.output[1] + " 만들었어요");
   refreshHotbar();
-  refreshInventoryPanel();
+  refreshOpenPanels();
   scheduleSave();
+}
+
+const stationPanel = document.getElementById("station-panel") as HTMLElement;
+const stationList = document.getElementById("station-list") as HTMLElement;
+const furnacePanel = document.getElementById("furnace-panel") as HTMLElement;
+const furnaceBody = document.getElementById("furnace-body") as HTMLElement;
+let openFurnace: { x: number; y: number; z: number } | null = null;
+let furnaceTimer: number | undefined;
+
+/** 제작 목록을 그린다. 만들 수 있는 것이 위로 온다. */
+function renderRecipeRows(container: HTMLElement, filter: (recipe: Recipe) => boolean): void {
+  container.replaceChildren();
+  const order = RECIPES.map((recipe, index) => ({ recipe, index }))
+    .filter(({ recipe }) => filter(recipe))
+    .sort((a, b) => Number(inventory.canCraft(b.recipe)) - Number(inventory.canCraft(a.recipe)));
+  order.forEach(({ recipe, index }) => {
+    const ready = inventory.canCraft(recipe);
+    const row = document.createElement("div");
+    row.className = "craft-row " + (ready ? "ready" : "locked");
+    row.textContent = recipe.name + " ×" + recipe.output[1];
+    const need = document.createElement("small");
+    need.textContent = "재료: " + recipe.inputs.map(([item, amount]) => itemLabel(item) + " " + inventory.count(item) + "/" + amount).join(", ");
+    row.append(need);
+    onPress(row, () => craftRecipe(index));
+    container.appendChild(row);
+  });
+}
+
+function closeStations(): void {
+  stationPanel.classList.remove("open");
+  furnacePanel.classList.remove("open");
+  openFurnace = null;
+  window.clearInterval(furnaceTimer);
+}
+
+function refreshOpenPanels(): void {
+  if (inventoryPanel.classList.contains("open")) refreshInventoryPanel();
+  if (stationPanel.classList.contains("open")) renderRecipeRows(stationList, () => true);
+  if (furnacePanel.classList.contains("open")) refreshFurnacePanel();
+}
+
+function furnaceButton(text: string, action: () => void): HTMLElement {
+  const button = document.createElement("div");
+  button.className = "item-chip";
+  button.textContent = text;
+  onPress(button, action);
+  return button;
+}
+
+/** 화로 화면: 재료와 연료를 넣고, 다 구워진 것을 꺼낸다. 화면이 열려 있는 동안 0.5초마다 새로 그린다. */
+function refreshFurnacePanel(): void {
+  if (!openFurnace) return;
+  if (world.get(openFurnace.x, openFurnace.y, openFurnace.z) !== Block.Furnace) {
+    closeStations();
+    return;
+  }
+  const furnace = furnaces.at(openFurnace.x, openFurnace.y, openFurnace.z, worldSeconds);
+  furnaceBody.replaceChildren();
+
+  const status = document.createElement("div");
+  status.className = "furnace-line";
+  status.textContent = furnace.burning
+    ? "🔥 굽는 중… " + Math.round(furnace.progressRatio * 100) + "%"
+    : furnace.input
+      ? furnace.fuel
+        ? "🔥 불을 붙이는 중…"
+        : "연료가 없어요. 연료를 넣어 주세요."
+      : "재료와 연료를 넣어 보세요.";
+  const bar = document.createElement("div");
+  bar.className = "furnace-bar";
+  const fill = document.createElement("div");
+  fill.style.width = Math.round(furnace.progressRatio * 100) + "%";
+  bar.append(fill);
+  furnaceBody.append(status, bar);
+
+  const line = (label: string, slot: { item: number; count: number } | null, buttons: HTMLElement[]): void => {
+    const row = document.createElement("div");
+    row.className = "furnace-line";
+    const text = document.createElement("span");
+    text.textContent = label + ": " + (slot ? itemLabel(slot.item) + " ×" + slot.count : "비었어요");
+    row.append(text, ...buttons);
+    furnaceBody.append(row);
+  };
+  const changed = (): void => {
+    refreshHotbar();
+    scheduleSave();
+    refreshFurnacePanel();
+  };
+
+  const inputButtons: HTMLElement[] = Object.keys(SMELTS)
+    .map(Number)
+    .filter((item) => inventory.count(item) > 0 && furnace.canAddInput(item))
+    .map((item) =>
+      furnaceButton("＋ " + itemLabel(item) + " (" + inventory.count(item) + ")", () => {
+        const added = furnace.addInput(item, inventory.count(item));
+        inventory.remove(item, added);
+        changed();
+      }),
+    );
+  if (furnace.input) {
+    inputButtons.push(
+      furnaceButton("빼기", () => {
+        const taken = furnace.takeInput();
+        if (taken) inventory.add(taken.item, taken.count);
+        changed();
+      }),
+    );
+  }
+  line("재료", furnace.input, inputButtons);
+
+  const fuelButtons: HTMLElement[] = Object.keys(FUELS)
+    .map(Number)
+    .filter((item) => inventory.count(item) > 0 && furnace.canAddFuel(item))
+    .map((item) =>
+      furnaceButton("＋ " + itemLabel(item) + " (" + inventory.count(item) + ")", () => {
+        const added = furnace.addFuel(item, inventory.count(item));
+        inventory.remove(item, added);
+        changed();
+      }),
+    );
+  if (furnace.fuel) {
+    fuelButtons.push(
+      furnaceButton("빼기", () => {
+        const taken = furnace.takeFuel();
+        if (taken) inventory.add(taken.item, taken.count);
+        changed();
+      }),
+    );
+  }
+  line("연료", furnace.fuel, fuelButtons);
+
+  const outputButtons: HTMLElement[] = [];
+  if (furnace.output) {
+    outputButtons.push(
+      furnaceButton("꺼내기", () => {
+        const taken = furnace.takeOutput();
+        if (!taken) return;
+        inventory.add(taken.item, taken.count);
+        audio.playCraft();
+        showToast(itemLabel(taken.item) + " ×" + taken.count + " 꺼냈어요");
+        changed();
+      }),
+    );
+  }
+  line("결과", furnace.output, outputButtons);
+}
+
+/** 가리키고 있는 제작대·화로를 연다. (마인크래프트에서 블록을 우클릭하는 것과 같다.) */
+function useBlock(): void {
+  const hit = currentTarget();
+  if (!hit) return;
+  const block = world.get(hit.x, hit.y, hit.z);
+  if (block !== Block.CraftingTable && block !== Block.Furnace) return;
+  if (mode === "creative") {
+    showToast("창작 모드에서는 제작이 필요 없어요");
+    return;
+  }
+  toggleInventory(false);
+  closeStations();
+  if (block === Block.CraftingTable) {
+    stationPanel.classList.add("open");
+    renderRecipeRows(stationList, () => true);
+  } else {
+    openFurnace = { x: hit.x, y: hit.y, z: hit.z };
+    furnacePanel.classList.add("open");
+    refreshFurnacePanel();
+    furnaceTimer = window.setInterval(refreshFurnacePanel, 500);
+  }
 }
 
 function refreshInventoryPanel(): void {
@@ -399,21 +572,11 @@ function refreshInventoryPanel(): void {
   }
 
   craftSection.style.display = survival ? "" : "none";
-  craftList.replaceChildren();
-  const order = RECIPES.map((recipe, index) => ({ recipe, index })).sort((a, b) => Number(inventory.canCraft(b.recipe)) - Number(inventory.canCraft(a.recipe)));
-  order.forEach(({ recipe, index }) => {
-    const ready = inventory.canCraft(recipe);
-    const row = document.createElement("div");
-    row.className = "craft-row " + (ready ? "ready" : "locked");
-    row.textContent = recipe.name + " ×" + recipe.output[1];
-    const need = document.createElement("small");
-    need.textContent =
-      "재료: " + recipe.inputs.map(([item, amount]) => itemLabel(item) + " " + inventory.count(item) + "/" + amount).join(", ");
-    row.append(need);
-    onPress(row, () => craftRecipe(index));
-    craftList.appendChild(row);
-  });
+  renderRecipeRows(craftList, (recipe) => !recipe.station);
 }
+
+onPress(document.getElementById("station-close") as HTMLElement, closeStations);
+onPress(document.getElementById("furnace-close") as HTMLElement, closeStations);
 
 onPress(document.getElementById("mode-toggle") as HTMLElement, () => {
   mode = mode === "survival" ? "creative" : "survival";
@@ -478,6 +641,11 @@ function attackMob(mob: Mob): void {
 /** 블록 하나를 없앤다. 서바이벌이면 (얻을 수 있을 때) 나오는 것들을 가방에 넣는다. */
 function removeBlock(x: number, y: number, z: number, harvest = true): void {
   const broken = world.get(x, y, z);
+  if (broken === Block.Furnace) {
+    const contents = furnaces.remove(x, y, z, worldSeconds);
+    if (mode === "survival") for (const slot of contents) inventory.add(slot.item, slot.count);
+    if (openFurnace && openFurnace.x === x && openFurnace.y === y && openFurnace.z === z) closeStations();
+  }
   if (mode === "survival") {
     if (harvest) {
       const drops = dropsFor(broken, Math.random);
@@ -615,6 +783,7 @@ function saveNow(): void {
     inventory: inventory.entries(),
     durability: inventory.wearEntries(),
     crops: crops.toArray(),
+    furnaces: furnaces.toArray(),
     achievements: achievements.toArray(),
   };
   writeStorage(saveKey(seed), encodeSave(data));
@@ -691,6 +860,7 @@ document.getElementById("loading")?.remove();
 
 const controls = new Controls(canvas);
 const descendButton = document.getElementById("descend-button") as HTMLElement;
+const useButton = document.getElementById("use-button") as HTMLElement;
 
 /** 창작 방식에서 점프를 0.35초 안에 두 번 누르면 비행을 켜거나 끈다. */
 let lastJumpPress = -1;
@@ -705,6 +875,7 @@ controls.onJumpPress = () => {
   }
 };
 controls.onPlace = placeBlock;
+controls.onUse = useBlock;
 controls.onSelectSlot = selectSlot;
 
 const fog = scene.fog as THREE.Fog;
@@ -954,6 +1125,8 @@ function frame(now: number): void {
 
   const target = currentTarget();
   outline.visible = target !== null;
+  const aimed = target ? world.get(target.x, target.y, target.z) : Block.Air;
+  useButton.classList.toggle("show", aimed === Block.CraftingTable || aimed === Block.Furnace);
   if (target) outline.position.set(target.x + 0.5, target.y + 0.5, target.z + 0.5);
 
   if (!freezeTime) worldSeconds += dt;

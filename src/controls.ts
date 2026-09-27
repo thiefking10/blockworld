@@ -18,6 +18,8 @@ export class Controls {
   breakHeld = false;
   private breakLatch = false;
   onPlace?: () => void;
+  /** 제작대·화로를 가리키고 있을 때 나타나는 "사용" 버튼 (또는 F키) */
+  onUse?: () => void;
   onSelectSlot?: (index: number) => void;
   private lookDeltaX = 0;
   private lookDeltaY = 0;
@@ -82,12 +84,14 @@ export class Controls {
     breakButton.addEventListener("pointercancel", releaseBreak);
     breakButton.addEventListener("pointerleave", releaseBreak);
     this.bindActionButton("place-button", () => this.onPlace?.());
+    this.bindActionButton("use-button", () => this.onUse?.(), false);
 
     window.addEventListener("keydown", (e) => {
       this.keys.add(e.code);
       if (e.code === "Space" && !e.repeat) this.onJumpPress?.();
       if (e.code === "KeyQ") this.breakLatch = true;
       if (e.code === "KeyE") this.onPlace?.();
+      if (e.code === "KeyF") this.onUse?.();
       const digit = /^Digit([1-9])$/.exec(e.code);
       if (digit) this.onSelectSlot?.(Number(digit[1]) - 1);
     });
@@ -95,7 +99,7 @@ export class Controls {
   }
 
   /** 버튼을 누르는 순간 한 번 실행하고, 계속 누르고 있으면 조금씩 간격을 두고 반복한다. */
-  private bindActionButton(id: string, action: () => void): void {
+  private bindActionButton(id: string, action: () => void, repeat = true): void {
     const button = document.getElementById(id) as HTMLElement;
     let repeatTimer: number | undefined;
     button.addEventListener("pointerdown", (e) => {
@@ -103,7 +107,7 @@ export class Controls {
       button.classList.add("active");
       action();
       window.clearInterval(repeatTimer);
-      repeatTimer = window.setInterval(action, REPEAT_MS);
+      if (repeat) repeatTimer = window.setInterval(action, REPEAT_MS);
     });
     const release = () => {
       button.classList.remove("active");

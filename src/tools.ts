@@ -50,6 +50,8 @@ export const HARDNESS: Record<number, number> = {
   [Block.Cactus]: 0.4,
   [Block.Wool]: 0.8,
   [Block.IronOre]: 3,
+  [Block.CraftingTable]: 2.5,
+  [Block.Furnace]: 3.5,
   [Block.Flower]: 0,
   [Block.YellowFlower]: 0,
   [Block.Sprout]: 0,
@@ -67,6 +69,8 @@ export const EFFECTIVE_TOOL: Record<number, ToolType | undefined> = {
   [Block.IronOre]: "pickaxe",
   [Block.Wood]: "axe",
   [Block.Planks]: "axe",
+  [Block.CraftingTable]: "axe",
+  [Block.Furnace]: "pickaxe",
 };
 
 /** 이 재질(0 나무, 1 돌, 2 철) 이상의 곡괭이로 캐야 아이템이 나오는 블록 */
@@ -74,6 +78,7 @@ export const MIN_PICKAXE_TIER: Record<number, number | undefined> = {
   [Block.Stone]: 0,
   [Block.Brick]: 0,
   [Block.IronOre]: 1,
+  [Block.Furnace]: 0,
 };
 
 /** 이 도구로 캐면 아이템이 나오는가 (돌은 곡괭이가 없으면 부숴도 아무것도 안 나온다) */

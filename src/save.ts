@@ -1,3 +1,5 @@
+import type { FurnaceData } from "./furnace";
+
 export type EditTuple = [number, number, number, number];
 
 export interface SaveData {
@@ -18,6 +20,8 @@ export interface SaveData {
   durability?: [number, number][];
   /** 심어 둔 씨앗 [x, y, z, 심은 시각(초)]. */
   crops?: [number, number, number, number][];
+  /** 화로들의 [x, y, z, 안에 든 것과 진행 상태]. */
+  furnaces?: [number, number, number, FurnaceData][];
   /** 달성한 도전 과제 번호. */
   achievements?: string[];
 }
@@ -66,6 +70,14 @@ export function decodeSave(text: string | null): SaveData | null {
     if (
       data.durability !== undefined &&
       !(Array.isArray(data.durability) && data.durability.every((e: unknown) => Array.isArray(e) && e.length === 2 && isFiniteNumbers(e)))
+    )
+      return null;
+    if (
+      data.furnaces !== undefined &&
+      !(
+        Array.isArray(data.furnaces) &&
+        data.furnaces.every((e: unknown) => Array.isArray(e) && e.length === 4 && isFiniteNumbers(e.slice(0, 3)) && typeof e[3] === "object" && e[3] !== null)
+      )
     )
       return null;
     if (data.crops !== undefined && !(Array.isArray(data.crops) && data.crops.every((e: unknown) => Array.isArray(e) && e.length === 4 && isFiniteNumbers(e)))) return null;
