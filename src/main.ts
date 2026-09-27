@@ -7,7 +7,7 @@ import { blockName, canPlaceAt, PLACEABLE_BLOCKS, sanitizeHotbar } from "./block
 import { CropField } from "./crops";
 import { FallTracker, Health, MAX_HEALTH } from "./health";
 import { Hunger, MAX_HUNGER } from "./hunger";
-import { dropsFor, FOOD_HEAL, FOOD_HUNGER, Inventory, Item, ITEM_NAMES, mobDrops, RECIPES, type Recipe } from "./inventory";
+import { dropsFor, FOOD_HEAL, FOOD_HUNGER, Inventory, Item, ITEM_NAMES, mobDrops, RECIPES, STACK_MAX, type Recipe } from "./inventory";
 import { Controls } from "./controls";
 import { ambientColor, DAY_LENGTH_SECONDS, daylight, nextMorning, phaseFromSeconds, skyColor } from "./daycycle";
 import { solidMaterial, waterMaterial } from "./mesher";
@@ -207,6 +207,23 @@ function itemLabel(item: number): string {
 }
 
 const TOOL_EMOJI: Record<string, string> = { pickaxe: "⛏️", axe: "🪓", shovel: "🥄", sword: "🗡️" };
+
+/** 아이템 하나를 나타내는 아이콘 글자 (가방 화면 여기저기서 재사용). */
+function itemEmoji(item: number): string {
+  if (item === Item.Bread) return "🍞";
+  if (item === Item.CookedMeat) return "🍖";
+  if (item === Item.CookedFish || item === Item.RawFish) return "🐟";
+  if (FOOD_HEAL[item] !== undefined) return "🥩";
+  if (item === Item.Grain) return "🌾";
+  if (item === Item.Bed) return "🛏";
+  if (item === Item.Diamond) return "💎";
+  if (ARMOR_BY_ID.has(item)) return "🛡";
+  if (item === Item.Bow) return "🏹";
+  if (item === Item.Arrow) return "➹";
+  const tool = TOOL_BY_ID.get(item);
+  if (tool) return TOOL_EMOJI[tool.type];
+  return "🪵";
+}
 
 /** 도전 과제를 달성하면 알림을 띄운다. 이미 달성한 것이면 아무것도 안 한다. */
 function unlockAchievement(id: string): void {
@@ -454,6 +471,23 @@ function eat(item: number): void {
   refreshHearts();
   refreshHunger();
   refreshInventoryPanel();
+  scheduleSave();
+}
+
+/** 창작 모드에서 바로 받을 수 있는 아이템 전부 (블록이 아닌 것 — 도구·방어구·활·재료·음식). */
+const GIVEABLE_ITEMS = Object.keys(ITEM_NAMES).map(Number);
+
+/** 창작 모드에서 아이템을 만들거나 캐지 않고 바로 받는다 (도구·방어구·활은 하나, 나머지는 한 칸 가득). */
+function giveItem(item: number): void {
+  const amount = TOOL_BY_ID.has(item) || ARMOR_BY_ID.has(item) || item === Item.Bow ? 1 : STACK_MAX;
+  const added = inventory.add(item, amount);
+  if (added === 0) {
+    showToast(itemLabel(item) + "은(는) 이미 있거나 가방이 가득 찼어요");
+    return;
+  }
+  audio.playPickup();
+  refreshHotbar();
+  refreshOpenPanels();
   scheduleSave();
 }
 
@@ -706,8 +740,17 @@ function refreshInventoryPanel(): void {
 
   itemsRow.replaceChildren();
   const extras = inventory.entries().filter(([item]) => item >= 100);
-  itemsTitle.style.display = survival && extras.length > 0 ? "" : "none";
-  if (survival) {
+  itemsTitle.style.display = survival ? (extras.length > 0 ? "" : "none") : "";
+  itemsTitle.textContent = survival ? "아이템" : "아이템 바로 받기 (눌러서 무한으로 받아요)";
+  if (!survival) {
+    for (const item of GIVEABLE_ITEMS) {
+      const chip = document.createElement("div");
+      chip.className = "item-chip giveable";
+      chip.textContent = itemEmoji(item) + " " + itemLabel(item);
+      onPress(chip, () => giveItem(item));
+      itemsRow.appendChild(chip);
+    }
+  } else {
     for (const [item, amount] of extras) {
       const chip = document.createElement("div");
       chip.className = "item-chip";

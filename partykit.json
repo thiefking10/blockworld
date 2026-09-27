@@ -1,6 +1,6 @@
 {
   "$schema": "https://www.partykit.io/schema.json",
-  "name": "voxelgame",
+  "name": "voxelgame-thiefking10",
   "main": "party/server.ts",
   "compatibilityDate": "2026-09-27"
 }
