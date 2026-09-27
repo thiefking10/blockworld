@@ -1,6 +1,6 @@
-import { Block, World } from "./world";
+import { Block, SEA_LEVEL, World } from "./world";
 
-export type MobKind = "pig" | "sheep" | "zombie" | "skeleton" | "creeper";
+export type MobKind = "pig" | "sheep" | "zombie" | "skeleton" | "creeper" | "spider" | "fish" | "wolf";
 
 export interface MobSpec {
   halfWidth: number;
@@ -22,13 +22,20 @@ export const MOB_SPECS: Record<MobKind, MobSpec> = {
   zombie: { halfWidth: 0.3, height: 1.8, speed: 1.0, chaseSpeed: 2.3, hp: 8, hostile: true },
   skeleton: { halfWidth: 0.3, height: 1.8, speed: 1.0, chaseSpeed: 1.6, hp: 6, hostile: true, ranged: true },
   creeper: { halfWidth: 0.32, height: 1.6, speed: 0.9, chaseSpeed: 1.9, hp: 6, hostile: true, explosive: true },
+  // 거미: 벽 타기는 생략했지만(단순화), 좀비보다 빠르고 체력은 더 낮다.
+  spider: { halfWidth: 0.45, height: 0.5, speed: 1.2, chaseSpeed: 2.6, hp: 6, hostile: true },
+  // 물고기: 바다에서만 나오고, 다른 동물처럼 사람을 겁내지도 쫓지도 않는다.
+  fish: { halfWidth: 0.18, height: 0.22, speed: 0.7, chaseSpeed: 0.7, hp: 2, hostile: false },
+  // 늑대: 야생일 때는 돼지·양처럼 그냥 돌아다니고, 뼈를 주면 길들여져 따라다니며 대신 싸운다.
+  wolf: { halfWidth: 0.32, height: 0.6, speed: 1.2, chaseSpeed: 2.4, hp: 8, hostile: false },
 };
 
 /** 적대적인 동물이 이 종류 중 하나로 스폰된다 (뽑힐 확률 순서) */
 const HOSTILE_KINDS: { kind: MobKind; chance: number }[] = [
-  { kind: "zombie", chance: 0.4 },
-  { kind: "skeleton", chance: 0.35 },
-  { kind: "creeper", chance: 0.25 },
+  { kind: "zombie", chance: 0.35 },
+  { kind: "skeleton", chance: 0.3 },
+  { kind: "creeper", chance: 0.2 },
+  { kind: "spider", chance: 0.15 },
 ];
 
 export const MAX_HOSTILE_COUNT = 5;
@@ -50,6 +57,11 @@ export const CREEPER_FUSE_SECONDS = 1.4;
 export const CREEPER_EXPLOSION_RADIUS = 3.5;
 export const CREEPER_MAX_DAMAGE = 12;
 
+// 길들인 늑대: 이 거리 안의 적대적인 동물을 대신 공격하고, 없으면 이만큼 멀어졌을 때 따라온다.
+export const WOLF_GUARD_RANGE = 10;
+export const WOLF_FOLLOW_DISTANCE = 5;
+export const WOLF_DAMAGE = 4;
+
 /** 낮에는 적대적인 동물이 이 비율(초당)로 사라진다. */
 const DAY_DESPAWN_RATE = 0.25;
 
@@ -58,6 +70,7 @@ const HOP_SPEED = 8;
 const HURT_SECONDS = 0.45;
 
 export const TARGET_MOB_COUNT = 14;
+export const TARGET_FISH_COUNT = 6;
 export const DESPAWN_DISTANCE = 90;
 const SPAWN_MIN = 14;
 const SPAWN_MAX = 48;
@@ -101,6 +114,8 @@ export class Mob {
   attackCooldown = 0;
   /** 크리퍼가 폭발까지 남은 심지 시간(초). 0이면 심지가 붙지 않은 상태. */
   fuse = 0;
+  /** 늑대가 뼈로 길들여졌는지. 다른 동물은 항상 false. */
+  tamed = false;
 
   private timer = 0;
   private knockX = 0;
@@ -292,10 +307,38 @@ export function findSpawnSpot(
     if (world.isSolid(x, groundY + 1, z) || world.isSolid(x, groundY + 2, z)) continue;
     if (world.get(x, groundY + 1, z) === Block.Water) continue;
 
-    const kind: MobKind = ground === Block.Snow || rng() < 0.4 ? "sheep" : "pig";
+    // 늑대는 생물군계를 가리지 않고(단순화) 풀밭에서 이따금 나온다.
+    const roll = rng();
+    const kind: MobKind = ground === Block.Snow ? "sheep" : roll < 0.15 ? "wolf" : roll < 0.55 ? "sheep" : "pig";
     return { x: x + 0.5, y: groundY + 1, z: z + 0.5, kind };
   }
   return null;
+}
+
+/** 물고기가 스폰할 자리를 찾는다: 플레이어에서 적당히 떨어진 바닷속. */
+export function findWaterSpawnSpot(world: World, centerX: number, centerZ: number, rng: Rng): { x: number; y: number; z: number; kind: MobKind } | null {
+  for (let attempt = 0; attempt < 24; attempt++) {
+    const angle = rng() * Math.PI * 2;
+    const radius = SPAWN_MIN + rng() * (SPAWN_MAX - SPAWN_MIN);
+    const x = Math.floor(centerX + Math.cos(angle) * radius);
+    const z = Math.floor(centerZ + Math.sin(angle) * radius);
+    if (!world.inBounds(x, 0, z)) continue;
+    if (world.get(x, SEA_LEVEL, z) !== Block.Water) continue;
+
+    let bottom = SEA_LEVEL;
+    while (bottom > 0 && world.get(x, bottom - 1, z) === Block.Water) bottom--;
+    const y = bottom + Math.floor(rng() * (SEA_LEVEL - bottom + 1));
+    return { x: x + 0.5, y, z: z + 0.5, kind: "fish" };
+  }
+  return null;
+}
+
+/** 길들인 늑대가 대신 잡은 동물 (전리품을 떨어뜨릴 자리). */
+export interface WolfKill {
+  kind: MobKind;
+  x: number;
+  y: number;
+  z: number;
 }
 
 export interface MobUpdateResult {
@@ -303,6 +346,7 @@ export interface MobUpdateResult {
   damage: number;
   shots: ArrowShot[];
   explosions: Explosion[];
+  kills: WolfKill[];
 }
 
 /** 동물 전체를 관리한다: 스폰, 이동, 멀어지면 사라짐, 맞기. */
@@ -313,6 +357,7 @@ export class MobSimulation {
   /** 처음 시작할 때 주변에 동물을 미리 깔아 둔다. */
   populate(world: World, centerX: number, centerZ: number, count: number, rng: Rng): void {
     for (let i = 0; i < count; i++) this.trySpawn(world, centerX, centerZ, rng);
+    for (let i = 0; i < TARGET_FISH_COUNT; i++) this.trySpawnWater(world, centerX, centerZ, rng);
   }
 
   private trySpawn(world: World, centerX: number, centerZ: number, rng: Rng, hostile = false): boolean {
@@ -320,6 +365,18 @@ export class MobSimulation {
     if (!spot) return false;
     this.mobs.push(new Mob(spot.kind, spot.x, spot.y, spot.z, rng));
     return true;
+  }
+
+  private trySpawnWater(world: World, centerX: number, centerZ: number, rng: Rng): boolean {
+    const spot = findWaterSpawnSpot(world, centerX, centerZ, rng);
+    if (!spot) return false;
+    this.mobs.push(new Mob(spot.kind, spot.x, spot.y, spot.z, rng));
+    return true;
+  }
+
+  /** 뼈를 먹여 늑대를 길들인다. */
+  tame(mob: Mob): void {
+    mob.tamed = true;
   }
 
   /**
@@ -339,15 +396,33 @@ export class MobSimulation {
     const sounds: MobSound[] = [];
     const shots: ArrowShot[] = [];
     const explosions: Explosion[] = [];
+    const kills: WolfKill[] = [];
     let damage = 0;
     const exploded: Mob[] = [];
+    const wolfKilled: Mob[] = [];
 
     for (const mob of this.mobs) {
       const spec = MOB_SPECS[mob.kind];
       const distance = Math.hypot(mob.x - player.x, mob.z - player.z);
       const engaged = spec.hostile && night && targetable && distance < CHASE_RANGE;
 
-      if (spec.explosive) {
+      if (mob.kind === "wolf" && mob.tamed) {
+        // 근처(WOLF_GUARD_RANGE 안)에 적대적인 동물이 있으면 대신 쫓아가 물고, 없으면 플레이어를 따라간다.
+        const target = this.mobs.find((m) => m !== mob && MOB_SPECS[m.kind].hostile && Math.hypot(m.x - mob.x, m.z - mob.z) < WOLF_GUARD_RANGE);
+        if (target) {
+          mob.update(dt, world, rng, target);
+          if (Math.hypot(target.x - mob.x, target.z - mob.z) < ATTACK_RANGE && mob.attackCooldown <= 0) {
+            mob.attackCooldown = ATTACK_COOLDOWN;
+            if (target.hit(mob.x, mob.z, WOLF_DAMAGE)) {
+              kills.push({ kind: target.kind, x: target.x, y: target.y, z: target.z });
+              wolfKilled.push(target);
+            }
+          }
+        } else {
+          const distToPlayer = Math.hypot(player.x - mob.x, player.z - mob.z);
+          mob.update(dt, world, rng, distToPlayer > WOLF_FOLLOW_DISTANCE ? player : null);
+        }
+      } else if (spec.explosive) {
         if (engaged && distance <= CREEPER_FUSE_RANGE) {
           mob.fuse += dt;
           mob.update(dt, world, rng, player, true);
@@ -396,14 +471,16 @@ export class MobSimulation {
       }
     }
 
-    for (const mob of exploded) {
+    for (const mob of [...exploded, ...wolfKilled]) {
       const index = this.mobs.indexOf(mob);
       if (index >= 0) this.mobs.splice(index, 1);
     }
 
     for (let i = this.mobs.length - 1; i >= 0; i--) {
       const mob = this.mobs[i];
-      const far = Math.hypot(mob.x - player.x, mob.z - player.z) > DESPAWN_DISTANCE || mob.y < -5;
+      // 길들인 늑대는 플레이어를 따라다니느라 안 그래도 잘 안 멀어지지만, 혹시 멀어져도 사라지지 않는다.
+      const tamedPet = mob.kind === "wolf" && mob.tamed;
+      const far = (!tamedPet && Math.hypot(mob.x - player.x, mob.z - player.z) > DESPAWN_DISTANCE) || mob.y < -5;
       const sunrise = MOB_SPECS[mob.kind].hostile && !night && rng() < dt * DAY_DESPAWN_RATE;
       if (far || sunrise) this.mobs.splice(i, 1);
     }
@@ -412,10 +489,12 @@ export class MobSimulation {
     if (this.spawnTimer <= 0) {
       this.spawnTimer = 1;
       const hostileCount = this.mobs.filter((m) => MOB_SPECS[m.kind].hostile).length;
+      const fishCount = this.mobs.filter((m) => m.kind === "fish").length;
       if (night && hostileCount < MAX_HOSTILE_COUNT) this.trySpawn(world, player.x, player.z, rng, true);
       if (this.mobs.length - hostileCount < TARGET_MOB_COUNT) this.trySpawn(world, player.x, player.z, rng);
+      if (fishCount < TARGET_FISH_COUNT) this.trySpawnWater(world, player.x, player.z, rng);
     }
-    return { sounds, damage, shots, explosions };
+    return { sounds, damage, shots, explosions, kills };
   }
 
   /** 적대적인 동물을 전부 없앤다 (플레이어가 쓰러져서 다시 시작할 때). */

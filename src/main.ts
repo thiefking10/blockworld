@@ -16,7 +16,7 @@ import { MobRenderer } from "./mobRender";
 import { DropField } from "./drops";
 import { DropRenderer } from "./dropRender";
 import { FUELS, FurnaceField, SMELTS } from "./furnace";
-import { MOB_SPECS, MobSimulation, raycastMobs, type Mob } from "./mobs";
+import { MOB_SPECS, MobSimulation, raycastMobs, type Mob, type MobKind } from "./mobs";
 import { bestSword, bestTool, breakSeconds, canHarvest, SWORD_DAMAGE, TOOL_BY_ID, toolDurability, type ToolDef } from "./tools";
 import { AdaptiveQuality, fogFar, QUALITY_LEVELS } from "./quality";
 import { EYE_HEIGHT, Player } from "./player";
@@ -138,6 +138,7 @@ function checkInventoryAchievements(): void {
   if (has(Block.Torch)) unlockAchievement("torch");
   if (has(Item.Diamond) || has(Block.DiamondOre)) unlockAchievement("diamond");
   if (ARMOR.some((a) => has(a.id))) unlockAchievement("armor");
+  if (has(Item.RawFish) || has(Item.CookedFish)) unlockAchievement("fish");
 }
 
 // 월드를 만드는 동안 화면이 멈추므로, 먼저 "만드는 중" 문구가 그려지게 한 프레임 기다린다.
@@ -615,7 +616,8 @@ function refreshInventoryPanel(): void {
       chip.className = "item-chip";
       if (FOOD_HEAL[item] !== undefined) {
         chip.classList.add("eatable");
-        const emoji = item === Item.Bread ? "🍞" : item === Item.CookedMeat ? "🍖" : "🥩";
+        const emoji =
+          item === Item.Bread ? "🍞" : item === Item.CookedMeat ? "🍖" : item === Item.CookedFish || item === Item.RawFish ? "🐟" : "🥩";
         chip.textContent = emoji + " " + itemLabel(item) + " ×" + amount + " (눌러서 먹기)";
         onPress(chip, () => eat(item));
       } else if (item === Item.Grain) {
@@ -697,21 +699,24 @@ function toolBroke(tool: ToolDef): void {
   refreshHotbar();
 }
 
+/** 동물이 죽으면 (플레이어가 때렸든, 활로 맞혔든, 늑대가 대신 잡았든) 도전 과제를 챙기고 전리품을 놓는다. */
+function handleMobKill(kind: MobKind, x: number, y: number, z: number): void {
+  if (kind === "zombie") unlockAchievement("zombie");
+  if (kind === "skeleton") unlockAchievement("skeleton");
+  if (kind === "creeper") unlockAchievement("creeper");
+  if (kind === "spider") unlockAchievement("spider");
+  const loot = mode === "survival" ? mobDrops(kind, Math.random) : [];
+  for (const [item, amount] of loot) drops.spawn(item, amount, x, y + 0.3, z, Math.random);
+  if (loot.length > 0) scheduleSave();
+}
+
 /** 동물을 한 번 때린다. 서바이벌에서는 가진 검 중 가장 좋은 것을 쓰고 검이 닳는다. */
 function attackMob(mob: Mob): void {
   audio.playMobHit();
   const sword = mode === "survival" ? bestSword((id) => inventory.count(id) > 0) : null;
   const damage = mode === "creative" ? 4 : sword ? SWORD_DAMAGE[sword.tier] : 1;
   if (sword && inventory.useTool(sword.id)) toolBroke(sword);
-  const kind = mob.kind;
-  if (mobSim.hit(mob, player.x, player.z, damage)) {
-    if (kind === "zombie") unlockAchievement("zombie");
-    if (kind === "skeleton") unlockAchievement("skeleton");
-    if (kind === "creeper") unlockAchievement("creeper");
-    const loot = mode === "survival" ? mobDrops(kind, Math.random) : [];
-    for (const [item, amount] of loot) drops.spawn(item, amount, mob.x, mob.y + 0.3, mob.z, Math.random);
-    if (loot.length > 0) scheduleSave();
-  }
+  if (mobSim.hit(mob, player.x, player.z, damage)) handleMobKill(mob.kind, mob.x, mob.y, mob.z);
 }
 
 /** 검이 닿지 않는 먼 동물을 활로 쏜다 (화살 하나를 쓰고, 맞으면 즉시 명중한다 — 날아가는 시간은 생략). */
@@ -723,15 +728,7 @@ function shootBow(mob: Mob): void {
   audio.playArrow();
   const spec = MOB_SPECS[mob.kind];
   spawnArrow(player.x, player.y + EYE_HEIGHT, player.z, mob.x, mob.y + spec.height * 0.6, mob.z);
-  const kind = mob.kind;
-  if (mobSim.hit(mob, player.x, player.z, BOW_DAMAGE)) {
-    if (kind === "zombie") unlockAchievement("zombie");
-    if (kind === "skeleton") unlockAchievement("skeleton");
-    if (kind === "creeper") unlockAchievement("creeper");
-    const loot = mobDrops(kind, Math.random);
-    for (const [item, amount] of loot) drops.spawn(item, amount, mob.x, mob.y + 0.3, mob.z, Math.random);
-    if (loot.length > 0) scheduleSave();
-  }
+  if (mobSim.hit(mob, player.x, player.z, BOW_DAMAGE)) handleMobKill(mob.kind, mob.x, mob.y, mob.z);
   unlockAchievement("bow");
   refreshHotbar();
   refreshOpenPanels();
@@ -864,7 +861,22 @@ function updateMining(dt: number): void {
   (crack.material as THREE.MeshBasicMaterial).opacity = Math.min(1, miningProgress / needed) * 0.6;
 }
 
+/** 야생 늑대를 보고 있고 뼈가 있으면, 블록을 놓는 대신 뼈를 먹여 길들인다. */
+function tryTameWolf(): boolean {
+  const mob = mobInSight(currentTarget());
+  if (!mob || mob.kind !== "wolf" || mob.tamed || mode !== "survival" || inventory.count(Item.Bone) === 0) return false;
+  inventory.remove(Item.Bone, 1);
+  mobSim.tame(mob);
+  audio.playCraft();
+  showToast("🐺 늑대를 길들였어요! 이제 따라다니며 대신 싸워줘요");
+  unlockAchievement("wolf");
+  refreshHotbar();
+  scheduleSave();
+  return true;
+}
+
 function placeBlock(): void {
+  if (tryTameWolf()) return;
   const hit = currentTarget();
   if (!hit) return;
   const { px, py, pz } = hit;
@@ -1286,6 +1298,8 @@ function frame(now: number): void {
     audio.playExplosion();
     spawnExplosion(explosion.x, explosion.y, explosion.z);
   }
+  // 길들인 늑대가 대신 잡아 준 동물도 전리품과 도전 과제를 챙긴다.
+  for (const kill of mobResult.kills) handleMobKill(kill.kind, kill.x, kill.y, kill.z);
   if (arrowFade > 0) {
     arrowFade = Math.max(0, arrowFade - dt);
     arrowMaterial.opacity = arrowFade > 0 ? Math.min(1, arrowFade / ARROW_FADE_SECONDS + 0.3) : 0;

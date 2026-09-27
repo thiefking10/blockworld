@@ -16,6 +16,14 @@ describe("Furnace", () => {
     expect(f.input).toBeNull();
   });
 
+  it("생선도 고기처럼 화로에서 구울 수 있다", () => {
+    const f = new Furnace();
+    f.addInput(Item.RawFish, 1);
+    f.addFuel(Block.Wood, 1);
+    f.advance(SMELT_SECONDS);
+    expect(f.output).toEqual({ item: Item.CookedFish, count: 1 });
+  });
+
   it("판자 하나로 1.5개, 막대 하나로 0.5개를 굽는다", () => {
     const planks = new Furnace();
     planks.addInput(Block.Sand, 10);

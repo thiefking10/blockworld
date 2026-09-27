@@ -159,6 +159,10 @@ describe("drops", () => {
     expect(dropsFor(Block.Sprout, () => 0.5)).toEqual([[Block.Sprout, 1]]);
   });
 
+  it("구운 물고기는 생선회보다 회복이 더 크다", () => {
+    expect(FOOD_HEAL[Item.CookedFish]).toBeGreaterThan(FOOD_HEAL[Item.RawFish]);
+  });
+
   it("구운 고기는 회복이 더 크고, 밀 3개는 빵이 된다", () => {
     expect(FOOD_HEAL[Item.CookedMeat]).toBeGreaterThan(FOOD_HEAL[Item.Meat]);
     const inv = new Inventory();
@@ -238,12 +242,14 @@ describe("drops", () => {
     expect(inv.count(Item.IronIngot)).toBe(0);
   });
 
-  it("돼지는 고기, 양은 고기와 양털, 해골은 뼈, 크리퍼는 화약을 떨구고 좀비는 안 떨군다", () => {
+  it("돼지는 고기, 양은 고기와 양털, 해골은 뼈, 크리퍼는 화약, 물고기는 물고기를 떨구고 좀비·늑대는 안 떨군다", () => {
     expect(mobDrops("pig", () => 0.9)).toEqual([[Item.Meat, 1]]);
     expect(mobDrops("sheep", () => 0.1)).toEqual([[Item.Meat, 2], [Block.Wool, 2]]);
     expect(mobDrops("zombie", () => 0.5)).toEqual([]);
     expect(mobDrops("skeleton", () => 0.1)).toEqual([[Item.Bone, 2]]);
     expect(mobDrops("creeper", () => 0.9)).toEqual([[Item.Gunpowder, 1]]);
+    expect(mobDrops("fish", () => 0.5)).toEqual([[Item.RawFish, 1]]);
+    expect(mobDrops("wolf", () => 0.5)).toEqual([]);
   });
 
   it("철광석은 철 검이 되고 가장 센 무기로 쓰인다", () => {

@@ -1,3 +1,4 @@
+import type { MobKind } from "./mobs";
 import { BAR_SECONDS, composeBar } from "./music";
 import { Block } from "./world";
 
@@ -306,7 +307,7 @@ class GameAudio {
   }
 
   /** 동물 울음소리. volume은 0~1 (멀수록 작게). 돼지는 낮고 짧은 "꿀", 양은 떨리는 "메". */
-  playMob(kind: "pig" | "sheep" | "zombie" | "skeleton" | "creeper", volume: number): void {
+  playMob(kind: MobKind, volume: number): void {
     if (volume <= 0.01) return;
     if (kind === "skeleton") {
       this.burst({ duration: 0.08, type: "highpass", freq: 2600, q: 1.5, gain: 0.3 * volume });
@@ -317,20 +318,29 @@ class GameAudio {
       this.burst({ duration: 0.5, type: "lowpass", freq: 900, q: 0.8, gain: 0.25 * volume });
       return;
     }
+    if (kind === "spider") {
+      this.burst({ duration: 0.3, type: "highpass", freq: 1800, q: 0.6, gain: 0.22 * volume });
+      return;
+    }
+    if (kind === "fish") {
+      this.burst({ duration: 0.18, type: "lowpass", freq: 1000, gain: 0.18 * volume });
+      return;
+    }
     const ctx = this.context();
     const now = ctx.currentTime;
     const pig = kind === "pig";
     const zombie = kind === "zombie";
-    const duration = pig ? 0.22 : zombie ? 0.7 : 0.55;
+    const wolf = kind === "wolf";
+    const duration = pig ? 0.22 : zombie ? 0.7 : wolf ? 0.18 : 0.55;
 
     const osc = ctx.createOscillator();
     osc.type = "sawtooth";
-    osc.frequency.setValueAtTime(pig ? 240 : zombie ? 120 : 420, now);
-    osc.frequency.exponentialRampToValueAtTime(pig ? 150 : zombie ? 70 : 330, now + duration);
+    osc.frequency.setValueAtTime(pig ? 240 : zombie ? 120 : wolf ? 340 : 420, now);
+    osc.frequency.exponentialRampToValueAtTime(pig ? 150 : zombie ? 70 : wolf ? 200 : 330, now + duration);
 
     const filter = ctx.createBiquadFilter();
     filter.type = "lowpass";
-    filter.frequency.value = pig ? 700 : zombie ? 380 : 1400;
+    filter.frequency.value = pig ? 700 : zombie ? 380 : wolf ? 1000 : 1400;
 
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0.0001, now);

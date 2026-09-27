@@ -13,6 +13,8 @@ export const FOOD_HEAL: Record<number, number> = {
   [Item.Meat]: MEAT_HEAL,
   [Item.CookedMeat]: 14,
   [Item.Bread]: 10,
+  [Item.RawFish]: 4,
+  [Item.CookedFish]: 10,
 };
 
 /** 먹을 수 있는 아이템이 채워 주는 배고픔 (0~20 중). */
@@ -20,6 +22,8 @@ export const FOOD_HUNGER: Record<number, number> = {
   [Item.Meat]: 3,
   [Item.CookedMeat]: 6,
   [Item.Bread]: 5,
+  [Item.RawFish]: 2,
+  [Item.CookedFish]: 5,
 };
 
 export interface Recipe {
@@ -100,6 +104,7 @@ export function mobDrops(kind: string, rng: () => number): [number, number][] {
   if (kind === "sheep") drops.push([Block.Wool, 1 + (rng() < 0.5 ? 1 : 0)]);
   if (kind === "skeleton") drops.push([Item.Bone, 1 + (rng() < 0.5 ? 1 : 0)]);
   if (kind === "creeper") drops.push([Item.Gunpowder, 1 + (rng() < 0.5 ? 1 : 0)]);
+  if (kind === "fish") drops.push([Item.RawFish, 1]);
   return drops;
 }
 

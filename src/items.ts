@@ -37,6 +37,8 @@ export const Item = {
   DiamondBoots: 134,
   Bow: 135,
   Arrow: 136,
+  RawFish: 137,
+  CookedFish: 138,
 } as const;
 
 export const ITEM_NAMES: Record<number, string> = {
@@ -76,4 +78,6 @@ export const ITEM_NAMES: Record<number, string> = {
   [Item.DiamondBoots]: "다이아몬드 부츠",
   [Item.Bow]: "활",
   [Item.Arrow]: "화살",
+  [Item.RawFish]: "물고기",
+  [Item.CookedFish]: "구운 물고기",
 };

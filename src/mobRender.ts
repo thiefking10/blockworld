@@ -20,6 +20,9 @@ const LOOKS: Record<MobKind, MobLook> = {
   zombie: { body: 0x3a8f7a, head: 0x6fb36a, leg: 0x2c3f8c, bodySize: [0.55, 0.75, 0.3], headSize: [0.45, 0.45, 0.45], legHeight: 0.7, upright: true },
   skeleton: { body: 0xe4e0d2, head: 0xd8d3c2, leg: 0xcfc9b8, bodySize: [0.42, 0.75, 0.24], headSize: [0.38, 0.38, 0.38], legHeight: 0.7, upright: true },
   creeper: { body: 0x4caf50, head: 0x3f9142, leg: 0x3f9142, bodySize: [0.6, 0.85, 0.4], headSize: [0.42, 0.42, 0.42], legHeight: 0.55, upright: true, noArms: true },
+  spider: { body: 0x1c1712, head: 0x100d0a, leg: 0x100d0a, bodySize: [0.75, 0.45, 0.95], headSize: [0.32, 0.3, 0.3], legHeight: 0.22 },
+  fish: { body: 0xd98a4a, head: 0xc97a3a, leg: 0xc97a3a, bodySize: [0.24, 0.2, 0.4], headSize: [0.16, 0.16, 0.14], legHeight: 0.02 },
+  wolf: { body: 0xcfc7ba, head: 0xb8ae9e, leg: 0xb8ae9e, bodySize: [0.4, 0.4, 0.72], headSize: [0.28, 0.28, 0.3], legHeight: 0.36 },
 };
 
 interface MobModel {
@@ -81,6 +84,8 @@ function buildModel(kind: MobKind): MobModel {
 
 const hurtColor = new THREE.Color(0xff3030);
 const fuseColor = new THREE.Color(0xffffff);
+/** 길들인 늑대를 목줄 색으로 살짝 물들여 야생 늑대와 구별한다. */
+const collarColor = new THREE.Color(0xcc3333);
 
 /** 동물 목록과 화면의 3D 모델을 맞춰 준다. */
 export class MobRenderer {
@@ -116,10 +121,12 @@ export class MobRenderer {
       });
 
       const fuseBlink = mob.kind === "creeper" && mob.fuse > 0 ? (0.5 + 0.5 * Math.sin(seconds * 22)) * Math.min(1, mob.fuse / CREEPER_FUSE_SECONDS) : 0;
+      const tamed = mob.kind === "wolf" && mob.tamed;
       model.materials.forEach((material, i) => {
         material.color.setHex(model.colors[i]).multiply(shade);
         if (mob.hurtTimer > 0) material.color.lerp(hurtColor, 0.55);
         if (fuseBlink > 0) material.color.lerp(fuseColor, fuseBlink * 0.75);
+        if (tamed) material.color.lerp(collarColor, 0.18);
       });
     }
   }

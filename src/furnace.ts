@@ -16,6 +16,7 @@ export const SMELTS: Record<number, number> = {
   [Block.IronOre]: Item.IronIngot,
   [Block.Sand]: Block.Glass,
   [Item.Meat]: Item.CookedMeat,
+  [Item.RawFish]: Item.CookedFish,
 };
 
 /** 연료로 태울 수 있는 것 → 한 개가 타는 시간(초). 통나무와 판자는 1.5개, 막대는 0.5개를 굽는다. */

@@ -27,6 +27,9 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: "diamond", name: "반짝반짝", hint: "다이아몬드를 캐요" },
   { id: "armor", name: "든든하게", hint: "갑옷을 입어요" },
   { id: "bow", name: "명중", hint: "활로 동물이나 괴물을 맞혀요" },
+  { id: "spider", name: "실 끊기", hint: "거미를 물리쳐요" },
+  { id: "wolf", name: "가장 친한 친구", hint: "뼈로 늑대를 길들여요" },
+  { id: "fish", name: "손맛", hint: "물고기를 잡아요" },
 ];
 
 /** 달성한 도전 과제를 기억한다. 한 번 달성하면 그대로다. */

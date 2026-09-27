@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { findSpawnSpot, MAX_HOSTILE_COUNT, Mob, MobSimulation, raycastMobs, SKELETON_MIN_RANGE, SKELETON_RANGE } from "./mobs";
-import { Block, World } from "./world";
+import {
+  findSpawnSpot,
+  findWaterSpawnSpot,
+  MAX_HOSTILE_COUNT,
+  Mob,
+  MobSimulation,
+  raycastMobs,
+  SKELETON_MIN_RANGE,
+  SKELETON_RANGE,
+  WOLF_FOLLOW_DISTANCE,
+  WOLF_GUARD_RANGE,
+} from "./mobs";
+import { Block, SEA_LEVEL, World } from "./world";
 
 function flatWorld(): World {
   const world = new World();
@@ -177,17 +188,19 @@ describe("좀비", () => {
 
   it("밤에는 좀비가 생기지만 최대 수를 넘지 않고, 낮에는 안 생긴다", () => {
     const world = flatWorld();
-    let seed = 9;
-    const rng = () => {
+    // 낮/밤을 각자 다른 난수로 돌려서, 한쪽이 난수를 몇 번 쓰는지가 다른 쪽 결과에 영향을 주지 않게 한다.
+    const lcg = (seed: number) => () => {
       seed = (seed * 16807) % 2147483647;
       return seed / 2147483647;
     };
+    const dayRng = lcg(9);
     const day = new MobSimulation();
-    for (let i = 0; i < 60 * 30; i++) day.update(1 / 60, world, rng, player, false);
+    for (let i = 0; i < 60 * 30; i++) day.update(1 / 60, world, dayRng, player, false);
     expect(day.mobs.some((m) => m.kind === "zombie")).toBe(false);
 
+    const nightRng = lcg(11);
     const night = new MobSimulation();
-    for (let i = 0; i < 60 * 30; i++) night.update(1 / 60, world, rng, player, true);
+    for (let i = 0; i < 60 * 30; i++) night.update(1 / 60, world, nightRng, player, true);
     const zombies = night.mobs.filter((m) => m.kind === "zombie").length;
     expect(zombies).toBeGreaterThan(0);
     expect(zombies).toBeLessThanOrEqual(MAX_HOSTILE_COUNT);
@@ -334,6 +347,104 @@ describe("적대적인 동물 스폰 종류", () => {
       const spot = findSpawnSpot(world, 20, 20, rng, true);
       if (spot) kinds.add(spot.kind);
     }
-    expect(kinds).toEqual(new Set(["zombie", "skeleton", "creeper"]));
+    expect(kinds).toEqual(new Set(["zombie", "skeleton", "creeper", "spider"]));
+  });
+});
+
+describe("거미", () => {
+  const player = { x: 20.5, y: 1, z: 20.5 };
+
+  it("좀비처럼 밤에 쫓아와서 물지만, 좀비보다 빠르다", () => {
+    const world = flatWorld();
+    const sim = new MobSimulation();
+    const spider = new Mob("spider", 20.5, 1, 27.5, fixed(0.5));
+    sim.mobs.push(spider);
+    let total = 0;
+    for (let i = 0; i < 60 * 6; i++) total += sim.update(1 / 60, world, fixed(0.9), player, true).damage;
+    expect(Math.hypot(spider.x - player.x, spider.z - player.z)).toBeLessThan(1.5);
+    expect(total).toBeGreaterThan(0);
+  });
+});
+
+/** 바다처럼 한가운데가 전부 물인 40×40 세계 (물고기 스폰 확인용). */
+function oceanWorld(): World {
+  const world = new World();
+  for (let x = 0; x < 40; x++) {
+    for (let z = 0; z < 40; z++) {
+      world.set(x, 0, z, Block.Stone);
+      for (let y = 1; y <= SEA_LEVEL; y++) world.set(x, y, z, Block.Water);
+    }
+  }
+  return world;
+}
+
+describe("물고기", () => {
+  it("바다에서만 스폰 자리를 찾고, 물속에 놓인다", () => {
+    const world = oceanWorld();
+    let seed = 7;
+    const rng = () => {
+      seed = (seed * 16807) % 2147483647;
+      return seed / 2147483647;
+    };
+    const spot = findWaterSpawnSpot(world, 20, 20, rng);
+    expect(spot).not.toBeNull();
+    if (spot) {
+      expect(spot.kind).toBe("fish");
+      expect(world.get(Math.floor(spot.x), Math.floor(spot.y), Math.floor(spot.z))).toBe(Block.Water);
+    }
+  });
+
+  it("육지뿐이면 스폰 자리를 못 찾는다", () => {
+    expect(findWaterSpawnSpot(flatWorld(), 20, 20, fixed(0.5))).toBeNull();
+  });
+});
+
+describe("늑대", () => {
+  const player = { x: 20.5, y: 1, z: 20.5 };
+
+  it("야생일 때는 다른 동물처럼 그냥 돌아다니고 플레이어를 신경 쓰지 않는다", () => {
+    const world = flatWorld();
+    const sim = new MobSimulation();
+    const wolf = new Mob("wolf", 20.5, 1, 25.5, fixed(0.5));
+    sim.mobs.push(wolf);
+    let total = 0;
+    for (let i = 0; i < 60 * 5; i++) total += sim.update(1 / 60, world, fixed(0.9), player, true).damage;
+    expect(total).toBe(0);
+  });
+
+  it("길들이면 가까운 적대적인 동물을 대신 공격해서 잡아 주고, 전리품 자리를 알려 준다", () => {
+    const world = flatWorld();
+    const sim = new MobSimulation();
+    const wolf = new Mob("wolf", 20.5, 1, 20.5, fixed(0.5));
+    sim.tame(wolf);
+    sim.mobs.push(wolf);
+    const zombie = new Mob("zombie", 20.5, 1, 20.5 + WOLF_GUARD_RANGE - 2, fixed(0.5));
+    sim.mobs.push(zombie);
+    let killedKinds: string[] = [];
+    for (let i = 0; i < 60 * 20 && sim.mobs.includes(zombie); i++) {
+      const result = sim.update(1 / 60, world, fixed(0.5), player, true);
+      killedKinds = killedKinds.concat(result.kills.map((k) => k.kind));
+    }
+    expect(sim.mobs.includes(zombie)).toBe(false);
+    expect(killedKinds).toContain("zombie");
+  });
+
+  it("주변에 적이 없으면 멀어졌을 때만 플레이어를 따라온다", () => {
+    const world = flatWorld();
+    const sim = new MobSimulation();
+    const wolf = new Mob("wolf", 2.5, 1, 2.5, fixed(0.5));
+    sim.tame(wolf);
+    sim.mobs.push(wolf);
+    for (let i = 0; i < 60 * 25; i++) sim.update(1 / 60, world, fixed(0.9), player, false);
+    expect(Math.hypot(wolf.x - player.x, wolf.z - player.z)).toBeLessThan(WOLF_FOLLOW_DISTANCE + 2);
+  });
+
+  it("길들인 늑대는 플레이어에게서 멀리 있어도 사라지지 않는다", () => {
+    const sim = new MobSimulation();
+    const wolf = new Mob("wolf", 500, 1, 500, fixed(0.5));
+    sim.tame(wolf);
+    sim.mobs.push(wolf);
+    sim.update(0.1, flatWorld(), fixed(0.5), player, false);
+    expect(sim.mobs).toContain(wolf);
   });
 });
