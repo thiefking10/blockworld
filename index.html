@@ -298,7 +298,8 @@
       #achievement-panel,
       #help-panel,
       #station-panel,
-      #furnace-panel {
+      #furnace-panel,
+      #multiplayer-panel {
         position: absolute;
         left: 50%;
         top: 50%;
@@ -321,7 +322,8 @@
       #achievement-panel.open,
       #help-panel.open,
       #station-panel.open,
-      #furnace-panel.open {
+      #furnace-panel.open,
+      #multiplayer-panel.open {
         display: flex;
       }
       #inventory-title {
@@ -437,6 +439,28 @@
         border: 1px solid rgba(255, 255, 255, 0.4);
         border-radius: 6px;
         pointer-events: auto;
+      }
+      #multiplayer-button {
+        position: absolute;
+        right: 278px;
+        top: 8px;
+        min-width: 44px;
+        min-height: 34px;
+        padding: 0 10px;
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-size: 13px;
+        background: rgba(0, 0, 0, 0.4);
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        border-radius: 6px;
+        pointer-events: auto;
+      }
+      #multiplayer-button.connected {
+        border-color: #8adf8a;
+        color: #cdf7cd;
       }
       #help-button {
         position: absolute;
@@ -683,6 +707,7 @@
       <div id="achievement-button">도전</div>
       <div id="music-button">♪</div>
       <div id="new-world-button">새 월드</div>
+      <div id="multiplayer-button">함께</div>
       <div id="joystick-base"></div>
       <div id="joystick-knob"></div>
       <div id="jump-button">점프</div>
@@ -705,6 +730,7 @@
           <b>배고픔</b> 하트 밑의 닭다리 게이지예요. 걷거나 시간이 지나면 줄고, 다 떨어지면 체력이 조금씩 깎여요. 음식을 먹어서 채우고, 가득 차 있어야 체력이 저절로 회복돼요.<br />
           <b>횃불</b> 막대와 나무로 만들어요(가방에서 바로). 놓으면 주변이 밤에도, 동굴 속에서도 계속 밝아요.<br />
           <b>화면이 작다면</b> 왼쪽 위 <b>전체화면</b> 버튼을 눌러요. 아이폰은 사파리 공유 버튼 → <b>홈 화면에 추가</b>로 열면 주소창 없이 열려요.<br />
+          <b>함께하기</b> "함께" 버튼을 누르면 지금 세상을 열 수 있어요. 나온 방 코드나 주소를 친구에게 보내면 최대 4명까지 같은 세상에서 만나요(서로 위치와 블록 변화만 같이 보여요).<br />
           <b>도전</b> 버튼에서 해 볼 만한 일을 확인해요. 컴퓨터에서는 WASD, 스페이스, Q(부수기), E(놓기), 1~6, B(가방)를 써요.
         </div>
         <div id="help-close" class="close-button">알겠어요</div>
@@ -723,6 +749,11 @@
         <div id="achievement-title"></div>
         <div id="achievement-list"></div>
         <div id="achievement-close" class="close-button">닫기</div>
+      </div>
+      <div id="multiplayer-panel">
+        <div class="section-title">함께하기 (같은 방 코드끼리, 최대 4명)</div>
+        <div id="multiplayer-body"></div>
+        <div id="multiplayer-close" class="close-button">닫기</div>
       </div>
       <div id="inventory-panel">
         <div id="mode-row">

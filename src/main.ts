@@ -17,6 +17,9 @@ import { DropField } from "./drops";
 import { DropRenderer } from "./dropRender";
 import { FUELS, FurnaceField, SMELTS } from "./furnace";
 import { MOB_SPECS, MobSimulation, raycastMobs, type Mob, type MobKind } from "./mobs";
+import { connectAndWait, NetClient, randomRoomCode } from "./net";
+import { PlayerAvatarRenderer } from "./playerRender";
+import { RemotePlayer, sanitizeName } from "./protocol";
 import { bestSword, bestTool, breakSeconds, canHarvest, SWORD_DAMAGE, TOOL_BY_ID, toolDurability, type ToolDef } from "./tools";
 import { AdaptiveQuality, fogFar, QUALITY_LEVELS } from "./quality";
 import { EYE_HEIGHT, Player } from "./player";
@@ -58,9 +61,104 @@ function removeStorage(key: string): void {
   }
 }
 
-const seedParam = new URLSearchParams(window.location.search).get("seed");
+// ---- 멀티플레이: 주소에 ?room=방코드 가 있으면, 월드를 만들기 전에 먼저 그 방에 들어가서
+// 다 같이 볼 시드와 지금까지 바뀐 블록을 받아 온다. 없으면 지금까지처럼 혼자 시작한다.
+// 방을 새로 만드는 건 게임 화면의 "함께하기" 버튼으로 한다 (아래쪽, controls 만든 뒤).
+// 서버 배포 방법은 README를 보고, 배포한 뒤에는 이 주소를 자신의 것으로 바꾸세요.
+const PARTY_HOST_DEFAULT = "voxelgame.YOUR-PARTYKIT-USERNAME.partykit.dev";
+const NICKNAME_KEY = "voxelgame:nickname";
+const AVATAR_COLORS = [0xff6b6b, 0x4dd0e1, 0xffd166, 0x9b7bd6, 0x81c784, 0xf48fb1];
+
+const urlParams = new URLSearchParams(window.location.search);
+const partyHost = urlParams.get("party") || PARTY_HOST_DEFAULT;
+const roomParam = urlParams.get("room");
+
+const net = new NetClient();
+const remotePlayers = new Map<string, RemotePlayer>();
+const myColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
+
+function askName(): string {
+  const remembered = sanitizeName(readStorage(NICKNAME_KEY) ?? undefined);
+  // 일부 브라우저·환경(예: 팝업이 막혔거나 자동화 도구)은 prompt() 자체를 막고 오류를 낼 수 있다.
+  let typed: string | null = null;
+  try {
+    typed = window.prompt("함께 하는 사람들에게 보일 이름을 입력하세요", remembered);
+  } catch {
+    // 그냥 기억해 둔 이름(또는 "손님")으로 계속한다.
+  }
+  const name = sanitizeName(typed ?? remembered);
+  writeStorage(NICKNAME_KEY, name);
+  return name;
+}
+
+const editLog = new EditLog();
+/** 월드가 아직 없을 때(막 접속하는 중) 온 블록 변화는 일단 기록만 해 두고, 나중에 한꺼번에 적용한다. */
+let worldReady = false;
+
+/** 서버에서 온 블록 변화를 적용한다. */
+function applyRemoteEdit(x: number, y: number, z: number, block: number): void {
+  editLog.record(x, y, z, block);
+  if (worldReady) {
+    const lightChanged = world.set(x, y, z, block as BlockId);
+    refreshMesh(x, z, lightChanged);
+  }
+}
+
+/** 접속 중 벌어지는 일들: 처음 들어갈 때도, 나중에 "함께하기" 버튼으로 방을 만들 때도 똑같이 쓴다. */
+function netCallbacks() {
+  return {
+    onJoin: (p: RemotePlayer) => {
+      remotePlayers.set(p.id, p);
+      showToast(p.name + " 님이 들어왔어요");
+    },
+    onMove: (id: string, x: number, y: number, z: number, yaw: number, pitch: number) => {
+      const p = remotePlayers.get(id);
+      if (p) Object.assign(p, { x, y, z, yaw, pitch });
+    },
+    onEdit: applyRemoteEdit,
+    onLeave: (id: string) => {
+      const name = remotePlayers.get(id)?.name;
+      remotePlayers.delete(id);
+      avatarRenderer.remove(id);
+      if (name) showToast(name + " 님이 나갔어요");
+    },
+    onFull: () => showToast("방이 꽉 찼어요(최대 4명)", 3000),
+    onDisconnect: () => {
+      showToast("멀티플레이 연결이 끊겼어요. 계속 혼자 진행할 수 있어요", 3500);
+      avatarRenderer.clear();
+      remotePlayers.clear();
+      refreshMultiplayerPanel();
+    },
+  };
+}
+
+let remoteSeed: number | null = null;
+let multiplayerJoinError: string | null = null;
+
+if (roomParam) {
+  const loadingEl = document.getElementById("loading");
+  if (loadingEl) loadingEl.textContent = "방 " + roomParam + "에 들어가는 중...";
+  const name = askName();
+  const fallbackSeed = urlParams.get("seed") ? Number(urlParams.get("seed")) || 1 : Math.floor(Math.random() * 100000) + 1;
+  try {
+    const result = await connectAndWait(
+      net,
+      partyHost,
+      roomParam,
+      { name, color: myColor, seed: fallbackSeed, x: 0, y: 20, z: 0, yaw: 0, pitch: 0 },
+      { ...netCallbacks(), onFull: () => { multiplayerJoinError = "방이 꽉 찼어요(최대 4명). 혼자 시작할게요."; } },
+    );
+    remoteSeed = result.seed;
+    editLog.load(result.edits);
+    for (const p of result.players) remotePlayers.set(p.id, p);
+  } catch {
+    multiplayerJoinError ??= "방에 들어가지 못했어요. 혼자 시작할게요.";
+  }
+}
+
+const seedParam = urlParams.get("seed");
 const lastSeed = Number(readStorage(LAST_SEED_KEY));
-const seed = seedParam ? Number(seedParam) || 1 : lastSeed > 0 ? lastSeed : Math.floor(Math.random() * 100000) + 1;
+const seed = remoteSeed ?? (seedParam ? Number(seedParam) || 1 : lastSeed > 0 ? lastSeed : Math.floor(Math.random() * 100000) + 1);
 writeStorage(LAST_SEED_KEY, String(seed));
 
 const saved = decodeSave(readStorage(saveKey(seed)));
@@ -149,11 +247,10 @@ const generateStart = performance.now();
 world.generate(seed);
 const generateMs = Math.round(performance.now() - generateStart);
 
-const editLog = new EditLog();
-if (saved && saved.seed === seed) {
-  editLog.load(saved.edits);
-  for (const [x, y, z, block] of saved.edits) world.set(x, y, z, block as BlockId);
-}
+// 멀티플레이면 서버에서 받은 블록 변화가 이미 editLog에 들어 있고, 아니면 이 판의 저장을 불러온다.
+if (remoteSeed === null && saved && saved.seed === seed) editLog.load(saved.edits);
+for (const [x, y, z, block] of editLog.toArray()) world.set(x, y, z, block as BlockId);
+worldReady = true;
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
 
@@ -759,6 +856,7 @@ function removeBlock(x: number, y: number, z: number, harvest = true): boolean {
   }
   const lightChanged = world.set(x, y, z, Block.Air);
   editLog.record(x, y, z, Block.Air);
+  net.sendEdit(x, y, z, Block.Air);
   crops.remove(x, y, z);
   return lightChanged;
 }
@@ -897,6 +995,7 @@ function placeBlock(): void {
   audio.playPlace(block);
   const lightChanged = world.set(px, py, pz, block);
   editLog.record(px, py, pz, block);
+  net.sendEdit(px, py, pz, block);
   if (block === Block.Sprout) crops.plant(px, py, pz, worldSeconds);
   refreshMesh(px, pz, lightChanged);
   scheduleSave();
@@ -950,6 +1049,15 @@ worldMesh.loadAllNear(player.x, player.z);
 const mobSim = new MobSimulation();
 const mobRenderer = new MobRenderer(scene);
 const dropRenderer = new DropRenderer(scene);
+const avatarRenderer = new PlayerAvatarRenderer(scene);
+
+if (multiplayerJoinError) showToast(multiplayerJoinError, 3500);
+if (net.connected) {
+  // 접속할 때는 자리를 몰라 임시 위치로 알렸으니, 이제 진짜 자리로 다시 알린다.
+  net.sendMove(player.x, player.y, player.z, player.yaw, player.pitch);
+  for (const p of remotePlayers.values()) avatarRenderer.upsert(p.id, p);
+  document.getElementById("multiplayer-button")?.classList.add("connected");
+}
 
 const heartsElement = document.getElementById("hearts") as HTMLElement;
 const damageFlash = document.getElementById("damage-flash") as HTMLElement;
@@ -1136,6 +1244,96 @@ onPress(document.getElementById("achievement-button") as HTMLElement, () => {
 });
 onPress(document.getElementById("achievement-close") as HTMLElement, () => achievementPanel.classList.remove("open"));
 
+// ---- 멀티플레이 화면: 방 만들기/들어가기 상태를 보여주고, 나가기 버튼을 둔다.
+const multiplayerPanel = document.getElementById("multiplayer-panel") as HTMLElement;
+const multiplayerBody = document.getElementById("multiplayer-body") as HTMLElement;
+const multiplayerButton = document.getElementById("multiplayer-button") as HTMLElement;
+let myRoomCode: string | null = roomParam;
+
+function shareLink(code: string): string {
+  return window.location.origin + window.location.pathname + "?room=" + code;
+}
+
+function chipButton(text: string, action: () => void): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "item-chip";
+  el.textContent = text;
+  onPress(el, action);
+  return el;
+}
+
+async function hostRoom(): Promise<void> {
+  const code = randomRoomCode();
+  const name = askName();
+  multiplayerBody.replaceChildren();
+  multiplayerBody.append("방을 만드는 중...");
+  try {
+    const result = await connectAndWait(net, partyHost, code, { name, color: myColor, seed, x: player.x, y: player.y, z: player.z, yaw: player.yaw, pitch: player.pitch }, netCallbacks());
+    for (const p of result.players) {
+      remotePlayers.set(p.id, p);
+      avatarRenderer.upsert(p.id, p);
+    }
+    myRoomCode = code;
+    showToast("방을 만들었어요! 친구에게 방 코드나 주소를 알려주세요", 3500);
+  } catch {
+    showToast("방을 만들지 못했어요. 인터넷 연결을 확인해 보세요", 3000);
+  }
+  refreshMultiplayerPanel();
+}
+
+function refreshMultiplayerPanel(): void {
+  multiplayerButton.classList.toggle("connected", net.connected);
+  multiplayerBody.replaceChildren();
+  if (net.connected && myRoomCode) {
+    const codeRow = document.createElement("div");
+    codeRow.textContent = "방 코드: " + myRoomCode;
+    multiplayerBody.append(codeRow);
+    multiplayerBody.append(
+      chipButton("🔗 주소 복사하기", () => {
+        navigator.clipboard?.writeText(shareLink(myRoomCode as string)).then(
+          () => showToast("주소를 복사했어요. 친구에게 붙여넣기 해 주세요"),
+          () => showToast(shareLink(myRoomCode as string), 6000),
+        );
+      }),
+    );
+    const peopleTitle = document.createElement("div");
+    peopleTitle.className = "section-title";
+    peopleTitle.textContent = "함께 있는 사람 (" + (remotePlayers.size + 1) + "/4)";
+    multiplayerBody.append(peopleTitle);
+    const me = document.createElement("div");
+    me.textContent = "🙂 나";
+    multiplayerBody.append(me);
+    for (const p of remotePlayers.values()) {
+      const row = document.createElement("div");
+      row.textContent = "🙂 " + p.name;
+      multiplayerBody.append(row);
+    }
+    multiplayerBody.append(
+      chipButton("나가기", () => {
+        net.disconnect();
+        avatarRenderer.clear();
+        remotePlayers.clear();
+        myRoomCode = null;
+        window.history.replaceState(null, "", window.location.pathname);
+        showToast("혼자 하기로 돌아왔어요");
+        refreshMultiplayerPanel();
+      }),
+    );
+  } else {
+    const info = document.createElement("div");
+    info.textContent = "지금 만든 세상을 그대로 열어서, 같은 방 코드로 들어온 사람과 함께 블록을 짓고 돌아다닐 수 있어요.";
+    multiplayerBody.append(info);
+    multiplayerBody.append(chipButton("🌍 이 세상 함께하기", hostRoom));
+  }
+}
+
+onPress(multiplayerButton, () => {
+  toggleInventory(false);
+  const open = multiplayerPanel.classList.toggle("open");
+  if (open) refreshMultiplayerPanel();
+});
+onPress(document.getElementById("multiplayer-close") as HTMLElement, () => multiplayerPanel.classList.remove("open"));
+
 // 전체화면: 크롬 같은 브라우저의 주소창과 탭 줄을 숨겨 게임 화면을 넓힌다. 지원하지 않는 브라우저(아이폰 사파리)에서는 버튼을 숨긴다.
 const fullscreenButton = document.getElementById("fullscreen-button") as HTMLElement;
 if (document.documentElement.requestFullscreen) {
@@ -1238,6 +1436,8 @@ let shownHp = health.hp;
 let shownHunger = hunger.value;
 let shownHungerMode = mode;
 let lastFullBagToast = -Infinity;
+let netMoveTimer = 0;
+const NET_MOVE_INTERVAL = 0.1; // 1초에 열 번쯤 내 위치를 알린다
 let cropTimer = 0;
 let last = performance.now();
 let frames = 0;
@@ -1264,6 +1464,7 @@ function frame(now: number): void {
       if (world.get(x, y, z) !== Block.Sprout) continue;
       world.set(x, y, z, Block.Wheat);
       editLog.record(x, y, z, Block.Wheat);
+      net.sendEdit(x, y, z, Block.Wheat);
       worldMesh.updateBlock(x, z);
       scheduleSave();
     }
@@ -1336,6 +1537,15 @@ function frame(now: number): void {
     }
   }
   dropRenderer.update(drops.drops, worldSeconds, solidMaterial.color);
+
+  if (net.connected) {
+    for (const p of remotePlayers.values()) avatarRenderer.upsert(p.id, p);
+    netMoveTimer -= dt;
+    if (netMoveTimer <= 0) {
+      netMoveTimer = NET_MOVE_INTERVAL;
+      net.sendMove(player.x, player.y, player.z, player.yaw, player.pitch);
+    }
+  }
 
   camera.position.set(player.x, player.y + EYE_HEIGHT, player.z);
   camera.rotation.set(player.pitch, player.yaw, 0);
