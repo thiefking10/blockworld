@@ -185,6 +185,20 @@ describe("drops", () => {
     expect(inv.count(Block.Torch)).toBe(4);
   });
 
+  it("다이아몬드 광석은 철과 달리 화로 없이 원석 그대로 나온다", () => {
+    expect(dropsFor(Block.DiamondOre, () => 0.5)).toEqual([[Item.Diamond, 1]]);
+  });
+
+  it("다이아몬드 도구는 막대와 다이아몬드로 만든다", () => {
+    const inv = new Inventory();
+    inv.add(Item.Diamond, 3);
+    inv.add(Item.Stick, 2);
+    const pickaxe = RECIPES.find((r) => r.name === "다이아몬드 곡괭이");
+    if (!pickaxe) throw new Error("recipe");
+    expect(inv.craft(pickaxe)).toBe(true);
+    expect(inv.count(Item.DiamondPickaxe)).toBe(1);
+  });
+
   it("돼지는 고기, 양은 고기와 양털, 해골은 뼈, 크리퍼는 화약을 떨구고 좀비는 안 떨군다", () => {
     expect(mobDrops("pig", () => 0.9)).toEqual([[Item.Meat, 1]]);
     expect(mobDrops("sheep", () => 0.1)).toEqual([[Item.Meat, 2], [Block.Wool, 2]]);

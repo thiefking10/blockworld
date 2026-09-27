@@ -28,6 +28,7 @@ export const TILE = {
   FurnaceFront: 23,
   FurnaceTop: 24,
   Torch: 25,
+  DiamondOre: 26,
 } as const;
 
 export const ATLAS_COLS = 6;
@@ -80,6 +81,8 @@ export function tileForFace(block: number, dirY: number): number {
       return dirY !== 0 ? TILE.FurnaceTop : TILE.FurnaceFront;
     case Block.Torch:
       return TILE.Torch;
+    case Block.DiamondOre:
+      return TILE.DiamondOre;
     default:
       return TILE.Stone;
   }
@@ -245,6 +248,18 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: number): void {
         const cy = 2 + Math.floor(random() * 11);
         for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
           if (random() < 0.85) px(cx + dx, cy + dy, shade([214, 158, 110], (random() - 0.5) * 30));
+        }
+      }
+      break;
+    }
+    case TILE.DiamondOre: {
+      noiseFill(ctx, ox, oy, [128, 128, 132], 26, random);
+      for (let i = 0; i < 26; i++) px(Math.floor(random() * 16), Math.floor(random() * 16), shade([128, 128, 132], -38));
+      for (let cluster = 0; cluster < 5; cluster++) {
+        const cx = 2 + Math.floor(random() * 11);
+        const cy = 2 + Math.floor(random() * 11);
+        for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+          if (random() < 0.85) px(cx + dx, cy + dy, shade([120, 224, 232], (random() - 0.5) * 30));
         }
       }
       break;

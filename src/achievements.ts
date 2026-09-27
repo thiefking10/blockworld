@@ -24,6 +24,9 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: "harvest", name: "첫 수확", hint: "씨앗을 심어 밀을 거둬요" },
   { id: "bread", name: "따끈한 빵", hint: "밀로 빵을 만들어요" },
   { id: "torch", name: "불 밝히기", hint: "횃불을 만들어요" },
+  { id: "diamond", name: "반짝반짝", hint: "다이아몬드를 캐요" },
+  { id: "armor", name: "든든하게", hint: "갑옷을 입어요" },
+  { id: "bow", name: "명중", hint: "활로 동물이나 괴물을 맞혀요" },
 ];
 
 /** 달성한 도전 과제를 기억한다. 한 번 달성하면 그대로다. */

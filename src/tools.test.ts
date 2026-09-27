@@ -10,11 +10,11 @@ const tool = (id: number) => {
 };
 
 describe("도구 목록", () => {
-  it("곡괭이, 도끼, 삽, 검이 재질 세 가지씩, 번호가 겹치지 않는다", () => {
-    expect(TOOLS).toHaveLength(12);
-    expect(new Set(TOOLS.map((t) => t.id)).size).toBe(12);
+  it("곡괭이, 도끼, 삽, 검이 재질 네 가지씩(나무·돌·철·다이아몬드), 번호가 겹치지 않는다", () => {
+    expect(TOOLS).toHaveLength(16);
+    expect(new Set(TOOLS.map((t) => t.id)).size).toBe(16);
     for (const type of ["pickaxe", "axe", "shovel", "sword"]) {
-      expect(TOOLS.filter((t) => t.type === type).map((t) => t.tier)).toEqual([0, 1, 2]);
+      expect(TOOLS.filter((t) => t.type === type).map((t) => t.tier)).toEqual([0, 1, 2, 3]);
     }
   });
 });
@@ -56,6 +56,11 @@ describe("아이템을 얻을 수 있는 조건", () => {
     expect(canHarvest(Block.Stone, tool(Item.WoodPickaxe))).toBe(true);
     expect(canHarvest(Block.IronOre, tool(Item.WoodPickaxe))).toBe(false);
     expect(canHarvest(Block.IronOre, tool(Item.StonePickaxe))).toBe(true);
+  });
+
+  it("다이아몬드 광석은 철 곡괭이 이상이어야 나온다", () => {
+    expect(canHarvest(Block.DiamondOre, tool(Item.StonePickaxe))).toBe(false);
+    expect(canHarvest(Block.DiamondOre, tool(Item.IronPickaxe))).toBe(true);
   });
 
   it("흙, 나무, 모래 등은 맨손으로도 나온다", () => {

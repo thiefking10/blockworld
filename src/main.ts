@@ -124,8 +124,8 @@ function checkInventoryAchievements(): void {
   if (has(Block.Planks)) unlockAchievement("planks");
   if (has(Block.CraftingTable)) unlockAchievement("table");
   if (has(Item.IronIngot)) unlockAchievement("ingot");
-  if (has(Item.WoodClub) || has(Item.StoneClub) || has(Item.IronClub)) unlockAchievement("club");
-  if (has(Item.WoodPickaxe) || has(Item.StonePickaxe) || has(Item.IronPickaxe)) unlockAchievement("pickaxe");
+  if (has(Item.WoodClub) || has(Item.StoneClub) || has(Item.IronClub) || has(Item.DiamondClub)) unlockAchievement("club");
+  if (has(Item.WoodPickaxe) || has(Item.StonePickaxe) || has(Item.IronPickaxe) || has(Item.DiamondPickaxe)) unlockAchievement("pickaxe");
   if (has(Item.Meat) || has(Item.CookedMeat)) unlockAchievement("meat");
   if (has(Item.CookedMeat)) unlockAchievement("cooked");
   if (has(Item.Bed)) unlockAchievement("bed");
@@ -134,6 +134,7 @@ function checkInventoryAchievements(): void {
   if (has(Item.Grain)) unlockAchievement("harvest");
   if (has(Item.Bread)) unlockAchievement("bread");
   if (has(Block.Torch)) unlockAchievement("torch");
+  if (has(Item.Diamond) || has(Block.DiamondOre)) unlockAchievement("diamond");
 }
 
 // 월드를 만드는 동안 화면이 멈추므로, 먼저 "만드는 중" 문구가 그려지게 한 프레임 기다린다.
@@ -619,6 +620,8 @@ function refreshInventoryPanel(): void {
         chip.classList.add("eatable");
         chip.textContent = "🛏 " + itemLabel(item) + " ×" + amount + " (밤에 눌러서 자기)";
         onPress(chip, sleepInBed);
+      } else if (item === Item.Diamond) {
+        chip.textContent = "💎 " + itemLabel(item) + " ×" + amount;
       } else {
         const def = TOOL_BY_ID.get(item);
         chip.textContent = def

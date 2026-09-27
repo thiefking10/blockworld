@@ -21,6 +21,7 @@ export const Block = {
   CraftingTable: 19,
   Furnace: 20,
   Torch: 21,
+  DiamondOre: 22,
 } as const;
 export type BlockId = (typeof Block)[keyof typeof Block];
 
@@ -340,6 +341,19 @@ export class World {
     }
   }
 
+  /** 다이아몬드는 철보다 훨씬 드물고, 맨 밑 몇 칸에서만 나온다 (진짜 마인크래프트처럼 깊을수록 귀하다). */
+  private scatterDiamond(seed: number): void {
+    for (let x = 0; x < SIZE_X; x++) {
+      for (let z = 0; z < SIZE_Z; z++) {
+        for (let y = 2; y <= 6; y++) {
+          if (this.get(x, y, z) !== Block.Stone) continue;
+          if (hash3(x >> 1, y >> 1, z >> 1, seed + 51413) > 0.006) continue;
+          if (hash3(x, y, z, seed + 71) < 0.8) this.set(x, y, z, Block.DiamondOre);
+        }
+      }
+    }
+  }
+
   /** 잔디 위 여기저기에 나무(기둥 + 잎)를 심는다. 시드가 같으면 같은 자리에 심긴다. */
   private plantTrees(seed: number): void {
     for (let x = 3; x < SIZE_X - 3; x++) {
@@ -408,6 +422,7 @@ export class World {
     }
     this.carveCaves(seed);
     this.scatterOre(seed);
+    this.scatterDiamond(seed);
     this.plantTrees(seed);
     this.scatterFlowers(seed);
   }

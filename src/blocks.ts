@@ -20,6 +20,7 @@ export const PLACEABLE_BLOCKS: PlaceableBlock[] = [
   { block: Block.Cactus, name: "선인장" },
   { block: Block.Wool, name: "양털" },
   { block: Block.IronOre, name: "철광석" },
+  { block: Block.DiamondOre, name: "다이아몬드 광석" },
   { block: Block.Flower, name: "붉은 꽃" },
   { block: Block.YellowFlower, name: "노란 꽃" },
   { block: Block.Sprout, name: "밀 씨앗" },

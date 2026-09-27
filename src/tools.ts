@@ -6,23 +6,23 @@ export type ToolType = "pickaxe" | "axe" | "shovel" | "sword";
 export interface ToolDef {
   id: number;
   type: ToolType;
-  /** 0 나무, 1 돌, 2 철 */
+  /** 0 나무, 1 돌, 2 철, 3 다이아몬드 */
   tier: number;
 }
 
 /** 재질별 채굴 속도 배율 (맞는 도구일 때) */
-export const TIER_SPEED = [2, 4, 6];
+export const TIER_SPEED = [2, 4, 6, 9];
 /** 재질별 내구도 (블록을 몇 개 캘 수 있는지, 검은 몇 번 칠 수 있는지) */
-export const TIER_DURABILITY = [59, 131, 250];
+export const TIER_DURABILITY = [59, 131, 250, 1561];
 /** 재질별 검의 공격력 (맨손은 1) */
-export const SWORD_DAMAGE = [2, 4, 6];
-export const TIER_NAMES = ["나무", "돌", "철"];
+export const SWORD_DAMAGE = [2, 4, 6, 8];
+export const TIER_NAMES = ["나무", "돌", "철", "다이아몬드"];
 
 const TOOL_IDS: Record<ToolType, number[]> = {
-  pickaxe: [Item.WoodPickaxe, Item.StonePickaxe, Item.IronPickaxe],
-  axe: [Item.WoodAxe, Item.StoneAxe, Item.IronAxe],
-  shovel: [Item.WoodShovel, Item.StoneShovel, Item.IronShovel],
-  sword: [Item.WoodClub, Item.StoneClub, Item.IronClub],
+  pickaxe: [Item.WoodPickaxe, Item.StonePickaxe, Item.IronPickaxe, Item.DiamondPickaxe],
+  axe: [Item.WoodAxe, Item.StoneAxe, Item.IronAxe, Item.DiamondAxe],
+  shovel: [Item.WoodShovel, Item.StoneShovel, Item.IronShovel, Item.DiamondShovel],
+  sword: [Item.WoodClub, Item.StoneClub, Item.IronClub, Item.DiamondClub],
 };
 
 export const TOOLS: ToolDef[] = (Object.keys(TOOL_IDS) as ToolType[]).flatMap((type) =>
@@ -50,6 +50,7 @@ export const HARDNESS: Record<number, number> = {
   [Block.Cactus]: 0.4,
   [Block.Wool]: 0.8,
   [Block.IronOre]: 3,
+  [Block.DiamondOre]: 3.5,
   [Block.CraftingTable]: 2.5,
   [Block.Furnace]: 3.5,
   [Block.Flower]: 0,
@@ -68,6 +69,7 @@ export const EFFECTIVE_TOOL: Record<number, ToolType | undefined> = {
   [Block.Stone]: "pickaxe",
   [Block.Brick]: "pickaxe",
   [Block.IronOre]: "pickaxe",
+  [Block.DiamondOre]: "pickaxe",
   [Block.Wood]: "axe",
   [Block.Planks]: "axe",
   [Block.CraftingTable]: "axe",
@@ -79,6 +81,7 @@ export const MIN_PICKAXE_TIER: Record<number, number | undefined> = {
   [Block.Stone]: 0,
   [Block.Brick]: 0,
   [Block.IronOre]: 1,
+  [Block.DiamondOre]: 2,
   [Block.Furnace]: 0,
 };
 

@@ -22,6 +22,11 @@ export const Item = {
   IronIngot: 119,
   Bone: 120,
   Gunpowder: 121,
+  Diamond: 122,
+  DiamondPickaxe: 123,
+  DiamondAxe: 124,
+  DiamondShovel: 125,
+  DiamondClub: 126,
 } as const;
 
 export const ITEM_NAMES: Record<number, string> = {
@@ -46,4 +51,9 @@ export const ITEM_NAMES: Record<number, string> = {
   [Item.IronIngot]: "철 주괴",
   [Item.Bone]: "뼈",
   [Item.Gunpowder]: "화약",
+  [Item.Diamond]: "다이아몬드",
+  [Item.DiamondPickaxe]: "다이아몬드 곡괭이",
+  [Item.DiamondAxe]: "다이아몬드 도끼",
+  [Item.DiamondShovel]: "다이아몬드 삽",
+  [Item.DiamondClub]: "다이아몬드 검",
 };

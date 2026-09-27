@@ -54,6 +54,10 @@ export const RECIPES: Recipe[] = [
   { name: "철 도끼", station: "table", inputs: [[Item.IronIngot, 3], [Item.Stick, 2]], output: [Item.IronAxe, 1] },
   { name: "철 삽", station: "table", inputs: [[Item.IronIngot, 1], [Item.Stick, 2]], output: [Item.IronShovel, 1] },
   { name: "철 검", station: "table", inputs: [[Item.IronIngot, 2], [Item.Stick, 1]], output: [Item.IronClub, 1] },
+  { name: "다이아몬드 곡괭이", station: "table", inputs: [[Item.Diamond, 3], [Item.Stick, 2]], output: [Item.DiamondPickaxe, 1] },
+  { name: "다이아몬드 도끼", station: "table", inputs: [[Item.Diamond, 3], [Item.Stick, 2]], output: [Item.DiamondAxe, 1] },
+  { name: "다이아몬드 삽", station: "table", inputs: [[Item.Diamond, 1], [Item.Stick, 2]], output: [Item.DiamondShovel, 1] },
+  { name: "다이아몬드 검", station: "table", inputs: [[Item.Diamond, 2], [Item.Stick, 1]], output: [Item.DiamondClub, 1] },
   { name: "침대", station: "table", inputs: [[Block.Wool, 3], [Block.Planks, 3]], output: [Item.Bed, 1] },
   { name: "빵", station: "table", inputs: [[Item.Grain, 3]], output: [Item.Bread, 1] },
 ];
@@ -69,6 +73,9 @@ export function dropsFor(block: number, rng: () => number): [number, number][] {
       return rng() < 0.25 ? [[Block.Dirt, 1], [Block.Sprout, 1]] : [[Block.Dirt, 1]];
     case Block.Wheat:
       return [[Item.Grain, 1 + (rng() < 0.5 ? 1 : 0)], [Block.Sprout, 1 + (rng() < 0.5 ? 1 : 0)]];
+    // 다이아몬드는 철과 달리 화로에 굽지 않고 캐면 바로 원석 그대로 쓴다 (진짜 마인크래프트처럼).
+    case Block.DiamondOre:
+      return [[Item.Diamond, 1]];
     default:
       return [[block, 1]];
   }
