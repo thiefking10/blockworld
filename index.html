@@ -640,41 +640,7 @@
         opacity: 1;
         transition: none;
       }
-      /** 지금 손에 든 것(도구·검·활·블록)을 보여주는 아이콘. 화면 왼쪽 아래, 터치 버튼과 안 겹치는 자리. */
-      #held-item {
-        position: absolute;
-        left: 16px;
-        bottom: 90px;
-        width: 56px;
-        height: 56px;
-        border-radius: 10px;
-        background: rgba(0, 0, 0, 0.35);
-        border: 2px solid rgba(255, 255, 255, 0.35);
-        display: none;
-        align-items: center;
-        justify-content: center;
-        font-size: 28px;
-        pointer-events: none;
-      }
-      #held-item img {
-        width: 40px;
-        height: 40px;
-        image-rendering: pixelated;
-      }
-      #held-item.swing {
-        animation: held-item-swing 0.18s ease-out;
-      }
-      @keyframes held-item-swing {
-        0% {
-          transform: translate(0, 0) rotate(0deg);
-        }
-        40% {
-          transform: translate(6px, -6px) rotate(-18deg);
-        }
-        100% {
-          transform: translate(0, 0) rotate(0deg);
-        }
-      }
+      /* 손에 든 것은 이제 3D 화면 안(heldHand.ts)에서 직접 보여준다. */
       .hotbar-emoji {
         font-size: 22px;
         line-height: 1;
@@ -745,7 +711,6 @@
       <div id="hunger"></div>
       <div id="armor-label"></div>
       <div id="damage-flash"></div>
-      <div id="held-item"></div>
       <div id="toast"></div>
       <div id="help-button">?</div>
       <div id="achievement-button">도전</div>

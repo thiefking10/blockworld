@@ -16,6 +16,7 @@ import { MobRenderer } from "./mobRender";
 import { DropField } from "./drops";
 import { DropRenderer } from "./dropRender";
 import { FUELS, FurnaceField, SMELTS } from "./furnace";
+import { HeldHandRenderer } from "./heldHand";
 import { MOB_SPECS, MobSimulation, raycastMobs, type Mob, type MobKind } from "./mobs";
 import { connectAndWait, NetClient, randomRoomCode } from "./net";
 import { PlayerAvatarRenderer } from "./playerRender";
@@ -33,7 +34,6 @@ const canvas = document.getElementById("game") as HTMLCanvasElement;
 const fpsLabel = document.getElementById("fps") as HTMLElement;
 const hotbarElement = document.getElementById("hotbar") as HTMLElement;
 const armorLabel = document.getElementById("armor-label") as HTMLElement;
-const heldItemElement = document.getElementById("held-item") as HTMLElement;
 
 const LAST_SEED_KEY = "voxelgame:last-seed";
 const saveKey = (worldSeed: number): string => `voxelgame:save:${worldSeed}`;
@@ -333,6 +333,9 @@ function spawnExplosion(x: number, y: number, z: number): void {
 
 const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 120);
 camera.rotation.order = "YXZ";
+// 카메라 자체를 장면에 넣어야, 카메라에 붙인 손 모형(heldHand)도 함께 그려진다.
+scene.add(camera);
+const heldHand = new HeldHandRenderer(camera);
 
 function resize(): void {
   renderer.setSize(window.innerWidth, window.innerHeight, false);
@@ -413,30 +416,14 @@ function heldItem(): number {
 }
 
 /** 화면 오른쪽 아래에 지금 손에 든 것을 아이콘으로 보여준다 (빈손이면 숨김). */
+/** 1인칭 손 모형이 지금 손에 든 것과 같은 걸 들게 한다. */
 function refreshHeldItemView(): void {
-  const id = heldItem();
-  heldItemElement.replaceChildren();
-  if (id === 0) {
-    heldItemElement.style.display = "none";
-    return;
-  }
-  heldItemElement.style.display = "flex";
-  if (isPlaceableBlock(id)) {
-    const icon = document.createElement("img");
-    icon.src = iconUrl(id);
-    heldItemElement.append(icon);
-  } else {
-    const icon = document.createElement("span");
-    icon.textContent = itemEmoji(id);
-    heldItemElement.append(icon);
-  }
+  heldHand.setItem(heldItem());
 }
 
-/** 캐거나 때리거나 쏠 때 손에 든 것이 살짝 흔들리게 한다. */
+/** 캐거나 때리거나 쏠 때 손에 든 것을 한 번 휘두르게 한다. */
 function swingHeldItem(): void {
-  heldItemElement.classList.remove("swing");
-  void heldItemElement.offsetWidth; // 리플로우를 강제해서 같은 애니메이션도 다시 시작하게 한다
-  heldItemElement.classList.add("swing");
+  heldHand.swing();
 }
 
 /** 아이템 바 칸마다 아이콘과 이름을 그린다 (블록은 그림, 도구·검 같은 아이템은 글자 아이콘). */
@@ -1596,6 +1583,7 @@ function frame(now: number): void {
   player.update(dt, controls.currentInput());
   const moved = Math.hypot(player.x - beforeX, player.z - beforeZ);
   updateMovementSounds(moved);
+  heldHand.update(dt, moved > 0.001);
   updateMining(dt);
   worldMesh.update(player.x, player.z);
   cropTimer += dt;
