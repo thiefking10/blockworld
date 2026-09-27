@@ -11,7 +11,8 @@ import { ambientColor, DAY_LENGTH_SECONDS, daylight, nextMorning, phaseFromSecon
 import { solidMaterial, waterMaterial } from "./mesher";
 import { ChunkedWorldMesh } from "./chunks";
 import { MobRenderer } from "./mobRender";
-import { MOB_SPECS, MobSimulation, raycastMobs } from "./mobs";
+import { MOB_SPECS, MobSimulation, raycastMobs, type Mob } from "./mobs";
+import { bestSword, bestTool, breakSeconds, canHarvest, SWORD_DAMAGE, TOOL_BY_ID, toolDurability, type ToolDef } from "./tools";
 import { AdaptiveQuality, fogFar, QUALITY_LEVELS } from "./quality";
 import { EYE_HEIGHT, Player } from "./player";
 import { lookDirection, raycast, RayHit } from "./raycast";
@@ -62,7 +63,7 @@ const hotbarBlocks: BlockId[] = sanitizeHotbar(saved?.hotbar);
 /** survival: 블록을 모아서 쓴다 / creative: 블록이 무한이다. 예전 저장(모드 없음)은 무한 그대로 이어간다. */
 let mode: "survival" | "creative" = saved && saved.seed === seed ? (saved.mode ?? "creative") : "survival";
 const inventory = new Inventory();
-if (saved && saved.seed === seed && saved.inventory) inventory.load(saved.inventory);
+if (saved && saved.seed === seed && saved.inventory) inventory.load(saved.inventory, saved.durability ?? []);
 const health = new Health();
 const fallTracker = new FallTracker();
 const achievements = new Achievements();
@@ -96,6 +97,8 @@ function itemLabel(item: number): string {
   return ITEM_NAMES[item] ?? blockName(item);
 }
 
+const TOOL_EMOJI: Record<string, string> = { pickaxe: "⛏️", axe: "🪓", shovel: "🥄", sword: "🗡️" };
+
 /** 도전 과제를 달성하면 알림을 띄운다. 이미 달성한 것이면 아무것도 안 한다. */
 function unlockAchievement(id: string): void {
   if (!achievements.unlock(id)) return;
@@ -111,6 +114,7 @@ function checkInventoryAchievements(): void {
   if (has(Block.Wood)) unlockAchievement("wood");
   if (has(Block.Planks)) unlockAchievement("planks");
   if (has(Item.WoodClub) || has(Item.StoneClub) || has(Item.IronClub)) unlockAchievement("club");
+  if (has(Item.WoodPickaxe) || has(Item.StonePickaxe) || has(Item.IronPickaxe)) unlockAchievement("pickaxe");
   if (has(Item.Meat) || has(Item.CookedMeat)) unlockAchievement("meat");
   if (has(Item.CookedMeat)) unlockAchievement("cooked");
   if (has(Item.Bed)) unlockAchievement("bed");
@@ -152,6 +156,14 @@ const outline = new THREE.LineSegments(
 );
 outline.visible = false;
 scene.add(outline);
+
+// 캐는 중인 블록에 어두운 막이 점점 짙어지는 "금 간" 표시
+const crack = new THREE.Mesh(
+  new THREE.BoxGeometry(1.006, 1.006, 1.006),
+  new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0, depthWrite: false }),
+);
+crack.visible = false;
+scene.add(crack);
 
 const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 120);
 camera.rotation.order = "YXZ";
@@ -377,7 +389,10 @@ function refreshInventoryPanel(): void {
         chip.textContent = "🛏 " + itemLabel(item) + " ×" + amount + " (밤에 눌러서 자기)";
         onPress(chip, sleepInBed);
       } else {
-        chip.textContent = "🔨 " + itemLabel(item) + " ×" + amount + " (자동으로 써요)";
+        const def = TOOL_BY_ID.get(item);
+        chip.textContent = def
+          ? TOOL_EMOJI[def.type] + " " + itemLabel(item) + " ×" + amount + " (내구도 " + inventory.toolLeft(item) + "/" + toolDurability(def) + ", 알아서 써요)"
+          : "🪵 " + itemLabel(item) + " ×" + amount;
       }
       itemsRow.appendChild(chip);
     }
@@ -385,7 +400,8 @@ function refreshInventoryPanel(): void {
 
   craftSection.style.display = survival ? "" : "none";
   craftList.replaceChildren();
-  RECIPES.forEach((recipe, index) => {
+  const order = RECIPES.map((recipe, index) => ({ recipe, index })).sort((a, b) => Number(inventory.canCraft(b.recipe)) - Number(inventory.canCraft(a.recipe)));
+  order.forEach(({ recipe, index }) => {
     const ready = inventory.canCraft(recipe);
     const row = document.createElement("div");
     row.className = "craft-row " + (ready ? "ready" : "locked");
@@ -423,20 +439,31 @@ function currentTarget(): RayHit | null {
   return raycast(world, player.x, player.y + EYE_HEIGHT, player.z, dx, dy, dz, REACH);
 }
 
-/** 눈앞의 동물을 때린다. 동물이 블록보다 가까이 있을 때만 맞고, 때렸으면 true. */
-function hitMobInSight(blockHit: RayHit | null): boolean {
+/** 시선 앞에 있는 동물 (블록보다 가까이 있을 때만). */
+function mobInSight(blockHit: RayHit | null): Mob | null {
   const ex = player.x;
   const ey = player.y + EYE_HEIGHT;
   const ez = player.z;
   const [dx, dy, dz] = lookDirection(player.yaw, player.pitch);
   const found = raycastMobs(mobSim.mobs, ex, ey, ez, dx, dy, dz, REACH);
-  if (!found) return false;
+  if (!found) return null;
   const blockDistance = blockHit ? Math.hypot(blockHit.x + 0.5 - ex, blockHit.y + 0.5 - ey, blockHit.z + 0.5 - ez) - 0.5 : Infinity;
-  if (found.distance > blockDistance) return false;
+  return found.distance > blockDistance ? null : found.mob;
+}
+
+function toolBroke(tool: ToolDef): void {
+  showToast("🔧 " + itemLabel(tool.id) + ": 부러졌어요!");
+  refreshHotbar();
+}
+
+/** 동물을 한 번 때린다. 서바이벌에서는 가진 검 중 가장 좋은 것을 쓰고 검이 닳는다. */
+function attackMob(mob: Mob): void {
   audio.playMobHit();
-  const damage = mode === "creative" ? 4 : inventory.attackDamage();
-  const kind = found.mob.kind;
-  if (mobSim.hit(found.mob, player.x, player.z, damage)) {
+  const sword = mode === "survival" ? bestSword((id) => inventory.count(id) > 0) : null;
+  const damage = mode === "creative" ? 4 : sword ? SWORD_DAMAGE[sword.tier] : 1;
+  if (sword && inventory.useTool(sword.id)) toolBroke(sword);
+  const kind = mob.kind;
+  if (mobSim.hit(mob, player.x, player.z, damage)) {
     if (kind === "zombie") unlockAchievement("zombie");
     const drops = mode === "survival" ? mobDrops(kind, Math.random) : [];
     if (drops.length > 0) {
@@ -446,16 +473,17 @@ function hitMobInSight(blockHit: RayHit | null): boolean {
       scheduleSave();
     }
   }
-  return true;
 }
 
-/** 블록 하나를 없앤다. 서바이벌이면 나오는 것들을 가방에 넣고, 알릴 만한 것은 알려 준다. */
-function removeBlock(x: number, y: number, z: number): void {
+/** 블록 하나를 없앤다. 서바이벌이면 (얻을 수 있을 때) 나오는 것들을 가방에 넣는다. */
+function removeBlock(x: number, y: number, z: number, harvest = true): void {
   const broken = world.get(x, y, z);
   if (mode === "survival") {
-    const drops = dropsFor(broken, Math.random);
-    for (const [item, amount] of drops) inventory.add(item, amount);
-    if (drops.some(([item]) => item === Block.Sprout) && broken === Block.Grass) showToast("밀 씨앗을 얻었어요");
+    if (harvest) {
+      const drops = dropsFor(broken, Math.random);
+      for (const [item, amount] of drops) inventory.add(item, amount);
+      if (drops.some(([item]) => item === Block.Sprout) && broken === Block.Grass) showToast("밀 씨앗을 얻었어요");
+    }
     refreshHotbar();
   }
   world.set(x, y, z, Block.Air);
@@ -463,16 +491,88 @@ function removeBlock(x: number, y: number, z: number): void {
   crops.remove(x, y, z);
 }
 
-function breakBlock(): void {
-  const hit = currentTarget();
-  if (hitMobInSight(hit)) return;
-  if (!hit || hit.y === 0) return;
-  audio.playBreak(world.get(hit.x, hit.y, hit.z));
-  removeBlock(hit.x, hit.y, hit.z);
+/** 블록 하나를 다 캐서 없앤다 (소리, 아이템, 도구 닳기 포함). */
+function breakAt(hit: RayHit, tool: ToolDef | null): void {
+  const broken = world.get(hit.x, hit.y, hit.z);
+  audio.playBreak(broken);
+  const survival = mode === "survival";
+  const harvest = !survival || canHarvest(broken, tool);
+  removeBlock(hit.x, hit.y, hit.z, harvest);
+  if (survival && !harvest) showToast("맞는 곡괭이가 없어서 아무것도 안 나왔어요");
+  if (survival && tool && breakSeconds(broken, null) > 0 && inventory.useTool(tool.id)) toolBroke(tool);
   // 밑이 사라진 식물은 서 있을 곳이 없으니 같이 뽑힌다.
   if (isPlant(world.get(hit.x, hit.y + 1, hit.z))) removeBlock(hit.x, hit.y + 1, hit.z);
   worldMesh.updateBlock(hit.x, hit.z);
   scheduleSave();
+}
+
+// ---- 캐기: 부수기를 누르고 있는 동안 조금씩 진행된다 (창작 모드는 바로바로).
+let mining: { x: number; y: number; z: number } | null = null;
+let miningProgress = 0;
+let attackCooldown = 0;
+let breakCooldown = 0;
+let mineSoundTimer = 0;
+
+function resetMining(): void {
+  mining = null;
+  miningProgress = 0;
+  crack.visible = false;
+}
+
+function updateMining(dt: number): void {
+  attackCooldown = Math.max(0, attackCooldown - dt);
+  breakCooldown = Math.max(0, breakCooldown - dt);
+  if (!controls.consumeBreak()) {
+    resetMining();
+    return;
+  }
+
+  const hit = currentTarget();
+  const mob = mobInSight(hit);
+  if (mob) {
+    resetMining();
+    if (attackCooldown <= 0) {
+      attackCooldown = 0.45;
+      attackMob(mob);
+    }
+    return;
+  }
+  if (!hit || hit.y === 0) {
+    resetMining();
+    return;
+  }
+
+  if (mode === "creative") {
+    if (breakCooldown <= 0) {
+      breakCooldown = 0.22;
+      breakAt(hit, null);
+    }
+    return;
+  }
+
+  if (!mining || mining.x !== hit.x || mining.y !== hit.y || mining.z !== hit.z) {
+    mining = { x: hit.x, y: hit.y, z: hit.z };
+    miningProgress = 0;
+    mineSoundTimer = 0;
+  }
+  const block = world.get(hit.x, hit.y, hit.z);
+  const tool = bestTool(block, (id) => inventory.count(id) > 0);
+  const needed = breakSeconds(block, tool);
+  miningProgress += dt;
+
+  mineSoundTimer -= dt;
+  if (needed > 0 && mineSoundTimer <= 0) {
+    mineSoundTimer = 0.25;
+    audio.playMining(block);
+  }
+  if (miningProgress >= needed) {
+    breakAt(hit, tool);
+    resetMining();
+    return;
+  }
+  crack.visible = true;
+  crack.position.set(hit.x + 0.5, hit.y + 0.5, hit.z + 0.5);
+  (crack.material as THREE.MeshBasicMaterial).opacity = Math.min(1, miningProgress / needed) * 0.6;
 }
 
 function placeBlock(): void {
@@ -513,6 +613,7 @@ function saveNow(): void {
     hotbar: hotbarBlocks,
     mode,
     inventory: inventory.entries(),
+    durability: inventory.wearEntries(),
     crops: crops.toArray(),
     achievements: achievements.toArray(),
   };
@@ -603,7 +704,6 @@ controls.onJumpPress = () => {
     lastJumpPress = now;
   }
 };
-controls.onBreak = breakBlock;
 controls.onPlace = placeBlock;
 controls.onSelectSlot = selectSlot;
 
@@ -818,6 +918,7 @@ function frame(now: number): void {
   const beforeZ = player.z;
   player.update(dt, controls.currentInput());
   updateMovementSounds(Math.hypot(player.x - beforeX, player.z - beforeZ));
+  updateMining(dt);
   worldMesh.update(player.x, player.z);
   cropTimer += dt;
   if (cropTimer >= 1) {

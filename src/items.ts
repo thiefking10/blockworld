@@ -1,0 +1,43 @@
+/** 블록이 아닌 아이템은 100번부터 쓴다 (블록은 블록 번호 그대로). */
+export const Item = {
+  Meat: 100,
+  /** 검 (예전 "몽둥이"). 저장된 게임과 번호를 맞추려고 옛 이름을 그대로 둔다. */
+  WoodClub: 101,
+  StoneClub: 102,
+  Bed: 103,
+  IronClub: 104,
+  CookedMeat: 105,
+  Grain: 106,
+  Bread: 107,
+  Stick: 108,
+  WoodPickaxe: 110,
+  StonePickaxe: 111,
+  IronPickaxe: 112,
+  WoodAxe: 113,
+  StoneAxe: 114,
+  IronAxe: 115,
+  WoodShovel: 116,
+  StoneShovel: 117,
+  IronShovel: 118,
+} as const;
+
+export const ITEM_NAMES: Record<number, string> = {
+  [Item.Meat]: "고기",
+  [Item.WoodClub]: "나무 검",
+  [Item.StoneClub]: "돌 검",
+  [Item.Bed]: "침대",
+  [Item.IronClub]: "철 검",
+  [Item.CookedMeat]: "구운 고기",
+  [Item.Grain]: "밀",
+  [Item.Bread]: "빵",
+  [Item.Stick]: "막대",
+  [Item.WoodPickaxe]: "나무 곡괭이",
+  [Item.StonePickaxe]: "돌 곡괭이",
+  [Item.IronPickaxe]: "철 곡괭이",
+  [Item.WoodAxe]: "나무 도끼",
+  [Item.StoneAxe]: "돌 도끼",
+  [Item.IronAxe]: "철 도끼",
+  [Item.WoodShovel]: "나무 삽",
+  [Item.StoneShovel]: "돌 삽",
+  [Item.IronShovel]: "철 삽",
+};

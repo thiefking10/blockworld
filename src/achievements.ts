@@ -8,14 +8,15 @@ export interface AchievementDef {
 export const ACHIEVEMENTS: AchievementDef[] = [
   { id: "wood", name: "첫 나무", hint: "나무 기둥을 부숴서 통나무를 얻어요" },
   { id: "planks", name: "목수", hint: "통나무로 판자를 만들어요" },
-  { id: "club", name: "무기를 들다", hint: "몽둥이를 만들어요" },
+  { id: "club", name: "무기를 들다", hint: "검을 만들어요" },
+  { id: "pickaxe", name: "채굴 시작", hint: "곡괭이를 만들어요" },
   { id: "meat", name: "사냥꾼", hint: "돼지나 양을 잡아 고기를 얻어요" },
   { id: "cooked", name: "요리사", hint: "고기를 구워서 구운 고기를 만들어요" },
   { id: "zombie", name: "밤의 파수꾼", hint: "좀비를 물리쳐요" },
   { id: "bed", name: "포근한 밤", hint: "침대를 만들어요" },
   { id: "sleep", name: "푹 잤어요", hint: "밤에 침대에서 자고 아침을 맞아요" },
   { id: "iron", name: "광부", hint: "땅속에서 철광석을 캐요" },
-  { id: "ironclub", name: "대장장이", hint: "철 몽둥이를 만들어요" },
+  { id: "ironclub", name: "대장장이", hint: "철 검을 만들어요" },
   { id: "harvest", name: "첫 수확", hint: "씨앗을 심어 밀을 거둬요" },
   { id: "bread", name: "따끈한 빵", hint: "밀로 빵을 만들어요" },
 ];

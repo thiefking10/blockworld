@@ -14,6 +14,8 @@ export interface SaveData {
   mode?: "survival" | "creative";
   /** 가방 내용 [아이템 번호, 개수]. */
   inventory?: [number, number][];
+  /** 쓰던 도구의 [번호, 남은 내구도]. */
+  durability?: [number, number][];
   /** 심어 둔 씨앗 [x, y, z, 심은 시각(초)]. */
   crops?: [number, number, number, number][];
   /** 달성한 도전 과제 번호. */
@@ -59,6 +61,11 @@ export function decodeSave(text: string | null): SaveData | null {
     if (
       data.inventory !== undefined &&
       !(Array.isArray(data.inventory) && data.inventory.every((e: unknown) => Array.isArray(e) && e.length === 2 && isFiniteNumbers(e)))
+    )
+      return null;
+    if (
+      data.durability !== undefined &&
+      !(Array.isArray(data.durability) && data.durability.every((e: unknown) => Array.isArray(e) && e.length === 2 && isFiniteNumbers(e)))
     )
       return null;
     if (data.crops !== undefined && !(Array.isArray(data.crops) && data.crops.every((e: unknown) => Array.isArray(e) && e.length === 4 && isFiniteNumbers(e)))) return null;

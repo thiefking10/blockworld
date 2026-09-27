@@ -14,7 +14,9 @@ export class Controls {
   onJumpPress?: () => void;
   /** 시점 돌리는 속도 배율 (설정에서 바꾼다). */
   lookScale = 1;
-  onBreak?: () => void;
+  /** 부수기 버튼(또는 Q)을 누르고 있는지. 짧게 톡 눌러도 한 프레임은 눌린 것으로 친다. */
+  breakHeld = false;
+  private breakLatch = false;
   onPlace?: () => void;
   onSelectSlot?: (index: number) => void;
   private lookDeltaX = 0;
@@ -65,13 +67,26 @@ export class Controls {
     this.jumpButton.addEventListener("pointerup", releaseJump);
     this.jumpButton.addEventListener("pointercancel", releaseJump);
 
-    this.bindActionButton("break-button", () => this.onBreak?.());
+    const breakButton = document.getElementById("break-button") as HTMLElement;
+    breakButton.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      breakButton.classList.add("active");
+      this.breakHeld = true;
+      this.breakLatch = true;
+    });
+    const releaseBreak = () => {
+      breakButton.classList.remove("active");
+      this.breakHeld = false;
+    };
+    breakButton.addEventListener("pointerup", releaseBreak);
+    breakButton.addEventListener("pointercancel", releaseBreak);
+    breakButton.addEventListener("pointerleave", releaseBreak);
     this.bindActionButton("place-button", () => this.onPlace?.());
 
     window.addEventListener("keydown", (e) => {
       this.keys.add(e.code);
       if (e.code === "Space" && !e.repeat) this.onJumpPress?.();
-      if (e.code === "KeyQ") this.onBreak?.();
+      if (e.code === "KeyQ") this.breakLatch = true;
       if (e.code === "KeyE") this.onPlace?.();
       const digit = /^Digit([1-9])$/.exec(e.code);
       if (digit) this.onSelectSlot?.(Number(digit[1]) - 1);
@@ -156,6 +171,13 @@ export class Controls {
   private placeKnob(x: number, y: number): void {
     this.knob.style.left = `${x - 26}px`;
     this.knob.style.top = `${y - 26}px`;
+  }
+
+  /** 이번 프레임에 부수기를 누르고 있는지 (짧게 누른 것도 놓치지 않는다). */
+  consumeBreak(): boolean {
+    const held = this.breakHeld || this.keys.has("KeyQ") || this.breakLatch;
+    this.breakLatch = false;
+    return held;
   }
 
   /** 지금까지 쌓인 시점 회전량을 꺼내고 비운다. */

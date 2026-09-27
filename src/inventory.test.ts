@@ -25,7 +25,7 @@ describe("Inventory", () => {
     expect(inv.count(Block.Planks)).toBe(4);
   });
 
-  it("몽둥이가 있으면 공격력이 오르고, 센 쪽이 우선이다", () => {
+  it("검이 있으면 공격력이 오르고, 센 쪽이 우선이다", () => {
     const inv = new Inventory();
     expect(inv.attackDamage()).toBe(1);
     inv.add(Item.WoodClub);
@@ -43,14 +43,54 @@ describe("Inventory", () => {
     expect(copy.entries()).toEqual(inv.entries());
   });
 
-  it("몽둥이는 재료를 이어서 만들 수 있다 (통나무 → 판자 → 몽둥이)", () => {
+  const recipe = (name: string) => {
+    const found = RECIPES.find((r) => r.name === name);
+    if (!found) throw new Error("recipe " + name);
+    return found;
+  };
+
+  it("검은 재료를 이어서 만든다 (통나무 → 판자 → 막대 → 나무 검)", () => {
     const inv = new Inventory();
     inv.add(Block.Wood, 1);
-    const [planks, , woodClub] = [RECIPES[0], RECIPES[1], RECIPES[3]];
-    expect(inv.craft(planks)).toBe(true);
-    expect(inv.craft(woodClub)).toBe(true);
+    expect(inv.craft(recipe("판자"))).toBe(true);
+    expect(inv.craft(recipe("막대"))).toBe(true);
+    expect(inv.craft(recipe("나무 검"))).toBe(true);
     expect(inv.count(Item.WoodClub)).toBe(1);
-    expect(inv.count(Block.Planks)).toBe(1);
+    expect(inv.count(Block.Planks)).toBe(0);
+    expect(inv.count(Item.Stick)).toBe(3);
+  });
+
+  it("곡괭이를 만들려면 막대가 필요하다", () => {
+    const inv = new Inventory();
+    inv.add(Block.Planks, 3);
+    expect(inv.canCraft(recipe("나무 곡괭이"))).toBe(false);
+    inv.add(Item.Stick, 2);
+    expect(inv.craft(recipe("나무 곡괭이"))).toBe(true);
+    expect(inv.count(Item.WoodPickaxe)).toBe(1);
+  });
+
+  it("도구는 쓸 때마다 닳고, 다 닳으면 부러져서 하나가 줄어든다", () => {
+    const inv = new Inventory();
+    inv.add(Item.WoodPickaxe, 2);
+    expect(inv.toolLeft(Item.WoodPickaxe)).toBe(59);
+    for (let i = 0; i < 58; i++) expect(inv.useTool(Item.WoodPickaxe)).toBe(false);
+    expect(inv.toolLeft(Item.WoodPickaxe)).toBe(1);
+    expect(inv.useTool(Item.WoodPickaxe)).toBe(true);
+    expect(inv.count(Item.WoodPickaxe)).toBe(1);
+    expect(inv.toolLeft(Item.WoodPickaxe)).toBe(59);
+    expect(inv.useTool(Item.Meat)).toBe(false);
+  });
+
+  it("닳은 정도도 저장했다가 그대로 불러온다", () => {
+    const inv = new Inventory();
+    inv.add(Item.StoneAxe, 1);
+    for (let i = 0; i < 10; i++) inv.useTool(Item.StoneAxe);
+    const copy = new Inventory();
+    copy.load(inv.entries(), inv.wearEntries());
+    expect(copy.toolLeft(Item.StoneAxe)).toBe(121);
+    const broken = new Inventory();
+    broken.load([[Item.StoneAxe, 1]], [[Item.StoneAxe, 9999]]);
+    expect(broken.toolLeft(Item.StoneAxe)).toBe(131);
   });
 });
 
@@ -91,11 +131,11 @@ describe("drops", () => {
     expect(mobDrops("zombie", () => 0.5)).toEqual([]);
   });
 
-  it("철광석은 철 몽둥이가 되고 가장 센 무기로 쓰인다", () => {
+  it("철광석은 철 검이 되고 가장 센 무기로 쓰인다", () => {
     const inv = new Inventory();
     inv.add(Block.IronOre, 2);
-    inv.add(Block.Planks, 1);
-    const iron = RECIPES.find((r) => r.name === "철 몽둥이");
+    inv.add(Item.Stick, 1);
+    const iron = RECIPES.find((r) => r.name === "철 검");
     if (!iron) throw new Error("recipe");
     inv.add(Item.StoneClub);
     expect(inv.craft(iron)).toBe(true);

@@ -1,27 +1,8 @@
+import { Item, ITEM_NAMES } from "./items";
+import { bestSword, SWORD_DAMAGE, TOOL_BY_ID, toolDurability } from "./tools";
 import { Block } from "./world";
 
-/** 블록이 아닌 아이템은 100번부터 쓴다 (블록은 블록 번호 그대로). */
-export const Item = {
-  Meat: 100,
-  WoodClub: 101,
-  StoneClub: 102,
-  Bed: 103,
-  IronClub: 104,
-  CookedMeat: 105,
-  Grain: 106,
-  Bread: 107,
-} as const;
-
-export const ITEM_NAMES: Record<number, string> = {
-  [Item.Meat]: "고기",
-  [Item.WoodClub]: "나무 몽둥이",
-  [Item.StoneClub]: "돌 몽둥이",
-  [Item.Bed]: "침대",
-  [Item.IronClub]: "철 몽둥이",
-  [Item.CookedMeat]: "구운 고기",
-  [Item.Grain]: "밀",
-  [Item.Bread]: "빵",
-};
+export { Item, ITEM_NAMES };
 
 /** 고기를 먹으면 회복하는 체력 (하트 4개). */
 export const MEAT_HEAL = 8;
@@ -33,26 +14,33 @@ export const FOOD_HEAL: Record<number, number> = {
   [Item.Bread]: 10,
 };
 
-/** 가진 도구별 공격력. 도구가 없으면 맨손 1. 센 것부터 적는다. */
-export const CLUB_DAMAGE: [number, number][] = [
-  [Item.IronClub, 6],
-  [Item.StoneClub, 4],
-  [Item.WoodClub, 2],
-];
-
 export interface Recipe {
   name: string;
   inputs: [number, number][];
   output: [number, number];
 }
 
+/**
+ * 만들 수 있는 것들. 철 도구는 아직 화로가 없어서 철광석을 그대로 쓴다.
+ * (도구와 검의 종류·재질은 tools.ts, 아이템 번호는 items.ts)
+ */
 export const RECIPES: Recipe[] = [
   { name: "판자", inputs: [[Block.Wood, 1]], output: [Block.Planks, 4] },
+  { name: "막대", inputs: [[Block.Planks, 2]], output: [Item.Stick, 4] },
   { name: "유리", inputs: [[Block.Sand, 2]], output: [Block.Glass, 2] },
   { name: "벽돌", inputs: [[Block.Stone, 2]], output: [Block.Brick, 2] },
-  { name: "나무 몽둥이", inputs: [[Block.Planks, 3]], output: [Item.WoodClub, 1] },
-  { name: "돌 몽둥이", inputs: [[Block.Stone, 2], [Block.Planks, 1]], output: [Item.StoneClub, 1] },
-  { name: "철 몽둥이", inputs: [[Block.IronOre, 2], [Block.Planks, 1]], output: [Item.IronClub, 1] },
+  { name: "나무 곡괭이", inputs: [[Block.Planks, 3], [Item.Stick, 2]], output: [Item.WoodPickaxe, 1] },
+  { name: "나무 도끼", inputs: [[Block.Planks, 3], [Item.Stick, 2]], output: [Item.WoodAxe, 1] },
+  { name: "나무 삽", inputs: [[Block.Planks, 1], [Item.Stick, 2]], output: [Item.WoodShovel, 1] },
+  { name: "나무 검", inputs: [[Block.Planks, 2], [Item.Stick, 1]], output: [Item.WoodClub, 1] },
+  { name: "돌 곡괭이", inputs: [[Block.Stone, 3], [Item.Stick, 2]], output: [Item.StonePickaxe, 1] },
+  { name: "돌 도끼", inputs: [[Block.Stone, 3], [Item.Stick, 2]], output: [Item.StoneAxe, 1] },
+  { name: "돌 삽", inputs: [[Block.Stone, 1], [Item.Stick, 2]], output: [Item.StoneShovel, 1] },
+  { name: "돌 검", inputs: [[Block.Stone, 2], [Item.Stick, 1]], output: [Item.StoneClub, 1] },
+  { name: "철 곡괭이", inputs: [[Block.IronOre, 3], [Item.Stick, 2]], output: [Item.IronPickaxe, 1] },
+  { name: "철 도끼", inputs: [[Block.IronOre, 3], [Item.Stick, 2]], output: [Item.IronAxe, 1] },
+  { name: "철 삽", inputs: [[Block.IronOre, 1], [Item.Stick, 2]], output: [Item.IronShovel, 1] },
+  { name: "철 검", inputs: [[Block.IronOre, 2], [Item.Stick, 1]], output: [Item.IronClub, 1] },
   { name: "침대", inputs: [[Block.Wool, 3], [Block.Planks, 3]], output: [Item.Bed, 1] },
   { name: "구운 고기", inputs: [[Item.Meat, 1], [Block.Wood, 1]], output: [Item.CookedMeat, 1] },
   { name: "빵", inputs: [[Item.Grain, 3]], output: [Item.Bread, 1] },
@@ -82,9 +70,11 @@ export function mobDrops(kind: string, rng: () => number): [number, number][] {
   return drops;
 }
 
-/** 가방. 아이템 번호마다 개수를 센다. */
+/** 가방. 아이템 번호마다 개수를 세고, 도구는 지금 쓰는 한 개의 남은 내구도를 기억한다. */
 export class Inventory {
   private readonly counts = new Map<number, number>();
+  /** 도구 번호 → 지금 쓰고 있는 도구 하나의 남은 내구도 (안 쓴 도구는 항목이 없다) */
+  private readonly wear = new Map<number, number>();
 
   count(item: number): number {
     return this.counts.get(item) ?? 0;
@@ -99,8 +89,12 @@ export class Inventory {
   remove(item: number, amount = 1): boolean {
     if (this.count(item) < amount) return false;
     const left = this.count(item) - amount;
-    if (left === 0) this.counts.delete(item);
-    else this.counts.set(item, left);
+    if (left === 0) {
+      this.counts.delete(item);
+      this.wear.delete(item);
+    } else {
+      this.counts.set(item, left);
+    }
     return true;
   }
 
@@ -115,10 +109,30 @@ export class Inventory {
     return true;
   }
 
-  /** 가진 도구 중 가장 센 것의 공격력. */
+  /** 지금 쓰는 도구 하나의 남은 내구도 (없는 도구면 0). */
+  toolLeft(item: number): number {
+    const tool = TOOL_BY_ID.get(item);
+    if (!tool || this.count(item) === 0) return 0;
+    return this.wear.get(item) ?? toolDurability(tool);
+  }
+
+  /** 도구를 한 번 쓴다. 다 닳아서 부러졌으면 true (같은 도구가 더 있으면 새것을 쓰기 시작한다). */
+  useTool(item: number): boolean {
+    if (!TOOL_BY_ID.has(item) || this.count(item) === 0) return false;
+    const left = this.toolLeft(item) - 1;
+    if (left <= 0) {
+      this.remove(item);
+      this.wear.delete(item);
+      return true;
+    }
+    this.wear.set(item, left);
+    return false;
+  }
+
+  /** 가진 검 중 가장 센 것의 공격력 (맨손은 1). */
   attackDamage(): number {
-    for (const [item, damage] of CLUB_DAMAGE) if (this.count(item) > 0) return damage;
-    return 1;
+    const sword = bestSword((id) => this.count(id) > 0);
+    return sword ? SWORD_DAMAGE[sword.tier] : 1;
   }
 
   /** 가진 아이템을 [번호, 개수] 목록으로 (번호 순). */
@@ -126,8 +140,18 @@ export class Inventory {
     return [...this.counts.entries()].sort((a, b) => a[0] - b[0]);
   }
 
-  load(entries: [number, number][]): void {
+  /** 저장용: 닳은 도구의 [번호, 남은 내구도] 목록 */
+  wearEntries(): [number, number][] {
+    return [...this.wear.entries()].filter(([item]) => this.count(item) > 0);
+  }
+
+  load(entries: [number, number][], wear: [number, number][] = []): void {
     this.counts.clear();
+    this.wear.clear();
     for (const [item, amount] of entries) this.add(item, amount);
+    for (const [item, left] of wear) {
+      const tool = TOOL_BY_ID.get(item);
+      if (tool && this.count(item) > 0 && left > 0 && left <= toolDurability(tool)) this.wear.set(item, left);
+    }
   }
 }

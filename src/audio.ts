@@ -271,6 +271,11 @@ class GameAudio {
     this.hit(materialOf(block), 1);
   }
 
+  /** 블록을 캐는 동안 나는 톡톡 소리 */
+  playMining(block: number): void {
+    this.hit(materialOf(block), 0.4);
+  }
+
   playPlace(block: number): void {
     this.hit(materialOf(block), 0.65);
   }
