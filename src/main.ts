@@ -629,6 +629,10 @@ function refreshInventoryPanel(): void {
       } else if (ARMOR_BY_ID.has(item)) {
         const def = ARMOR_BY_ID.get(item)!;
         chip.textContent = "🛡 " + itemLabel(item) + " (방어 " + def.points + ", 알아서 걸쳐요)";
+      } else if (item === Item.Bow) {
+        chip.textContent = "🏹 " + itemLabel(item) + " (화살이 있으면 먼 동물·괴물을 자동으로 쏴요)";
+      } else if (item === Item.Arrow) {
+        chip.textContent = "➹ " + itemLabel(item) + " ×" + amount;
       } else {
         const def = TOOL_BY_ID.get(item);
         chip.textContent = def
@@ -670,16 +674,22 @@ function currentTarget(): RayHit | null {
   return raycast(world, player.x, player.y + EYE_HEIGHT, player.z, dx, dy, dz, REACH);
 }
 
-/** 시선 앞에 있는 동물 (블록보다 가까이 있을 때만). */
-function mobInSight(blockHit: RayHit | null): Mob | null {
+/** 시선 앞에 있는 동물 (블록보다 가까이 있을 때만). range를 넘겨 활처럼 더 먼 거리도 볼 수 있다. */
+function mobInSight(blockHit: RayHit | null, range = REACH): Mob | null {
   const ex = player.x;
   const ey = player.y + EYE_HEIGHT;
   const ez = player.z;
   const [dx, dy, dz] = lookDirection(player.yaw, player.pitch);
-  const found = raycastMobs(mobSim.mobs, ex, ey, ez, dx, dy, dz, REACH);
+  const found = raycastMobs(mobSim.mobs, ex, ey, ez, dx, dy, dz, range);
   if (!found) return null;
   const blockDistance = blockHit ? Math.hypot(blockHit.x + 0.5 - ex, blockHit.y + 0.5 - ey, blockHit.z + 0.5 - ez) - 0.5 : Infinity;
   return found.distance > blockDistance ? null : found.mob;
+}
+
+/** 활 사정거리 안의 블록까지 (멀리 있는 벽에 가려지면 쏘지 못하게 확인할 때 쓴다). */
+function farTarget(): RayHit | null {
+  const [dx, dy, dz] = lookDirection(player.yaw, player.pitch);
+  return raycast(world, player.x, player.y + EYE_HEIGHT, player.z, dx, dy, dz, BOW_RANGE);
 }
 
 function toolBroke(tool: ToolDef): void {
@@ -702,6 +712,30 @@ function attackMob(mob: Mob): void {
     for (const [item, amount] of loot) drops.spawn(item, amount, mob.x, mob.y + 0.3, mob.z, Math.random);
     if (loot.length > 0) scheduleSave();
   }
+}
+
+/** 검이 닿지 않는 먼 동물을 활로 쏜다 (화살 하나를 쓰고, 맞으면 즉시 명중한다 — 날아가는 시간은 생략). */
+const BOW_RANGE = 20;
+const BOW_DAMAGE = 4;
+
+function shootBow(mob: Mob): void {
+  inventory.remove(Item.Arrow, 1);
+  audio.playArrow();
+  const spec = MOB_SPECS[mob.kind];
+  spawnArrow(player.x, player.y + EYE_HEIGHT, player.z, mob.x, mob.y + spec.height * 0.6, mob.z);
+  const kind = mob.kind;
+  if (mobSim.hit(mob, player.x, player.z, BOW_DAMAGE)) {
+    if (kind === "zombie") unlockAchievement("zombie");
+    if (kind === "skeleton") unlockAchievement("skeleton");
+    if (kind === "creeper") unlockAchievement("creeper");
+    const loot = mobDrops(kind, Math.random);
+    for (const [item, amount] of loot) drops.spawn(item, amount, mob.x, mob.y + 0.3, mob.z, Math.random);
+    if (loot.length > 0) scheduleSave();
+  }
+  unlockAchievement("bow");
+  refreshHotbar();
+  refreshOpenPanels();
+  scheduleSave();
 }
 
 /** 빛(횃불)이 바뀌었으면 15칸 너머까지, 아니면 그 자리만 다시 그린다. */
@@ -778,6 +812,20 @@ function updateMining(dt: number): void {
     }
     return;
   }
+
+  // 검이 닿지 않는 곳의 동물·괴물은, 활과 화살이 있으면 대신 쏜다.
+  if (mode === "survival" && inventory.count(Item.Bow) > 0 && inventory.count(Item.Arrow) > 0) {
+    const farMob = mobInSight(farTarget(), BOW_RANGE);
+    if (farMob) {
+      resetMining();
+      if (attackCooldown <= 0) {
+        attackCooldown = 0.6;
+        shootBow(farMob);
+      }
+      return;
+    }
+  }
+
   if (!hit || hit.y === 0) {
     resetMining();
     return;

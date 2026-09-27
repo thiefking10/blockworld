@@ -67,6 +67,9 @@ export const RECIPES: Recipe[] = [
   { name: "다이아몬드 흉갑", station: "table", inputs: [[Item.Diamond, 8]], output: [Item.DiamondChestplate, 1] },
   { name: "다이아몬드 바지", station: "table", inputs: [[Item.Diamond, 7]], output: [Item.DiamondLeggings, 1] },
   { name: "다이아몬드 부츠", station: "table", inputs: [[Item.Diamond, 4]], output: [Item.DiamondBoots, 1] },
+  // 원래는 부싯돌과 깃털이 있어야 하지만, 아직 없어 막대만으로 단순화했다.
+  { name: "화살", station: "table", inputs: [[Item.Stick, 1]], output: [Item.Arrow, 4] },
+  { name: "활", station: "table", inputs: [[Item.Stick, 3]], output: [Item.Bow, 1] },
   { name: "침대", station: "table", inputs: [[Block.Wool, 3], [Block.Planks, 3]], output: [Item.Bed, 1] },
   { name: "빵", station: "table", inputs: [[Item.Grain, 3]], output: [Item.Bread, 1] },
 ];
@@ -113,7 +116,7 @@ interface Slot {
 
 /**
  * 가방. 정해진 칸 수(SLOT_COUNT) 안에서만 아이템을 들 수 있고, 한 칸에는 STACK_MAX개까지만 쌓인다.
- * 도구(곡괭이·도끼·삽·검)와 방어구(투구·흉갑·바지·부츠)는 한 칸에 하나만 들어가고, 같은 종류를 두 개 갖고 다니지 않는다.
+ * 도구(곡괭이·도끼·삽·검), 방어구(투구·흉갑·바지·부츠), 활은 한 칸에 하나만 들어가고, 같은 종류를 두 개 갖고 다니지 않는다.
  */
 export class Inventory {
   private slots: (Slot | null)[] = new Array(SLOT_COUNT).fill(null);
@@ -121,6 +124,7 @@ export class Inventory {
   private readonly wear = new Map<number, number>();
 
   private maxStack(item: number): number {
+    if (item === Item.Bow) return 1;
     return TOOL_BY_ID.has(item) || ARMOR_BY_ID.has(item) ? 1 : STACK_MAX;
   }
 

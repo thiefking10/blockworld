@@ -206,6 +206,28 @@ describe("drops", () => {
     expect(inv.count(Item.DiamondPickaxe)).toBe(1);
   });
 
+  it("활은 한 칸에 하나만, 화살은 다른 아이템처럼 64개까지 쌓인다", () => {
+    const inv = new Inventory();
+    expect(inv.add(Item.Bow, 1)).toBe(1);
+    expect(inv.add(Item.Bow, 1)).toBe(0);
+    expect(inv.count(Item.Bow)).toBe(1);
+    expect(inv.add(Item.Arrow, 70)).toBe(70);
+    expect(inv.slotsUsed).toBe(3); // 활 1칸 + 화살 64개 1칸 + 화살 6개 1칸
+  });
+
+  it("막대로 활과 화살을 만든다", () => {
+    const inv = new Inventory();
+    inv.add(Item.Stick, 4);
+    const arrow = RECIPES.find((r) => r.name === "화살");
+    const bow = RECIPES.find((r) => r.name === "활");
+    if (!arrow || !bow) throw new Error("recipe");
+    expect(inv.craft(arrow)).toBe(true);
+    expect(inv.count(Item.Arrow)).toBe(4);
+    expect(inv.count(Item.Stick)).toBe(3);
+    expect(inv.craft(bow)).toBe(true);
+    expect(inv.count(Item.Bow)).toBe(1);
+  });
+
   it("철 흉갑은 철 주괴 8개로 만든다", () => {
     const inv = new Inventory();
     inv.add(Item.IronIngot, 8);
