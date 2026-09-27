@@ -156,6 +156,17 @@ describe("좀비", () => {
     expect(hits).toBeLessThanOrEqual(3);
   });
 
+  it("플레이어가 표적이 아니면(창작 모드) 밤에도 쫓아오거나 다치게 하지 않는다", () => {
+    const world = flatWorld();
+    const sim = new MobSimulation();
+    const zombie = new Mob("zombie", 20.5, 1, 30.5, fixed(0.5));
+    sim.mobs.push(zombie);
+    let total = 0;
+    for (let i = 0; i < 60 * 10; i++) total += sim.update(1 / 60, world, fixed(0.9), player, true, false).damage;
+    expect(total).toBe(0);
+    expect(Math.hypot(zombie.x - player.x, zombie.z - player.z)).toBeGreaterThan(5);
+  });
+
   it("낮에는 쫓아오지 않고 시간이 지나면 사라진다", () => {
     const world = flatWorld();
     const sim = new MobSimulation();

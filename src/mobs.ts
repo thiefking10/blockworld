@@ -267,6 +267,8 @@ export class MobSimulation {
     rng: Rng,
     player: { x: number; y: number; z: number },
     night: boolean,
+    /** false면 적대적인 동물이 플레이어를 쫓지도 공격하지도 않는다 (창작 모드). */
+    targetable = true,
   ): { sounds: MobSound[]; damage: number } {
     const sounds: MobSound[] = [];
     let damage = 0;
@@ -274,10 +276,10 @@ export class MobSimulation {
     for (const mob of this.mobs) {
       const spec = MOB_SPECS[mob.kind];
       const distance = Math.hypot(mob.x - player.x, mob.z - player.z);
-      const chase = spec.hostile && night && distance < CHASE_RANGE ? player : null;
+      const chase = spec.hostile && night && targetable && distance < CHASE_RANGE ? player : null;
       mob.update(dt, world, rng, chase);
 
-      if (spec.hostile && distance < ATTACK_RANGE && Math.abs(mob.y - player.y) < 1.5 && mob.attackCooldown <= 0) {
+      if (spec.hostile && targetable && distance < ATTACK_RANGE && Math.abs(mob.y - player.y) < 1.5 && mob.attackCooldown <= 0) {
         mob.attackCooldown = ATTACK_COOLDOWN;
         damage += ATTACK_DAMAGE;
       }

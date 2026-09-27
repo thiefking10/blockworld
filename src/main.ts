@@ -563,6 +563,8 @@ refreshHearts();
 
 /** 플레이어가 피해를 입는다. 쓰러지면 처음 자리에서 다시 시작한다. */
 function hurt(amount: number): void {
+  // 창작 모드에서는 다치지 않는다 (낙하, 좀비 모두).
+  if (mode === "creative") return;
   if (!health.damage(amount)) return;
   audio.playHurt();
   damageFlash.classList.add("on");
@@ -829,12 +831,13 @@ function frame(now: number): void {
     }
   }
   if (mode !== "creative") player.flying = false;
+  heartsElement.style.display = mode === "creative" ? "none" : "";
   descendButton.classList.toggle("show", player.flying);
   if (player.flying) fallTracker.reset();
   const fallDamage = fallTracker.update(player.y, player.onGround, player.isInWater());
   if (fallDamage > 0) hurt(fallDamage);
   health.update(dt);
-  const mobResult = mobSim.update(dt, world, Math.random, { x: player.x, y: player.y, z: player.z }, dayFactor < 0.3);
+  const mobResult = mobSim.update(dt, world, Math.random, { x: player.x, y: player.y, z: player.z }, dayFactor < 0.3, mode !== "creative");
   for (const call of mobResult.sounds) {
     audio.playMob(call.kind, 1 - Math.hypot(call.x - player.x, call.z - player.z) / 28);
   }
