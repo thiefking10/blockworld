@@ -220,6 +220,8 @@ function itemEmoji(item: number): string {
   if (ARMOR_BY_ID.has(item)) return "🛡";
   if (item === Item.Bow) return "🏹";
   if (item === Item.Arrow) return "➹";
+  if (item === Item.DragonHorn) return "📯";
+  if (item === Item.DragonScale) return "🐲";
   const tool = TOOL_BY_ID.get(item);
   if (tool) return TOOL_EMOJI[tool.type];
   return "🪵";
@@ -775,11 +777,13 @@ function refreshInventoryPanel(): void {
         chip.textContent = "🏹 " + itemLabel(item) + " (화살이 있으면 먼 동물·괴물을 자동으로 쏴요)";
       } else if (item === Item.Arrow) {
         chip.textContent = "➹ " + itemLabel(item) + " ×" + amount;
+      } else if (item === Item.DragonHorn) {
+        chip.textContent = "📯 " + itemLabel(item) + " ×" + amount + " (놓기를 누르면 드래곤을 불러내요)";
       } else {
         const def = TOOL_BY_ID.get(item);
         chip.textContent = def
           ? TOOL_EMOJI[def.type] + " " + itemLabel(item) + " ×" + amount + " (내구도 " + inventory.toolLeft(item) + "/" + toolDurability(def) + ", 알아서 써요)"
-          : "🪵 " + itemLabel(item) + " ×" + amount;
+          : itemEmoji(item) + " " + itemLabel(item) + " ×" + amount;
       }
       itemsRow.appendChild(chip);
     }
@@ -845,6 +849,10 @@ function handleMobKill(kind: MobKind, x: number, y: number, z: number): void {
   if (kind === "skeleton") unlockAchievement("skeleton");
   if (kind === "creeper") unlockAchievement("creeper");
   if (kind === "spider") unlockAchievement("spider");
+  if (kind === "dragon") {
+    unlockAchievement("dragon");
+    showToast("🐉 드래곤을 물리쳤어요!", 3500);
+  }
   const loot = mode === "survival" ? mobDrops(kind, Math.random) : [];
   for (const [item, amount] of loot) drops.spawn(item, amount, x, y + 0.3, z, Math.random);
   if (loot.length > 0) scheduleSave();
@@ -1016,8 +1024,26 @@ function tryTameWolf(): boolean {
   return true;
 }
 
+/** 용의 뿔을 가지고 놓기를 누르면, 바라보는 자리에 드래곤을 불러낸다. */
+function tryUseDragonHorn(): boolean {
+  if (inventory.count(Item.DragonHorn) === 0) return false;
+  const hit = currentTarget();
+  if (!hit) return false;
+  const { px, py, pz } = hit;
+  if (!world.inBounds(px, py, pz)) return false;
+  inventory.remove(Item.DragonHorn, 1);
+  mobSim.summonDragon(px + 0.5, py, pz + 0.5, Math.random);
+  audio.playMob("dragon", 1);
+  showToast("🐉 드래곤이 나타났어요! 조심하세요", 3000);
+  unlockAchievement("summon");
+  refreshHotbar();
+  scheduleSave();
+  return true;
+}
+
 function placeBlock(): void {
   if (tryTameWolf()) return;
+  if (tryUseDragonHorn()) return;
   const hit = currentTarget();
   if (!hit) return;
   const { px, py, pz } = hit;
@@ -1535,7 +1561,8 @@ function frame(now: number): void {
   // 낙하 피해와 달리, 동물·괴물의 공격은 걸친 방어구만큼 줄어든다.
   if (mobResult.damage > 0) hurt(reduceDamage(mobResult.damage, (id) => inventory.count(id) > 0));
   for (const shot of mobResult.shots) {
-    audio.playArrow();
+    if (shot.fire) audio.playDragonFire();
+    else audio.playArrow();
     spawnArrow(shot.fromX, shot.fromY, shot.fromZ, shot.toX, shot.toY, shot.toZ);
   }
   for (const explosion of mobResult.explosions) {

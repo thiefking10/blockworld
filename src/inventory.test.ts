@@ -242,6 +242,23 @@ describe("drops", () => {
     expect(inv.count(Item.IronIngot)).toBe(0);
   });
 
+  it("용의 뿔은 다이아몬드 4개, 철 주괴 2개, 막대 1개로 만든다", () => {
+    const inv = new Inventory();
+    inv.add(Item.Diamond, 4);
+    inv.add(Item.IronIngot, 2);
+    inv.add(Item.Stick, 1);
+    const horn = RECIPES.find((r) => r.name === "용의 뿔");
+    if (!horn) throw new Error("recipe");
+    expect(inv.craft(horn)).toBe(true);
+    expect(inv.count(Item.DragonHorn)).toBe(1);
+  });
+
+  it("드래곤을 잡으면 용의 비늘과 다이아몬드가 떨어진다", () => {
+    const drops = mobDrops("dragon", () => 0.5);
+    expect(drops.find(([item]) => item === Item.DragonScale)?.[1]).toBeGreaterThan(0);
+    expect(drops.find(([item]) => item === Item.Diamond)?.[1]).toBeGreaterThan(0);
+  });
+
   it("돼지는 고기, 양은 고기와 양털, 해골은 뼈, 크리퍼는 화약, 물고기는 물고기를 떨구고 좀비·늑대는 안 떨군다", () => {
     expect(mobDrops("pig", () => 0.9)).toEqual([[Item.Meat, 1]]);
     expect(mobDrops("sheep", () => 0.1)).toEqual([[Item.Meat, 2], [Block.Wool, 2]]);

@@ -76,6 +76,8 @@ export const RECIPES: Recipe[] = [
   { name: "활", station: "table", inputs: [[Item.Stick, 3]], output: [Item.Bow, 1] },
   { name: "침대", station: "table", inputs: [[Block.Wool, 3], [Block.Planks, 3]], output: [Item.Bed, 1] },
   { name: "빵", station: "table", inputs: [[Item.Grain, 3]], output: [Item.Bread, 1] },
+  // 드래곤을 불러내는 뿔. 비싸게 만들어서 함부로 못 부르게 했다.
+  { name: "용의 뿔", station: "table", inputs: [[Item.Diamond, 4], [Item.IronIngot, 2], [Item.Stick, 1]], output: [Item.DragonHorn, 1] },
 ];
 
 /**
@@ -105,6 +107,10 @@ export function mobDrops(kind: string, rng: () => number): [number, number][] {
   if (kind === "skeleton") drops.push([Item.Bone, 1 + (rng() < 0.5 ? 1 : 0)]);
   if (kind === "creeper") drops.push([Item.Gunpowder, 1 + (rng() < 0.5 ? 1 : 0)]);
   if (kind === "fish") drops.push([Item.RawFish, 1]);
+  if (kind === "dragon") {
+    drops.push([Item.DragonScale, 3 + Math.floor(rng() * 3)]);
+    drops.push([Item.Diamond, 2 + Math.floor(rng() * 3)]);
+  }
   return drops;
 }
 

@@ -39,6 +39,8 @@ export const Item = {
   Arrow: 136,
   RawFish: 137,
   CookedFish: 138,
+  DragonHorn: 139,
+  DragonScale: 140,
 } as const;
 
 export const ITEM_NAMES: Record<number, string> = {
@@ -80,4 +82,6 @@ export const ITEM_NAMES: Record<number, string> = {
   [Item.Arrow]: "화살",
   [Item.RawFish]: "물고기",
   [Item.CookedFish]: "구운 물고기",
+  [Item.DragonHorn]: "용의 뿔",
+  [Item.DragonScale]: "용의 비늘",
 };

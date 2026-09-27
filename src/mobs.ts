@@ -1,6 +1,6 @@
 import { Block, SEA_LEVEL, World } from "./world";
 
-export type MobKind = "pig" | "sheep" | "zombie" | "skeleton" | "creeper" | "spider" | "fish" | "wolf";
+export type MobKind = "pig" | "sheep" | "zombie" | "skeleton" | "creeper" | "spider" | "fish" | "wolf" | "dragon";
 
 export interface MobSpec {
   halfWidth: number;
@@ -14,6 +14,10 @@ export interface MobSpec {
   ranged?: boolean;
   /** 가까이 오면 터진다 (크리퍼) */
   explosive?: boolean;
+  /** 중력 없이 날아다닌다 (드래곤). 벽에도 안 걸린다 (단순화). */
+  flies?: boolean;
+  /** 보스: 낮에도 사라지지 않고, 밤이 아니어도 플레이어를 쫓는다. */
+  boss?: boolean;
 }
 
 export const MOB_SPECS: Record<MobKind, MobSpec> = {
@@ -28,6 +32,8 @@ export const MOB_SPECS: Record<MobKind, MobSpec> = {
   fish: { halfWidth: 0.18, height: 0.22, speed: 0.7, chaseSpeed: 0.7, hp: 2, hostile: false },
   // 늑대: 야생일 때는 돼지·양처럼 그냥 돌아다니고, 뼈를 주면 길들여져 따라다니며 대신 싸운다.
   wolf: { halfWidth: 0.32, height: 0.6, speed: 1.2, chaseSpeed: 2.4, hp: 8, hostile: false },
+  // 드래곤: 자연적으로 나오지 않고 용의 뿔로 불러낸다. 하늘을 날며 무는 공격과 불숨을 같이 쓰는 보스.
+  dragon: { halfWidth: 1.3, height: 1.6, speed: 2, chaseSpeed: 4.5, hp: 150, hostile: true, flies: true, boss: true },
 };
 
 /** 적대적인 동물이 이 종류 중 하나로 스폰된다 (뽑힐 확률 순서) */
@@ -62,6 +68,15 @@ export const WOLF_GUARD_RANGE = 10;
 export const WOLF_FOLLOW_DISTANCE = 5;
 export const WOLF_DAMAGE = 4;
 
+// 드래곤: 플레이어 머리 위 이 높이쯤에서 맴돌다가, 가까우면 물고 멀어도 불숨을 뿜는다.
+export const DRAGON_HOVER_HEIGHT = 5;
+export const DRAGON_BITE_RANGE = 3;
+export const DRAGON_BITE_DAMAGE = 6;
+export const DRAGON_BITE_COOLDOWN = 1.3;
+export const DRAGON_FIRE_RANGE = 18;
+export const DRAGON_FIRE_DAMAGE = 5;
+export const DRAGON_FIRE_COOLDOWN = 3;
+
 /** 낮에는 적대적인 동물이 이 비율(초당)로 사라진다. */
 const DAY_DESPAWN_RATE = 0.25;
 
@@ -92,6 +107,8 @@ export interface ArrowShot {
   toY: number;
   toZ: number;
   hit: boolean;
+  /** 화살이 아니라 드래곤의 불숨이면 true (다른 소리로 재생한다). */
+  fire?: boolean;
 }
 
 /** 크리퍼가 터진 자리 */
@@ -112,6 +129,8 @@ export class Mob {
   onGround = false;
   soundTimer: number;
   attackCooldown = 0;
+  /** 드래곤의 불숨 쿨타임(초). */
+  fireCooldown = 0;
   /** 크리퍼가 폭발까지 남은 심지 시간(초). 0이면 심지가 붙지 않은 상태. */
   fuse = 0;
   /** 늑대가 뼈로 길들여졌는지. 다른 동물은 항상 false. */
@@ -178,13 +197,36 @@ export class Mob {
     return this.hp <= 0;
   }
 
-  /** stand가 true면 이동은 멈추지만(제자리), 그 자리에서 조준하듯 chase 쪽을 바라본다. */
-  update(dt: number, world: World, rng: Rng, chase: { x: number; z: number } | null = null, stand = false): void {
+  /**
+   * stand가 true면 이동은 멈추지만(제자리), 그 자리에서 조준하듯 chase 쪽을 바라본다.
+   * hoverY는 날아다니는 동물(드래곤)이 쫓아갈 때 맞추려는 높이다.
+   */
+  update(dt: number, world: World, rng: Rng, chase: { x: number; z: number } | null = null, stand = false, hoverY?: number): void {
     this.hurtTimer = Math.max(0, this.hurtTimer - dt);
     this.attackCooldown = Math.max(0, this.attackCooldown - dt);
+    this.fireCooldown = Math.max(0, this.fireCooldown - dt);
     this.timer -= dt;
 
     const spec = MOB_SPECS[this.kind];
+
+    if (spec.flies) {
+      if (chase) {
+        this.yaw = Math.atan2(-(chase.x - this.x), -(chase.z - this.z));
+        this.moving = !stand && Math.hypot(chase.x - this.x, chase.z - this.z) > 1.5;
+      } else if (this.timer <= 0) {
+        this.decide(rng);
+      }
+      const speed = this.moving ? (chase ? spec.chaseSpeed : spec.speed) : 0;
+      const dx = -Math.sin(this.yaw) * speed * dt;
+      const dz = -Math.cos(this.yaw) * speed * dt;
+      // 날아다니므로 벽에 부딪히는 건 생략한다 (단순화).
+      this.x += dx;
+      this.z += dz;
+      if (hoverY !== undefined) this.y += Math.max(-8, Math.min(8, hoverY - this.y)) * dt * 2;
+      this.onGround = false;
+      this.walkPhase += Math.hypot(dx, dz) * 5;
+      return;
+    }
     if (chase) {
       this.yaw = Math.atan2(-(chase.x - this.x), -(chase.z - this.z));
       // 플레이어 몸속까지 파고들지 않고, 바로 앞에서 멈춘다.
@@ -379,6 +421,13 @@ export class MobSimulation {
     mob.tamed = true;
   }
 
+  /** 용의 뿔을 써서 드래곤을 불러낸다 (자연적으로는 나오지 않는다). */
+  summonDragon(x: number, y: number, z: number, rng: Rng): Mob {
+    const dragon = new Mob("dragon", x, y + DRAGON_HOVER_HEIGHT, z, rng);
+    this.mobs.push(dragon);
+    return dragon;
+  }
+
   /**
    * 한 프레임 진행한다. 이번에 울음소리를 낸 동물들, 해골이 쏜 화살, 크리퍼가 터진 자리,
    * 적대적인 동물이 플레이어에게 입힌 피해를 돌려준다.
@@ -404,9 +453,31 @@ export class MobSimulation {
     for (const mob of this.mobs) {
       const spec = MOB_SPECS[mob.kind];
       const distance = Math.hypot(mob.x - player.x, mob.z - player.z);
-      const engaged = spec.hostile && night && targetable && distance < CHASE_RANGE;
+      // 보스(드래곤)는 밤이 아니어도 늘 플레이어를 쫓는다 — 직접 불러낸 것이니 낮이라고 봐줄 필요는 없다.
+      const engaged = spec.hostile && (night || spec.boss) && targetable && distance < CHASE_RANGE;
 
-      if (mob.kind === "wolf" && mob.tamed) {
+      if (spec.flies) {
+        const hoverY = player.y + DRAGON_HOVER_HEIGHT;
+        mob.update(dt, world, rng, engaged ? player : null, false, hoverY);
+        if (engaged && distance < DRAGON_BITE_RANGE && mob.attackCooldown <= 0) {
+          mob.attackCooldown = DRAGON_BITE_COOLDOWN;
+          damage += DRAGON_BITE_DAMAGE;
+        }
+        if (engaged && distance < DRAGON_FIRE_RANGE && mob.fireCooldown <= 0) {
+          mob.fireCooldown = DRAGON_FIRE_COOLDOWN;
+          shots.push({
+            fromX: mob.x,
+            fromY: mob.y - 0.4,
+            fromZ: mob.z,
+            toX: player.x,
+            toY: player.y + 1.2,
+            toZ: player.z,
+            hit: true,
+            fire: true,
+          });
+          damage += DRAGON_FIRE_DAMAGE;
+        }
+      } else if (mob.kind === "wolf" && mob.tamed) {
         // 근처(WOLF_GUARD_RANGE 안)에 적대적인 동물이 있으면 대신 쫓아가 물고, 없으면 플레이어를 따라간다.
         const target = this.mobs.find((m) => m !== mob && MOB_SPECS[m.kind].hostile && Math.hypot(m.x - mob.x, m.z - mob.z) < WOLF_GUARD_RANGE);
         if (target) {
@@ -481,7 +552,8 @@ export class MobSimulation {
       // 길들인 늑대는 플레이어를 따라다니느라 안 그래도 잘 안 멀어지지만, 혹시 멀어져도 사라지지 않는다.
       const tamedPet = mob.kind === "wolf" && mob.tamed;
       const far = (!tamedPet && Math.hypot(mob.x - player.x, mob.z - player.z) > DESPAWN_DISTANCE) || mob.y < -5;
-      const sunrise = MOB_SPECS[mob.kind].hostile && !night && rng() < dt * DAY_DESPAWN_RATE;
+      // 보스(드래곤)는 직접 불러낸 것이니 아침이 됐다고 사라지지는 않는다 (너무 멀어지면 다른 동물처럼 사라진다).
+      const sunrise = MOB_SPECS[mob.kind].hostile && !MOB_SPECS[mob.kind].boss && !night && rng() < dt * DAY_DESPAWN_RATE;
       if (far || sunrise) this.mobs.splice(i, 1);
     }
 

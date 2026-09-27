@@ -30,6 +30,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: "spider", name: "실 끊기", hint: "거미를 물리쳐요" },
   { id: "wolf", name: "가장 친한 친구", hint: "뼈로 늑대를 길들여요" },
   { id: "fish", name: "손맛", hint: "물고기를 잡아요" },
+  { id: "summon", name: "소환사", hint: "용의 뿔로 드래곤을 불러내요" },
+  { id: "dragon", name: "용 사냥꾼", hint: "드래곤을 물리쳐요" },
 ];
 
 /** 달성한 도전 과제를 기억한다. 한 번 달성하면 그대로다. */

@@ -12,6 +12,8 @@ interface MobLook {
   upright?: boolean;
   /** upright인데 팔이 없는 경우 (크리퍼) */
   noArms?: boolean;
+  /** 날개가 있다 (드래곤). 계속 퍼덕인다. */
+  wings?: boolean;
 }
 
 const LOOKS: Record<MobKind, MobLook> = {
@@ -23,12 +25,14 @@ const LOOKS: Record<MobKind, MobLook> = {
   spider: { body: 0x1c1712, head: 0x100d0a, leg: 0x100d0a, bodySize: [0.75, 0.45, 0.95], headSize: [0.32, 0.3, 0.3], legHeight: 0.22 },
   fish: { body: 0xd98a4a, head: 0xc97a3a, leg: 0xc97a3a, bodySize: [0.24, 0.2, 0.4], headSize: [0.16, 0.16, 0.14], legHeight: 0.02 },
   wolf: { body: 0xcfc7ba, head: 0xb8ae9e, leg: 0xb8ae9e, bodySize: [0.4, 0.4, 0.72], headSize: [0.28, 0.28, 0.3], legHeight: 0.36 },
+  dragon: { body: 0x3a1f4d, head: 0x2a1638, leg: 0x2a1638, bodySize: [1.6, 1.0, 2.6], headSize: [0.7, 0.6, 0.9], legHeight: 0.5, wings: true },
 };
 
 interface MobModel {
   group: THREE.Group;
   legs: THREE.Mesh[];
   arms: THREE.Mesh[];
+  wings: THREE.Mesh[];
   materials: THREE.MeshBasicMaterial[];
   colors: number[];
 }
@@ -43,7 +47,7 @@ function box(size: [number, number, number], color: number, model: MobModel): TH
 /** 동물 하나를 상자 몸통, 머리, 다리로 만든다. 앞쪽이 -Z 방향이다. */
 function buildModel(kind: MobKind): MobModel {
   const look = LOOKS[kind];
-  const model: MobModel = { group: new THREE.Group(), legs: [], arms: [], materials: [], colors: [] };
+  const model: MobModel = { group: new THREE.Group(), legs: [], arms: [], wings: [], materials: [], colors: [] };
   const { group } = model;
 
   const [bw, bh, bd] = look.bodySize;
@@ -77,6 +81,17 @@ function buildModel(kind: MobKind): MobModel {
       arm.position.set(sx * (bw / 2 + 0.1), look.legHeight + bh - 0.12, 0);
       group.add(arm);
       model.arms.push(arm);
+    }
+  }
+
+  if (look.wings) {
+    // 날개는 몸통 옆에 달아, 안쪽 끝을 축으로 퍼덕이게 한다.
+    for (const sx of [-1, 1]) {
+      const wing = box([1.5, 0.08, 0.9], look.body, model);
+      wing.geometry.translate((sx * 1.5) / 2, 0, 0);
+      wing.position.set(sx * (bw / 2), look.legHeight + bh * 0.8, 0);
+      group.add(wing);
+      model.wings.push(wing);
     }
   }
   return model;
@@ -119,6 +134,13 @@ export class MobRenderer {
       model.legs.forEach((leg, i) => {
         leg.rotation.x = i === 0 || i === 3 ? swing : -swing;
       });
+
+      if (model.wings.length > 0) {
+        const flap = Math.sin(seconds * 10) * 0.5 + 0.25;
+        model.wings.forEach((wing, i) => {
+          wing.rotation.z = (i === 0 ? 1 : -1) * flap;
+        });
+      }
 
       const fuseBlink = mob.kind === "creeper" && mob.fuse > 0 ? (0.5 + 0.5 * Math.sin(seconds * 22)) * Math.min(1, mob.fuse / CREEPER_FUSE_SECONDS) : 0;
       const tamed = mob.kind === "wolf" && mob.tamed;

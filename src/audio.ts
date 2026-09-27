@@ -326,6 +326,11 @@ class GameAudio {
       this.burst({ duration: 0.18, type: "lowpass", freq: 1000, gain: 0.18 * volume });
       return;
     }
+    if (kind === "dragon") {
+      this.burst({ duration: 1.1, type: "lowpass", freq: 260, q: 0.7, gain: 0.5 * volume });
+      window.setTimeout(() => this.burst({ duration: 0.4, type: "bandpass", freq: 600, q: 1.2, gain: 0.3 * volume }), 200);
+      return;
+    }
     const ctx = this.context();
     const now = ctx.currentTime;
     const pig = kind === "pig";
@@ -369,6 +374,12 @@ class GameAudio {
   /** 화살이 날아가는 짧은 "피융" 소리. */
   playArrow(): void {
     this.burst({ duration: 0.16, type: "highpass", freq: 3200, q: 1.8, gain: 0.35 });
+  }
+
+  /** 드래곤이 불숨을 뿜는 낮고 굵은 "후우우" 소리. */
+  playDragonFire(): void {
+    this.burst({ duration: 0.5, type: "lowpass", freq: 700, q: 0.6, gain: 0.45 });
+    this.burst({ duration: 0.3, type: "bandpass", freq: 1600, q: 1, gain: 0.2 });
   }
 
   /** 크리퍼가 터질 때의 낮고 큰 폭발음. */

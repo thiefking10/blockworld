@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  DRAGON_BITE_RANGE,
+  DRAGON_FIRE_RANGE,
+  DRAGON_HOVER_HEIGHT,
   findSpawnSpot,
   findWaterSpawnSpot,
   MAX_HOSTILE_COUNT,
@@ -446,5 +449,62 @@ describe("늑대", () => {
     sim.mobs.push(wolf);
     sim.update(0.1, flatWorld(), fixed(0.5), player, false);
     expect(sim.mobs).toContain(wolf);
+  });
+});
+
+describe("드래곤(보스)", () => {
+  const player = { x: 20.5, y: 1, z: 20.5 };
+
+  it("자연적으로는 나오지 않는다 (뿔로만 불러낼 수 있다)", () => {
+    const world = flatWorld();
+    let seed = 3;
+    const rng = () => {
+      seed = (seed * 16807) % 2147483647;
+      return seed / 2147483647;
+    };
+    for (let i = 0; i < 500; i++) {
+      const spot = findSpawnSpot(world, 20, 20, rng, true);
+      expect(spot?.kind).not.toBe("dragon");
+    }
+  });
+
+  it("불러내면 플레이어 머리 위 높이에서 시작한다", () => {
+    const sim = new MobSimulation();
+    const dragon = sim.summonDragon(20.5, 1, 20.5, fixed(0.5));
+    expect(dragon.kind).toBe("dragon");
+    expect(dragon.y).toBeCloseTo(1 + DRAGON_HOVER_HEIGHT, 5);
+    expect(sim.mobs).toContain(dragon);
+  });
+
+  it("낮이어도 플레이어를 쫓아와서 가까우면 물고, 멀면 불숨을 쏜다", () => {
+    const world = flatWorld();
+    const sim = new MobSimulation();
+    const dragon = sim.summonDragon(player.x, 1, player.z - 15, fixed(0.5));
+    let bites = 0;
+    let fireShots = 0;
+    for (let i = 0; i < 60 * 15; i++) {
+      const result = sim.update(1 / 60, world, fixed(0.5), player, false);
+      if (result.damage > 0 && Math.hypot(dragon.x - player.x, dragon.z - player.z) < DRAGON_BITE_RANGE) bites++;
+      fireShots += result.shots.filter((s) => s.fire).length;
+    }
+    expect(Math.hypot(dragon.x - player.x, dragon.z - player.z)).toBeLessThan(DRAGON_FIRE_RANGE);
+    expect(bites + fireShots).toBeGreaterThan(0);
+  });
+
+  it("체력이 많아서 여러 대 때려야 잡을 수 있다", () => {
+    const sim = new MobSimulation();
+    const dragon = sim.summonDragon(20.5, 1, 20.5, fixed(0.5));
+    for (let i = 0; i < 14; i++) expect(sim.hit(dragon, 20.5, 20.5, 10)).toBe(false);
+    expect(sim.hit(dragon, 20.5, 20.5, 10)).toBe(true);
+    expect(sim.mobs).not.toContain(dragon);
+  });
+
+  it("날아다니므로 중력에 떨어지지 않고, 낮이라고 사라지지도 않는다", () => {
+    const sim = new MobSimulation();
+    const dragon = sim.summonDragon(20.5, 1, 20.5, fixed(0.5));
+    const startY = dragon.y;
+    for (let i = 0; i < 60 * 3; i++) sim.update(1 / 60, flatWorld(), () => 0.999, player, false);
+    expect(dragon.y).toBeGreaterThan(startY - 1);
+    expect(sim.mobs).toContain(dragon);
   });
 });
