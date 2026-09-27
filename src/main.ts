@@ -3,7 +3,7 @@ import { ARMOR, ARMOR_BY_ID, reduceDamage, totalArmorPoints } from "./armor";
 import { iconTile, tileIconDataUrl } from "./atlas";
 import { audio } from "./audio";
 import { Achievements, ACHIEVEMENTS } from "./achievements";
-import { blockName, canPlaceAt, PLACEABLE_BLOCKS, sanitizeHotbar } from "./blocks";
+import { blockName, canPlaceAt, isPlaceableBlock, PLACEABLE_BLOCKS, sanitizeHotbar } from "./blocks";
 import { CropField } from "./crops";
 import { FallTracker, Health, MAX_HEALTH } from "./health";
 import { Hunger, MAX_HUNGER } from "./hunger";
@@ -20,7 +20,7 @@ import { MOB_SPECS, MobSimulation, raycastMobs, type Mob, type MobKind } from ".
 import { connectAndWait, NetClient, randomRoomCode } from "./net";
 import { PlayerAvatarRenderer } from "./playerRender";
 import { RemotePlayer, sanitizeName } from "./protocol";
-import { bestSword, bestTool, breakSeconds, canHarvest, SWORD_DAMAGE, TOOL_BY_ID, toolDurability, type ToolDef } from "./tools";
+import { breakSeconds, canHarvest, SWORD_DAMAGE, TOOL_BY_ID, toolDurability, type ToolDef } from "./tools";
 import { AdaptiveQuality, fogFar, QUALITY_LEVELS } from "./quality";
 import { EYE_HEIGHT, Player } from "./player";
 import { lookDirection, raycast, RayHit } from "./raycast";
@@ -33,6 +33,7 @@ const canvas = document.getElementById("game") as HTMLCanvasElement;
 const fpsLabel = document.getElementById("fps") as HTMLElement;
 const hotbarElement = document.getElementById("hotbar") as HTMLElement;
 const armorLabel = document.getElementById("armor-label") as HTMLElement;
+const heldItemElement = document.getElementById("held-item") as HTMLElement;
 
 const LAST_SEED_KEY = "voxelgame:last-seed";
 const saveKey = (worldSeed: number): string => `voxelgame:save:${worldSeed}`;
@@ -162,7 +163,8 @@ const seed = remoteSeed ?? (seedParam ? Number(seedParam) || 1 : lastSeed > 0 ? 
 writeStorage(LAST_SEED_KEY, String(seed));
 
 const saved = decodeSave(readStorage(saveKey(seed)));
-const hotbarBlocks: BlockId[] = sanitizeHotbar(saved?.hotbar);
+/** 이제 블록뿐 아니라 도구·검·활도 들어갈 수 있다 (0은 빈손). */
+const hotbarBlocks: number[] = sanitizeHotbar(saved?.hotbar);
 
 /** survival: 블록을 모아서 쓴다 / creative: 블록이 무한이다. 예전 저장(모드 없음)은 무한 그대로 이어간다. */
 let mode: "survival" | "creative" = saved && saved.seed === seed ? (saved.mode ?? "creative") : "survival";
@@ -405,28 +407,74 @@ const slotElements = hotbarBlocks.map((_block, index) => {
   return element;
 });
 
-/** 아이템 바 칸마다 블록 무늬 아이콘과 이름을 그린다. */
+/** 지금 선택한 칸에 든 것 (0이면 빈손). 블록뿐 아니라 도구·검·활도 될 수 있다. */
+function heldItem(): number {
+  return hotbarBlocks[selectedSlot];
+}
+
+/** 화면 오른쪽 아래에 지금 손에 든 것을 아이콘으로 보여준다 (빈손이면 숨김). */
+function refreshHeldItemView(): void {
+  const id = heldItem();
+  heldItemElement.replaceChildren();
+  if (id === 0) {
+    heldItemElement.style.display = "none";
+    return;
+  }
+  heldItemElement.style.display = "flex";
+  if (isPlaceableBlock(id)) {
+    const icon = document.createElement("img");
+    icon.src = iconUrl(id);
+    heldItemElement.append(icon);
+  } else {
+    const icon = document.createElement("span");
+    icon.textContent = itemEmoji(id);
+    heldItemElement.append(icon);
+  }
+}
+
+/** 캐거나 때리거나 쏠 때 손에 든 것이 살짝 흔들리게 한다. */
+function swingHeldItem(): void {
+  heldItemElement.classList.remove("swing");
+  void heldItemElement.offsetWidth; // 리플로우를 강제해서 같은 애니메이션도 다시 시작하게 한다
+  heldItemElement.classList.add("swing");
+}
+
+/** 아이템 바 칸마다 아이콘과 이름을 그린다 (블록은 그림, 도구·검 같은 아이템은 글자 아이콘). */
 function refreshHotbar(): void {
   checkInventoryAchievements();
   refreshArmor();
   slotElements.forEach((element, i) => {
-    const block = hotbarBlocks[i];
+    const id = hotbarBlocks[i];
     element.replaceChildren();
-    const icon = document.createElement("img");
-    icon.src = iconUrl(block);
-    icon.alt = blockName(block);
-    const label = document.createElement("span");
-    label.textContent = blockName(block);
-    element.append(icon, label);
-    if (mode === "survival") {
+    if (id === 0) {
+      const label = document.createElement("span");
+      label.textContent = "맨손";
+      element.append(label);
+    } else if (isPlaceableBlock(id)) {
+      const icon = document.createElement("img");
+      icon.src = iconUrl(id);
+      icon.alt = itemLabel(id);
+      const label = document.createElement("span");
+      label.textContent = itemLabel(id);
+      element.append(icon, label);
+    } else {
+      const icon = document.createElement("span");
+      icon.className = "hotbar-emoji";
+      icon.textContent = itemEmoji(id);
+      const label = document.createElement("span");
+      label.textContent = itemLabel(id);
+      element.append(icon, label);
+    }
+    if (mode === "survival" && id !== 0) {
       const count = document.createElement("span");
       count.className = "count";
-      count.textContent = String(inventory.count(block));
+      count.textContent = String(inventory.count(id));
       element.append(count);
     }
-    element.classList.toggle("empty", mode === "survival" && inventory.count(block) === 0);
+    element.classList.toggle("empty", mode === "survival" && id !== 0 && inventory.count(id) === 0);
     element.classList.toggle("selected", i === selectedSlot);
   });
+  refreshHeldItemView();
 }
 
 function selectSlot(index: number): void {
@@ -490,6 +538,15 @@ function giveItem(item: number): void {
   audio.playPickup();
   refreshHotbar();
   refreshOpenPanels();
+  scheduleSave();
+}
+
+/** 도구·검·활을 지금 고른 아이템 바 칸에 손에 든 것으로 넣는다 (실제 마인크래프트처럼 직접 들어야 쓸 수 있다). */
+function holdItem(item: number): void {
+  hotbarBlocks[selectedSlot] = item;
+  showToast(itemLabel(item) + "을(를) 손에 들었어요");
+  refreshHotbar();
+  toggleInventory(false);
   scheduleSave();
 }
 
@@ -774,16 +831,20 @@ function refreshInventoryPanel(): void {
         const def = ARMOR_BY_ID.get(item)!;
         chip.textContent = "🛡 " + itemLabel(item) + " (방어 " + def.points + ", 알아서 걸쳐요)";
       } else if (item === Item.Bow) {
-        chip.textContent = "🏹 " + itemLabel(item) + " (화살이 있으면 먼 동물·괴물을 자동으로 쏴요)";
+        chip.textContent = "🏹 " + itemLabel(item) + " (손에 들면, 화살이 있을 때 먼 동물·괴물을 쏴요)";
+        onPress(chip, () => holdItem(item));
       } else if (item === Item.Arrow) {
         chip.textContent = "➹ " + itemLabel(item) + " ×" + amount;
       } else if (item === Item.DragonHorn) {
         chip.textContent = "📯 " + itemLabel(item) + " ×" + amount + " (놓기를 누르면 드래곤을 불러내요)";
       } else {
         const def = TOOL_BY_ID.get(item);
-        chip.textContent = def
-          ? TOOL_EMOJI[def.type] + " " + itemLabel(item) + " ×" + amount + " (내구도 " + inventory.toolLeft(item) + "/" + toolDurability(def) + ", 알아서 써요)"
-          : itemEmoji(item) + " " + itemLabel(item) + " ×" + amount;
+        if (def) {
+          chip.textContent = TOOL_EMOJI[def.type] + " " + itemLabel(item) + " ×" + amount + " (내구도 " + inventory.toolLeft(item) + "/" + toolDurability(def) + ", 손에 들면 써요)";
+          onPress(chip, () => holdItem(item));
+        } else {
+          chip.textContent = itemEmoji(item) + " " + itemLabel(item) + " ×" + amount;
+        }
       }
       itemsRow.appendChild(chip);
     }
@@ -858,10 +919,13 @@ function handleMobKill(kind: MobKind, x: number, y: number, z: number): void {
   if (loot.length > 0) scheduleSave();
 }
 
-/** 동물을 한 번 때린다. 서바이벌에서는 가진 검 중 가장 좋은 것을 쓰고 검이 닳는다. */
+/** 동물을 한 번 때린다. 서바이벌에서는 손에 든 게 검이어야 검 공격력이 나오고, 검이 닳는다. */
 function attackMob(mob: Mob): void {
   audio.playMobHit();
-  const sword = mode === "survival" ? bestSword((id) => inventory.count(id) > 0) : null;
+  swingHeldItem();
+  const held = heldItem();
+  const heldTool = TOOL_BY_ID.get(held);
+  const sword = mode === "survival" && heldTool?.type === "sword" && inventory.count(held) > 0 ? heldTool : null;
   const damage = mode === "creative" ? 4 : sword ? SWORD_DAMAGE[sword.tier] : 1;
   if (sword && inventory.useTool(sword.id)) toolBroke(sword);
   if (mobSim.hit(mob, player.x, player.z, damage)) handleMobKill(mob.kind, mob.x, mob.y, mob.z);
@@ -874,6 +938,7 @@ const BOW_DAMAGE = 4;
 function shootBow(mob: Mob): void {
   inventory.remove(Item.Arrow, 1);
   audio.playArrow();
+  swingHeldItem();
   const spec = MOB_SPECS[mob.kind];
   spawnArrow(player.x, player.y + EYE_HEIGHT, player.z, mob.x, mob.y + spec.height * 0.6, mob.z);
   if (mobSim.hit(mob, player.x, player.z, BOW_DAMAGE)) handleMobKill(mob.kind, mob.x, mob.y, mob.z);
@@ -960,7 +1025,7 @@ function updateMining(dt: number): void {
   }
 
   // 검이 닿지 않는 곳의 동물·괴물은, 활과 화살이 있으면 대신 쏜다.
-  if (mode === "survival" && inventory.count(Item.Bow) > 0 && inventory.count(Item.Arrow) > 0) {
+  if (mode === "survival" && heldItem() === Item.Bow && inventory.count(Item.Bow) > 0 && inventory.count(Item.Arrow) > 0) {
     const farMob = mobInSight(farTarget(), BOW_RANGE);
     if (farMob) {
       resetMining();
@@ -991,13 +1056,16 @@ function updateMining(dt: number): void {
     mineSoundTimer = 0;
   }
   const block = world.get(hit.x, hit.y, hit.z);
-  const tool = bestTool(block, (id) => inventory.count(id) > 0);
+  const held = heldItem();
+  const heldToolDef = TOOL_BY_ID.get(held);
+  const tool = heldToolDef && inventory.count(held) > 0 ? heldToolDef : null;
   const needed = breakSeconds(block, tool);
   miningProgress += dt;
 
   mineSoundTimer -= dt;
   if (needed > 0 && mineSoundTimer <= 0) {
     mineSoundTimer = 0.25;
+    swingHeldItem();
     audio.playMining(block);
   }
   if (miningProgress >= needed) {
@@ -1050,6 +1118,10 @@ function placeBlock(): void {
   if (!world.inBounds(px, py, pz) || !isPassable(world.get(px, py, pz))) return;
   if (player.intersectsBlock(px, py, pz) || mobSim.intersectsBlock(px, py, pz)) return;
   const block = hotbarBlocks[selectedSlot];
+  if (!isPlaceableBlock(block)) {
+    showToast(block === 0 ? "빈손이에요 — 놓을 블록을 골라 주세요" : itemLabel(block) + "은(는) 놓을 수 없어요");
+    return;
+  }
   if (isPlant(block) && (world.get(px, py, pz) !== Block.Air || !canPlaceAt(block, world.get(px, py - 1, pz)))) {
     showToast(blockName(block) + (block === Block.Torch ? "은(는) 물 밖의 단단한 블록 위에만 세울 수 있어요" : "은(는) 풀이나 흙 위에만 심을 수 있어요"));
     return;
@@ -1062,7 +1134,7 @@ function placeBlock(): void {
     refreshHotbar();
   }
   audio.playPlace(block);
-  const lightChanged = world.set(px, py, pz, block);
+  const lightChanged = world.set(px, py, pz, block as BlockId);
   editLog.record(px, py, pz, block);
   net.sendEdit(px, py, pz, block);
   if (block === Block.Sprout) crops.plant(px, py, pz, worldSeconds);

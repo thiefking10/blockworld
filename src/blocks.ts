@@ -38,16 +38,23 @@ export function canPlaceAt(block: number, below: number): boolean {
 
 export const HOTBAR_SIZE = 6;
 
-export const DEFAULT_HOTBAR: BlockId[] = [Block.Grass, Block.Dirt, Block.Stone, Block.Wood, Block.Planks, Block.Glass];
+export const DEFAULT_HOTBAR: number[] = [Block.Grass, Block.Dirt, Block.Stone, Block.Wood, Block.Planks, Block.Glass];
 
 export function blockName(block: number): string {
   return PLACEABLE_BLOCKS.find((b) => b.block === block)?.name ?? "블록";
 }
 
-/** 저장된 아이템 바를 검사해서 쓸 수 있으면 돌려주고, 아니면 기본값을 돌려준다. */
-export function sanitizeHotbar(saved: number[] | undefined): BlockId[] {
+/** 이 번호가 (블록 고르기에서 고를 수 있는) 놓을 수 있는 블록인지. 도구·검 같은 아이템은 아니다. */
+export function isPlaceableBlock(id: number): boolean {
+  return PLACEABLE_BLOCKS.some((b) => b.block === id);
+}
+
+/**
+ * 저장된 아이템 바를 검사해서 쓸 수 있으면 돌려주고, 아니면 기본값을 돌려준다.
+ * 이제 블록뿐 아니라 도구·검·활 같은 아이템도 들 수 있어서, 0 이상의 정수면 일단 받아들인다 (0은 빈손).
+ */
+export function sanitizeHotbar(saved: number[] | undefined): number[] {
   if (!saved || saved.length !== HOTBAR_SIZE) return [...DEFAULT_HOTBAR];
-  const allowed = new Set<number>(PLACEABLE_BLOCKS.map((b) => b.block));
-  if (!saved.every((b) => allowed.has(b))) return [...DEFAULT_HOTBAR];
-  return saved as BlockId[];
+  if (!saved.every((id) => Number.isInteger(id) && id >= 0)) return [...DEFAULT_HOTBAR];
+  return saved;
 }
