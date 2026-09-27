@@ -592,6 +592,15 @@
       #hunger span.half {
         filter: grayscale(0.5) brightness(0.75);
       }
+      #armor-label {
+        position: absolute;
+        left: 50%;
+        top: 52px;
+        transform: translateX(-50%);
+        font-size: 13px;
+        color: #cfe8ff;
+        text-shadow: 0 1px 2px #000;
+      }
       #damage-flash {
         position: absolute;
         inset: 0;
@@ -667,6 +676,7 @@
       <div id="fullscreen-button">전체화면</div>
       <div id="hearts"></div>
       <div id="hunger"></div>
+      <div id="armor-label"></div>
       <div id="damage-flash"></div>
       <div id="toast"></div>
       <div id="help-button">?</div>

@@ -189,6 +189,13 @@ describe("drops", () => {
     expect(dropsFor(Block.DiamondOre, () => 0.5)).toEqual([[Item.Diamond, 1]]);
   });
 
+  it("방어구는 도구처럼 한 칸에 하나만 들어간다", () => {
+    const inv = new Inventory();
+    expect(inv.add(Item.IronChestplate, 1)).toBe(1);
+    expect(inv.add(Item.IronChestplate, 1)).toBe(0);
+    expect(inv.count(Item.IronChestplate)).toBe(1);
+  });
+
   it("다이아몬드 도구는 막대와 다이아몬드로 만든다", () => {
     const inv = new Inventory();
     inv.add(Item.Diamond, 3);
@@ -197,6 +204,16 @@ describe("drops", () => {
     if (!pickaxe) throw new Error("recipe");
     expect(inv.craft(pickaxe)).toBe(true);
     expect(inv.count(Item.DiamondPickaxe)).toBe(1);
+  });
+
+  it("철 흉갑은 철 주괴 8개로 만든다", () => {
+    const inv = new Inventory();
+    inv.add(Item.IronIngot, 8);
+    const chest = RECIPES.find((r) => r.name === "철 흉갑");
+    if (!chest) throw new Error("recipe");
+    expect(inv.craft(chest)).toBe(true);
+    expect(inv.count(Item.IronChestplate)).toBe(1);
+    expect(inv.count(Item.IronIngot)).toBe(0);
   });
 
   it("돼지는 고기, 양은 고기와 양털, 해골은 뼈, 크리퍼는 화약을 떨구고 좀비는 안 떨군다", () => {

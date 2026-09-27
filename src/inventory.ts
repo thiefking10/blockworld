@@ -1,3 +1,4 @@
+import { ARMOR_BY_ID } from "./armor";
 import { Item, ITEM_NAMES } from "./items";
 import { bestSword, SWORD_DAMAGE, TOOL_BY_ID, toolDurability } from "./tools";
 import { Block } from "./world";
@@ -58,6 +59,14 @@ export const RECIPES: Recipe[] = [
   { name: "다이아몬드 도끼", station: "table", inputs: [[Item.Diamond, 3], [Item.Stick, 2]], output: [Item.DiamondAxe, 1] },
   { name: "다이아몬드 삽", station: "table", inputs: [[Item.Diamond, 1], [Item.Stick, 2]], output: [Item.DiamondShovel, 1] },
   { name: "다이아몬드 검", station: "table", inputs: [[Item.Diamond, 2], [Item.Stick, 1]], output: [Item.DiamondClub, 1] },
+  { name: "철 투구", station: "table", inputs: [[Item.IronIngot, 5]], output: [Item.IronHelmet, 1] },
+  { name: "철 흉갑", station: "table", inputs: [[Item.IronIngot, 8]], output: [Item.IronChestplate, 1] },
+  { name: "철 바지", station: "table", inputs: [[Item.IronIngot, 7]], output: [Item.IronLeggings, 1] },
+  { name: "철 부츠", station: "table", inputs: [[Item.IronIngot, 4]], output: [Item.IronBoots, 1] },
+  { name: "다이아몬드 투구", station: "table", inputs: [[Item.Diamond, 5]], output: [Item.DiamondHelmet, 1] },
+  { name: "다이아몬드 흉갑", station: "table", inputs: [[Item.Diamond, 8]], output: [Item.DiamondChestplate, 1] },
+  { name: "다이아몬드 바지", station: "table", inputs: [[Item.Diamond, 7]], output: [Item.DiamondLeggings, 1] },
+  { name: "다이아몬드 부츠", station: "table", inputs: [[Item.Diamond, 4]], output: [Item.DiamondBoots, 1] },
   { name: "침대", station: "table", inputs: [[Block.Wool, 3], [Block.Planks, 3]], output: [Item.Bed, 1] },
   { name: "빵", station: "table", inputs: [[Item.Grain, 3]], output: [Item.Bread, 1] },
 ];
@@ -104,7 +113,7 @@ interface Slot {
 
 /**
  * 가방. 정해진 칸 수(SLOT_COUNT) 안에서만 아이템을 들 수 있고, 한 칸에는 STACK_MAX개까지만 쌓인다.
- * 도구(곡괭이·도끼·삽·검)는 내구도가 서로 다를 수 있어 한 칸에 하나만 들어가고, 같은 종류를 두 개 갖고 다니지 않는다.
+ * 도구(곡괭이·도끼·삽·검)와 방어구(투구·흉갑·바지·부츠)는 한 칸에 하나만 들어가고, 같은 종류를 두 개 갖고 다니지 않는다.
  */
 export class Inventory {
   private slots: (Slot | null)[] = new Array(SLOT_COUNT).fill(null);
@@ -112,7 +121,7 @@ export class Inventory {
   private readonly wear = new Map<number, number>();
 
   private maxStack(item: number): number {
-    return TOOL_BY_ID.has(item) ? 1 : STACK_MAX;
+    return TOOL_BY_ID.has(item) || ARMOR_BY_ID.has(item) ? 1 : STACK_MAX;
   }
 
   count(item: number): number {

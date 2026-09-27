@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { ARMOR, ARMOR_BY_ID, reduceDamage, totalArmorPoints } from "./armor";
 import { iconTile, tileIconDataUrl } from "./atlas";
 import { audio } from "./audio";
 import { Achievements, ACHIEVEMENTS } from "./achievements";
@@ -28,6 +29,7 @@ const REACH = 5;
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const fpsLabel = document.getElementById("fps") as HTMLElement;
 const hotbarElement = document.getElementById("hotbar") as HTMLElement;
+const armorLabel = document.getElementById("armor-label") as HTMLElement;
 
 const LAST_SEED_KEY = "voxelgame:last-seed";
 const saveKey = (worldSeed: number): string => `voxelgame:save:${worldSeed}`;
@@ -135,6 +137,7 @@ function checkInventoryAchievements(): void {
   if (has(Item.Bread)) unlockAchievement("bread");
   if (has(Block.Torch)) unlockAchievement("torch");
   if (has(Item.Diamond) || has(Block.DiamondOre)) unlockAchievement("diamond");
+  if (ARMOR.some((a) => has(a.id))) unlockAchievement("armor");
 }
 
 // 월드를 만드는 동안 화면이 멈추므로, 먼저 "만드는 중" 문구가 그려지게 한 프레임 기다린다.
@@ -288,6 +291,7 @@ const slotElements = hotbarBlocks.map((_block, index) => {
 /** 아이템 바 칸마다 블록 무늬 아이콘과 이름을 그린다. */
 function refreshHotbar(): void {
   checkInventoryAchievements();
+  refreshArmor();
   slotElements.forEach((element, i) => {
     const block = hotbarBlocks[i];
     element.replaceChildren();
@@ -622,6 +626,9 @@ function refreshInventoryPanel(): void {
         onPress(chip, sleepInBed);
       } else if (item === Item.Diamond) {
         chip.textContent = "💎 " + itemLabel(item) + " ×" + amount;
+      } else if (ARMOR_BY_ID.has(item)) {
+        const def = ARMOR_BY_ID.get(item)!;
+        chip.textContent = "🛡 " + itemLabel(item) + " (방어 " + def.points + ", 알아서 걸쳐요)";
       } else {
         const def = TOOL_BY_ID.get(item);
         chip.textContent = def
@@ -915,6 +922,14 @@ function refreshHunger(): void {
   });
 }
 refreshHunger();
+
+/** 가진 투구·흉갑·바지·부츠 중 부위별로 가장 좋은 것을 걸친 걸로 치고, 그 점수를 보여준다. */
+function refreshArmor(): void {
+  const points = totalArmorPoints((id) => inventory.count(id) > 0);
+  armorLabel.style.display = mode === "creative" || points === 0 ? "none" : "";
+  armorLabel.textContent = "🛡 " + points;
+}
+refreshArmor();
 
 /** 플레이어가 피해를 입는다. 쓰러지면 처음 자리에서 다시 시작한다. */
 function hurt(amount: number): void {
@@ -1213,7 +1228,8 @@ function frame(now: number): void {
   for (const call of mobResult.sounds) {
     audio.playMob(call.kind, 1 - Math.hypot(call.x - player.x, call.z - player.z) / 28);
   }
-  if (mobResult.damage > 0) hurt(mobResult.damage);
+  // 낙하 피해와 달리, 동물·괴물의 공격은 걸친 방어구만큼 줄어든다.
+  if (mobResult.damage > 0) hurt(reduceDamage(mobResult.damage, (id) => inventory.count(id) > 0));
   for (const shot of mobResult.shots) {
     audio.playArrow();
     spawnArrow(shot.fromX, shot.fromY, shot.fromZ, shot.toX, shot.toY, shot.toZ);
