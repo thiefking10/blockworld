@@ -11,6 +11,8 @@ import { ambientColor, DAY_LENGTH_SECONDS, daylight, nextMorning, phaseFromSecon
 import { solidMaterial, waterMaterial } from "./mesher";
 import { ChunkedWorldMesh } from "./chunks";
 import { MobRenderer } from "./mobRender";
+import { DropField } from "./drops";
+import { DropRenderer } from "./dropRender";
 import { FUELS, FurnaceField, SMELTS } from "./furnace";
 import { MOB_SPECS, MobSimulation, raycastMobs, type Mob } from "./mobs";
 import { bestSword, bestTool, breakSeconds, canHarvest, SWORD_DAMAGE, TOOL_BY_ID, toolDurability, type ToolDef } from "./tools";
@@ -73,6 +75,8 @@ const crops = new CropField();
 if (saved && saved.seed === seed && saved.crops) crops.load(saved.crops);
 const furnaces = new FurnaceField();
 if (saved && saved.seed === seed && saved.furnaces) furnaces.load(saved.furnaces);
+const drops = new DropField();
+if (saved && saved.seed === seed && saved.drops) drops.load(saved.drops);
 
 let resetting = false;
 let saveTimer: number | undefined;
@@ -628,13 +632,9 @@ function attackMob(mob: Mob): void {
   const kind = mob.kind;
   if (mobSim.hit(mob, player.x, player.z, damage)) {
     if (kind === "zombie") unlockAchievement("zombie");
-    const drops = mode === "survival" ? mobDrops(kind, Math.random) : [];
-    if (drops.length > 0) {
-      for (const [item, amount] of drops) inventory.add(item, amount);
-      showToast(drops.map(([item, amount]) => itemLabel(item) + " ×" + amount).join(", ") + " 얻었어요");
-      refreshHotbar();
-      scheduleSave();
-    }
+    const loot = mode === "survival" ? mobDrops(kind, Math.random) : [];
+    for (const [item, amount] of loot) drops.spawn(item, amount, mob.x, mob.y + 0.3, mob.z, Math.random);
+    if (loot.length > 0) scheduleSave();
   }
 }
 
@@ -643,14 +643,14 @@ function removeBlock(x: number, y: number, z: number, harvest = true): void {
   const broken = world.get(x, y, z);
   if (broken === Block.Furnace) {
     const contents = furnaces.remove(x, y, z, worldSeconds);
-    if (mode === "survival") for (const slot of contents) inventory.add(slot.item, slot.count);
+    if (mode === "survival") for (const slot of contents) drops.spawn(slot.item, slot.count, x + 0.5, y + 0.3, z + 0.5, Math.random);
     if (openFurnace && openFurnace.x === x && openFurnace.y === y && openFurnace.z === z) closeStations();
   }
   if (mode === "survival") {
     if (harvest) {
-      const drops = dropsFor(broken, Math.random);
-      for (const [item, amount] of drops) inventory.add(item, amount);
-      if (drops.some(([item]) => item === Block.Sprout) && broken === Block.Grass) showToast("밀 씨앗을 얻었어요");
+      const gained = dropsFor(broken, Math.random);
+      for (const [item, amount] of gained) drops.spawn(item, amount, x + 0.5, y + 0.4, z + 0.5, Math.random);
+      if (gained.some(([item]) => item === Block.Sprout) && broken === Block.Grass) showToast("밀 씨앗을 얻었어요");
     }
     refreshHotbar();
   }
@@ -784,6 +784,7 @@ function saveNow(): void {
     durability: inventory.wearEntries(),
     crops: crops.toArray(),
     furnaces: furnaces.toArray(),
+    drops: drops.toArray(),
     achievements: achievements.toArray(),
   };
   writeStorage(saveKey(seed), encodeSave(data));
@@ -814,6 +815,7 @@ worldMesh.loadAllNear(player.x, player.z);
 
 const mobSim = new MobSimulation();
 const mobRenderer = new MobRenderer(scene);
+const dropRenderer = new DropRenderer(scene);
 
 const heartsElement = document.getElementById("hearts") as HTMLElement;
 const damageFlash = document.getElementById("damage-flash") as HTMLElement;
@@ -946,7 +948,7 @@ function updateEnvironment(): void {
 
 // 개발용: 주소에 ?debug 를 붙이면 콘솔에서 __vox 로 월드와 플레이어를 만질 수 있다.
 if (new URLSearchParams(window.location.search).has("debug")) {
-  (window as unknown as { __vox: unknown }).__vox = { world, player, camera, scene, audio, generateMs, worldMesh, mobSim, health, applyQuality, crops, achievements, inventory, hurt, setMode: (m: "survival" | "creative") => { mode = m; refreshHotbar(); } };
+  (window as unknown as { __vox: unknown }).__vox = { world, player, camera, scene, audio, generateMs, worldMesh, mobSim, health, applyQuality, crops, achievements, inventory, hurt, setMode: (m: "survival" | "creative") => { mode = m; refreshHotbar(); }, drops, furnaces, controls, currentTarget, getMode: () => mode, getMining: () => ({ mining, miningProgress }), stepMining: updateMining, stepDrops: (dt: number) => drops.update(dt, world, player.x, player.y, player.z, () => Infinity), dropRenderer, renderNow: () => { camera.position.set(player.x, player.y + EYE_HEIGHT, player.z); camera.rotation.set(player.pitch, player.yaw, 0); dropRenderer.update(drops.drops, worldSeconds, solidMaterial.color); renderer.render(scene, camera); } };
 }
 
 const achievementPanel = document.getElementById("achievement-panel") as HTMLElement;
@@ -1119,6 +1121,17 @@ function frame(now: number): void {
     refreshHearts();
   }
   mobRenderer.update(mobSim.mobs, solidMaterial.color);
+  if (mode === "survival") {
+    const result = drops.update(dt, world, player.x, player.y, player.z, () => Infinity);
+    if (result.picked.length > 0) {
+      for (const [item, amount] of result.picked) inventory.add(item, amount);
+      audio.playPickup();
+      refreshHotbar();
+      refreshOpenPanels();
+      scheduleSave();
+    }
+  }
+  dropRenderer.update(drops.drops, worldSeconds, solidMaterial.color);
 
   camera.position.set(player.x, player.y + EYE_HEIGHT, player.z);
   camera.rotation.set(player.pitch, player.yaw, 0);

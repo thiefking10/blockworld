@@ -220,6 +220,23 @@ class GameAudio {
     source.stop(now + o.duration + 0.02);
   }
 
+  /** 짧은 순수 톤 (음이 위나 아래로 미끄러진다). */
+  private tone(from: number, to: number, duration: number, gainValue: number, type: OscillatorType): void {
+    const ctx = this.context();
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = type;
+    osc.frequency.setValueAtTime(from, now);
+    osc.frequency.exponentialRampToValueAtTime(to, now + duration);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(gainValue, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+    osc.connect(gain);
+    gain.connect(this.master as GainNode);
+    osc.start(now);
+    osc.stop(now + duration + 0.02);
+  }
+
   /** 짧은 톤 (나무 블록의 "통" 소리 등). 음이 아래로 미끄러진다. */
   private thump(from: number, to: number, duration: number, gainValue: number): void {
     const ctx = this.context();
@@ -351,6 +368,11 @@ class GameAudio {
   /** 고기를 먹을 때. */
   playEat(): void {
     for (let i = 0; i < 3; i++) window.setTimeout(() => this.burst({ duration: 0.07, type: "bandpass", freq: 900, q: 1, gain: 0.4 }), i * 110);
+  }
+
+  /** 아이템을 주울 때 (짧게 오르는 "띵") */
+  playPickup(): void {
+    this.tone(660, 880, 0.09, 0.16, "sine");
   }
 
   splash(): void {
