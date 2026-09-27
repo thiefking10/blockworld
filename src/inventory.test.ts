@@ -125,10 +125,12 @@ describe("drops", () => {
     expect(RECIPES.find((r) => r.name === "철 곡괭이")?.inputs[0][0]).toBe(Item.IronIngot);
   });
 
-  it("돼지는 고기, 양은 고기와 양털을 떨구고 좀비는 안 떨군다", () => {
+  it("돼지는 고기, 양은 고기와 양털, 해골은 뼈, 크리퍼는 화약을 떨구고 좀비는 안 떨군다", () => {
     expect(mobDrops("pig", () => 0.9)).toEqual([[Item.Meat, 1]]);
     expect(mobDrops("sheep", () => 0.1)).toEqual([[Item.Meat, 2], [Block.Wool, 2]]);
     expect(mobDrops("zombie", () => 0.5)).toEqual([]);
+    expect(mobDrops("skeleton", () => 0.1)).toEqual([[Item.Bone, 2]]);
+    expect(mobDrops("creeper", () => 0.9)).toEqual([[Item.Gunpowder, 1]]);
   });
 
   it("철광석은 철 검이 되고 가장 센 무기로 쓰인다", () => {

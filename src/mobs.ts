@@ -1,6 +1,6 @@
 import { Block, World } from "./world";
 
-export type MobKind = "pig" | "sheep" | "zombie";
+export type MobKind = "pig" | "sheep" | "zombie" | "skeleton" | "creeper";
 
 export interface MobSpec {
   halfWidth: number;
@@ -10,19 +10,46 @@ export interface MobSpec {
   chaseSpeed: number;
   hp: number;
   hostile: boolean;
+  /** 가까이 오지 않고 멀리서 화살을 쏜다 (해골) */
+  ranged?: boolean;
+  /** 가까이 오면 터진다 (크리퍼) */
+  explosive?: boolean;
 }
 
 export const MOB_SPECS: Record<MobKind, MobSpec> = {
   pig: { halfWidth: 0.4, height: 0.9, speed: 1.1, chaseSpeed: 1.1, hp: 4, hostile: false },
   sheep: { halfWidth: 0.42, height: 1.0, speed: 1.0, chaseSpeed: 1.0, hp: 4, hostile: false },
   zombie: { halfWidth: 0.3, height: 1.8, speed: 1.0, chaseSpeed: 2.3, hp: 8, hostile: true },
+  skeleton: { halfWidth: 0.3, height: 1.8, speed: 1.0, chaseSpeed: 1.6, hp: 6, hostile: true, ranged: true },
+  creeper: { halfWidth: 0.32, height: 1.6, speed: 0.9, chaseSpeed: 1.9, hp: 6, hostile: true, explosive: true },
 };
+
+/** 적대적인 동물이 이 종류 중 하나로 스폰된다 (뽑힐 확률 순서) */
+const HOSTILE_KINDS: { kind: MobKind; chance: number }[] = [
+  { kind: "zombie", chance: 0.4 },
+  { kind: "skeleton", chance: 0.35 },
+  { kind: "creeper", chance: 0.25 },
+];
 
 export const MAX_HOSTILE_COUNT = 5;
 export const CHASE_RANGE = 18;
 export const ATTACK_RANGE = 1.1;
 export const ATTACK_DAMAGE = 3;
 export const ATTACK_COOLDOWN = 1.2;
+
+// 해골: 가까이 오지 않고 이 거리 안에서 화살을 쏜다.
+export const SKELETON_MIN_RANGE = 4;
+export const SKELETON_RANGE = 11;
+export const SKELETON_DAMAGE = 3;
+export const SKELETON_COOLDOWN = 1.8;
+export const SKELETON_HIT_CHANCE = 0.7;
+
+// 크리퍼: 이 거리 안에 들어오면 멈춰 서서 심지가 타고, 다 타면 터진다.
+export const CREEPER_FUSE_RANGE = 3;
+export const CREEPER_FUSE_SECONDS = 1.4;
+export const CREEPER_EXPLOSION_RADIUS = 3.5;
+export const CREEPER_MAX_DAMAGE = 12;
+
 /** 낮에는 적대적인 동물이 이 비율(초당)로 사라진다. */
 const DAY_DESPAWN_RATE = 0.25;
 
@@ -43,6 +70,24 @@ export interface MobSound {
   z: number;
 }
 
+/** 해골이 쏜 화살 한 발 (화면에서 짧게 선으로 그려 보여 준다) */
+export interface ArrowShot {
+  fromX: number;
+  fromY: number;
+  fromZ: number;
+  toX: number;
+  toY: number;
+  toZ: number;
+  hit: boolean;
+}
+
+/** 크리퍼가 터진 자리 */
+export interface Explosion {
+  x: number;
+  y: number;
+  z: number;
+}
+
 /** 돌아다니는 동물 한 마리. 걷기, 중력, 벽 충돌, 한 칸 오르기, 물에 뜨기를 스스로 처리한다. */
 export class Mob {
   vy = 0;
@@ -54,6 +99,8 @@ export class Mob {
   onGround = false;
   soundTimer: number;
   attackCooldown = 0;
+  /** 크리퍼가 폭발까지 남은 심지 시간(초). 0이면 심지가 붙지 않은 상태. */
+  fuse = 0;
 
   private timer = 0;
   private knockX = 0;
@@ -116,7 +163,8 @@ export class Mob {
     return this.hp <= 0;
   }
 
-  update(dt: number, world: World, rng: Rng, chase: { x: number; z: number } | null = null): void {
+  /** stand가 true면 이동은 멈추지만(제자리), 그 자리에서 조준하듯 chase 쪽을 바라본다. */
+  update(dt: number, world: World, rng: Rng, chase: { x: number; z: number } | null = null, stand = false): void {
     this.hurtTimer = Math.max(0, this.hurtTimer - dt);
     this.attackCooldown = Math.max(0, this.attackCooldown - dt);
     this.timer -= dt;
@@ -125,7 +173,7 @@ export class Mob {
     if (chase) {
       this.yaw = Math.atan2(-(chase.x - this.x), -(chase.z - this.z));
       // 플레이어 몸속까지 파고들지 않고, 바로 앞에서 멈춘다.
-      this.moving = Math.hypot(chase.x - this.x, chase.z - this.z) > 0.85;
+      this.moving = !stand && Math.hypot(chase.x - this.x, chase.z - this.z) > 0.85;
       this.timer = 0.5;
     } else if (this.timer <= 0) {
       this.decide(rng);
@@ -208,6 +256,16 @@ export function raycastMobs(
   return best;
 }
 
+function pickHostileKind(rng: Rng): MobKind {
+  const roll = rng();
+  let acc = 0;
+  for (const entry of HOSTILE_KINDS) {
+    acc += entry.chance;
+    if (roll < acc) return entry.kind;
+  }
+  return HOSTILE_KINDS[HOSTILE_KINDS.length - 1].kind;
+}
+
 /** 스폰할 자리를 찾는다: 플레이어에서 적당히 떨어진, 잔디나 눈 위의 열린 땅. */
 export function findSpawnSpot(
   world: World,
@@ -228,7 +286,7 @@ export function findSpawnSpot(
     if (hostile) {
       if (!world.isSolid(x, groundY, z) || ground === Block.Leaves || ground === Block.Cactus) continue;
       if (world.isSolid(x, groundY + 1, z) || world.isSolid(x, groundY + 2, z)) continue;
-      return { x: x + 0.5, y: groundY + 1, z: z + 0.5, kind: "zombie" };
+      return { x: x + 0.5, y: groundY + 1, z: z + 0.5, kind: pickHostileKind(rng) };
     }
     if (ground !== Block.Grass && ground !== Block.Snow) continue;
     if (world.isSolid(x, groundY + 1, z) || world.isSolid(x, groundY + 2, z)) continue;
@@ -238,6 +296,13 @@ export function findSpawnSpot(
     return { x: x + 0.5, y: groundY + 1, z: z + 0.5, kind };
   }
   return null;
+}
+
+export interface MobUpdateResult {
+  sounds: MobSound[];
+  damage: number;
+  shots: ArrowShot[];
+  explosions: Explosion[];
 }
 
 /** 동물 전체를 관리한다: 스폰, 이동, 멀어지면 사라짐, 맞기. */
@@ -258,7 +323,8 @@ export class MobSimulation {
   }
 
   /**
-   * 한 프레임 진행한다. 이번에 울음소리를 낸 동물들과, 적대적인 동물이 플레이어에게 입힌 피해를 돌려준다.
+   * 한 프레임 진행한다. 이번에 울음소리를 낸 동물들, 해골이 쏜 화살, 크리퍼가 터진 자리,
+   * 적대적인 동물이 플레이어에게 입힌 피해를 돌려준다.
    * night가 true면 적대적인 동물이 나타나 플레이어를 쫓고, 아니면 서서히 사라진다.
    */
   update(
@@ -269,19 +335,58 @@ export class MobSimulation {
     night: boolean,
     /** false면 적대적인 동물이 플레이어를 쫓지도 공격하지도 않는다 (창작 모드). */
     targetable = true,
-  ): { sounds: MobSound[]; damage: number } {
+  ): MobUpdateResult {
     const sounds: MobSound[] = [];
+    const shots: ArrowShot[] = [];
+    const explosions: Explosion[] = [];
     let damage = 0;
+    const exploded: Mob[] = [];
 
     for (const mob of this.mobs) {
       const spec = MOB_SPECS[mob.kind];
       const distance = Math.hypot(mob.x - player.x, mob.z - player.z);
-      const chase = spec.hostile && night && targetable && distance < CHASE_RANGE ? player : null;
-      mob.update(dt, world, rng, chase);
+      const engaged = spec.hostile && night && targetable && distance < CHASE_RANGE;
 
-      if (spec.hostile && targetable && distance < ATTACK_RANGE && Math.abs(mob.y - player.y) < 1.5 && mob.attackCooldown <= 0) {
-        mob.attackCooldown = ATTACK_COOLDOWN;
-        damage += ATTACK_DAMAGE;
+      if (spec.explosive) {
+        if (engaged && distance <= CREEPER_FUSE_RANGE) {
+          mob.fuse += dt;
+          mob.update(dt, world, rng, player, true);
+          if (mob.fuse >= CREEPER_FUSE_SECONDS) {
+            explosions.push({ x: mob.x, y: mob.y, z: mob.z });
+            const falloff = Math.max(0, 1 - distance / CREEPER_EXPLOSION_RADIUS);
+            damage += CREEPER_MAX_DAMAGE * falloff;
+            exploded.push(mob);
+            continue;
+          }
+        } else {
+          mob.fuse = Math.max(0, mob.fuse - dt * 2);
+          mob.update(dt, world, rng, engaged ? player : null);
+        }
+      } else if (spec.ranged) {
+        const chase = engaged ? player : null;
+        const stand = engaged && distance <= SKELETON_MIN_RANGE;
+        mob.update(dt, world, rng, chase, stand);
+        if (engaged && distance <= SKELETON_RANGE && mob.attackCooldown <= 0) {
+          mob.attackCooldown = SKELETON_COOLDOWN;
+          const hit = rng() < SKELETON_HIT_CHANCE;
+          if (hit) damage += SKELETON_DAMAGE;
+          shots.push({
+            fromX: mob.x,
+            fromY: mob.y + spec.height * 0.6,
+            fromZ: mob.z,
+            toX: player.x,
+            toY: player.y + 1.2,
+            toZ: player.z,
+            hit,
+          });
+        }
+      } else {
+        const chase = engaged ? player : null;
+        mob.update(dt, world, rng, chase);
+        if (spec.hostile && targetable && distance < ATTACK_RANGE && Math.abs(mob.y - player.y) < 1.5 && mob.attackCooldown <= 0) {
+          mob.attackCooldown = ATTACK_COOLDOWN;
+          damage += ATTACK_DAMAGE;
+        }
       }
 
       mob.soundTimer -= dt;
@@ -289,6 +394,11 @@ export class MobSimulation {
         mob.soundTimer = 6 + rng() * 10;
         sounds.push({ kind: mob.kind, x: mob.x, z: mob.z });
       }
+    }
+
+    for (const mob of exploded) {
+      const index = this.mobs.indexOf(mob);
+      if (index >= 0) this.mobs.splice(index, 1);
     }
 
     for (let i = this.mobs.length - 1; i >= 0; i--) {
@@ -305,7 +415,7 @@ export class MobSimulation {
       if (night && hostileCount < MAX_HOSTILE_COUNT) this.trySpawn(world, player.x, player.z, rng, true);
       if (this.mobs.length - hostileCount < TARGET_MOB_COUNT) this.trySpawn(world, player.x, player.z, rng);
     }
-    return { sounds, damage };
+    return { sounds, damage, shots, explosions };
   }
 
   /** 적대적인 동물을 전부 없앤다 (플레이어가 쓰러져서 다시 시작할 때). */

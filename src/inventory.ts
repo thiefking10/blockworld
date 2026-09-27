@@ -65,11 +65,13 @@ export function dropsFor(block: number, rng: () => number): [number, number][] {
   }
 }
 
-/** 동물을 잡으면 나오는 것들. 돼지와 양은 고기, 양은 양털도 준다. */
+/** 동물을 잡으면 나오는 것들. 돼지와 양은 고기, 양은 양털, 해골은 뼈, 크리퍼는 화약을 준다. */
 export function mobDrops(kind: string, rng: () => number): [number, number][] {
   const drops: [number, number][] = [];
   if (kind === "pig" || kind === "sheep") drops.push([Item.Meat, 1 + (rng() < 0.5 ? 1 : 0)]);
   if (kind === "sheep") drops.push([Block.Wool, 1 + (rng() < 0.5 ? 1 : 0)]);
+  if (kind === "skeleton") drops.push([Item.Bone, 1 + (rng() < 0.5 ? 1 : 0)]);
+  if (kind === "creeper") drops.push([Item.Gunpowder, 1 + (rng() < 0.5 ? 1 : 0)]);
   return drops;
 }
 

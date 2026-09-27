@@ -306,8 +306,17 @@ class GameAudio {
   }
 
   /** 동물 울음소리. volume은 0~1 (멀수록 작게). 돼지는 낮고 짧은 "꿀", 양은 떨리는 "메". */
-  playMob(kind: "pig" | "sheep" | "zombie", volume: number): void {
+  playMob(kind: "pig" | "sheep" | "zombie" | "skeleton" | "creeper", volume: number): void {
     if (volume <= 0.01) return;
+    if (kind === "skeleton") {
+      this.burst({ duration: 0.08, type: "highpass", freq: 2600, q: 1.5, gain: 0.3 * volume });
+      window.setTimeout(() => this.burst({ duration: 0.1, type: "bandpass", freq: 1400, q: 2, gain: 0.22 * volume }), 80);
+      return;
+    }
+    if (kind === "creeper") {
+      this.burst({ duration: 0.5, type: "lowpass", freq: 900, q: 0.8, gain: 0.25 * volume });
+      return;
+    }
     const ctx = this.context();
     const now = ctx.currentTime;
     const pig = kind === "pig";
@@ -345,6 +354,18 @@ class GameAudio {
     gain.connect(this.master as GainNode);
     osc.start(now);
     osc.stop(now + duration + 0.02);
+  }
+
+  /** 화살이 날아가는 짧은 "피융" 소리. */
+  playArrow(): void {
+    this.burst({ duration: 0.16, type: "highpass", freq: 3200, q: 1.8, gain: 0.35 });
+  }
+
+  /** 크리퍼가 터질 때의 낮고 큰 폭발음. */
+  playExplosion(): void {
+    this.burst({ duration: 0.55, type: "lowpass", freq: 500, gain: 0.9 });
+    this.burst({ duration: 0.3, type: "bandpass", freq: 1800, q: 1, gain: 0.35 });
+    this.thump(160, 40, 0.4, 0.5);
   }
 
   /** 동물을 때렸을 때의 퍽 소리. */

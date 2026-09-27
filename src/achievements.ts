@@ -15,6 +15,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: "cooked", name: "요리사", hint: "고기를 화로에서 구워요" },
   { id: "ingot", name: "제련", hint: "철광석을 화로에서 구워 철 주괴를 얻어요" },
   { id: "zombie", name: "밤의 파수꾼", hint: "좀비를 물리쳐요" },
+  { id: "skeleton", name: "명사수", hint: "해골을 물리쳐요" },
+  { id: "creeper", name: "쉿... 펑!", hint: "크리퍼를 물리쳐요" },
   { id: "bed", name: "포근한 밤", hint: "침대를 만들어요" },
   { id: "sleep", name: "푹 잤어요", hint: "밤에 침대에서 자고 아침을 맞아요" },
   { id: "iron", name: "광부", hint: "땅속에서 철광석을 캐요" },

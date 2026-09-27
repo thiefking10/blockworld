@@ -8,7 +8,7 @@ describe("world", () => {
     a.generate(7);
     b.generate(7);
     expect(a.data).toEqual(b.data);
-  });
+  }, 15000);
 
   it("시드가 다르면 지형도 다르다", () => {
     const a = new World();

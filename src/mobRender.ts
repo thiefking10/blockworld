@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { Mob, MobKind } from "./mobs";
+import { CREEPER_FUSE_SECONDS, Mob, MobKind } from "./mobs";
 
 interface MobLook {
   body: number;
@@ -8,14 +8,18 @@ interface MobLook {
   bodySize: [number, number, number];
   headSize: [number, number, number];
   legHeight: number;
-  /** 사람처럼 서 있는 모양 (좀비). 아니면 네발 동물. */
+  /** 사람처럼 서 있는 모양 (좀비, 해골, 크리퍼). 아니면 네발 동물. */
   upright?: boolean;
+  /** upright인데 팔이 없는 경우 (크리퍼) */
+  noArms?: boolean;
 }
 
 const LOOKS: Record<MobKind, MobLook> = {
   pig: { body: 0xf2a6a6, head: 0xf5b8b8, leg: 0xe08f8f, bodySize: [0.6, 0.45, 0.9], headSize: [0.4, 0.38, 0.36], legHeight: 0.3 },
   sheep: { body: 0xf2f2ee, head: 0x6b5f57, leg: 0x6b5f57, bodySize: [0.7, 0.55, 0.95], headSize: [0.36, 0.36, 0.34], legHeight: 0.38 },
   zombie: { body: 0x3a8f7a, head: 0x6fb36a, leg: 0x2c3f8c, bodySize: [0.55, 0.75, 0.3], headSize: [0.45, 0.45, 0.45], legHeight: 0.7, upright: true },
+  skeleton: { body: 0xe4e0d2, head: 0xd8d3c2, leg: 0xcfc9b8, bodySize: [0.42, 0.75, 0.24], headSize: [0.38, 0.38, 0.38], legHeight: 0.7, upright: true },
+  creeper: { body: 0x4caf50, head: 0x3f9142, leg: 0x3f9142, bodySize: [0.6, 0.85, 0.4], headSize: [0.42, 0.42, 0.42], legHeight: 0.55, upright: true, noArms: true },
 };
 
 interface MobModel {
@@ -62,8 +66,8 @@ function buildModel(kind: MobKind): MobModel {
     model.legs.push(leg);
   }
 
-  if (look.upright) {
-    // 좀비는 두 팔을 앞으로 뻗는다.
+  if (look.upright && !look.noArms) {
+    // 좀비, 해골은 두 팔을 앞으로 뻗는다.
     for (const sx of [-1, 1]) {
       const arm = box([0.2, 0.2, 0.7], look.head, model);
       arm.geometry.translate(0, 0, -0.35);
@@ -76,6 +80,7 @@ function buildModel(kind: MobKind): MobModel {
 }
 
 const hurtColor = new THREE.Color(0xff3030);
+const fuseColor = new THREE.Color(0xffffff);
 
 /** 동물 목록과 화면의 3D 모델을 맞춰 준다. */
 export class MobRenderer {
@@ -83,8 +88,8 @@ export class MobRenderer {
 
   constructor(private readonly scene: THREE.Scene) {}
 
-  /** shade는 낮/밤 밝기 색. 맞은 동물은 잠깐 붉게 깜빡인다. */
-  update(mobs: Mob[], shade: THREE.Color): void {
+  /** shade는 낮/밤 밝기 색. 맞은 동물은 잠깐 붉게 깜빡이고, 심지가 붙은 크리퍼는 하얗게 점멸한다. */
+  update(mobs: Mob[], shade: THREE.Color, seconds = 0): void {
     const alive = new Set(mobs);
     for (const [mob, model] of this.models) {
       if (!alive.has(mob)) {
@@ -110,9 +115,11 @@ export class MobRenderer {
         leg.rotation.x = i === 0 || i === 3 ? swing : -swing;
       });
 
+      const fuseBlink = mob.kind === "creeper" && mob.fuse > 0 ? (0.5 + 0.5 * Math.sin(seconds * 22)) * Math.min(1, mob.fuse / CREEPER_FUSE_SECONDS) : 0;
       model.materials.forEach((material, i) => {
         material.color.setHex(model.colors[i]).multiply(shade);
         if (mob.hurtTimer > 0) material.color.lerp(hurtColor, 0.55);
+        if (fuseBlink > 0) material.color.lerp(fuseColor, fuseBlink * 0.75);
       });
     }
   }

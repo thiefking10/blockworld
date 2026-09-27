@@ -20,6 +20,8 @@ export const Item = {
   StoneShovel: 117,
   IronShovel: 118,
   IronIngot: 119,
+  Bone: 120,
+  Gunpowder: 121,
 } as const;
 
 export const ITEM_NAMES: Record<number, string> = {
@@ -42,4 +44,6 @@ export const ITEM_NAMES: Record<number, string> = {
   [Item.StoneShovel]: "돌 삽",
   [Item.IronShovel]: "철 삽",
   [Item.IronIngot]: "철 주괴",
+  [Item.Bone]: "뼈",
+  [Item.Gunpowder]: "화약",
 };

@@ -174,6 +174,37 @@ const crack = new THREE.Mesh(
 crack.visible = false;
 scene.add(crack);
 
+// 해골 화살이 날아가는 자취를 짧게 보여 준다.
+const arrowGeometry = new THREE.BufferGeometry();
+arrowGeometry.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(6), 3));
+const arrowMaterial = new THREE.LineBasicMaterial({ color: 0xf0e6c8, transparent: true, opacity: 0 });
+const arrowLine = new THREE.Line(arrowGeometry, arrowMaterial);
+scene.add(arrowLine);
+let arrowFade = 0;
+const ARROW_FADE_SECONDS = 0.22;
+
+function spawnArrow(fromX: number, fromY: number, fromZ: number, toX: number, toY: number, toZ: number): void {
+  const position = arrowGeometry.getAttribute("position") as THREE.BufferAttribute;
+  position.setXYZ(0, fromX, fromY, fromZ);
+  position.setXYZ(1, toX, toY, toZ);
+  position.needsUpdate = true;
+  arrowFade = ARROW_FADE_SECONDS;
+}
+
+// 크리퍼가 터진 자리에 잠깐 커지며 사라지는 불빛.
+const explosionMaterial = new THREE.MeshBasicMaterial({ color: 0xffcc66, transparent: true, opacity: 0, depthWrite: false });
+const explosionFx = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8), explosionMaterial);
+explosionFx.visible = false;
+scene.add(explosionFx);
+let explosionTimer = 0;
+const EXPLOSION_SECONDS = 0.35;
+
+function spawnExplosion(x: number, y: number, z: number): void {
+  explosionFx.position.set(x, y, z);
+  explosionFx.visible = true;
+  explosionTimer = EXPLOSION_SECONDS;
+}
+
 const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 120);
 camera.rotation.order = "YXZ";
 
@@ -632,6 +663,8 @@ function attackMob(mob: Mob): void {
   const kind = mob.kind;
   if (mobSim.hit(mob, player.x, player.z, damage)) {
     if (kind === "zombie") unlockAchievement("zombie");
+    if (kind === "skeleton") unlockAchievement("skeleton");
+    if (kind === "creeper") unlockAchievement("creeper");
     const loot = mode === "survival" ? mobDrops(kind, Math.random) : [];
     for (const [item, amount] of loot) drops.spawn(item, amount, mob.x, mob.y + 0.3, mob.z, Math.random);
     if (loot.length > 0) scheduleSave();
@@ -948,7 +981,7 @@ function updateEnvironment(): void {
 
 // 개발용: 주소에 ?debug 를 붙이면 콘솔에서 __vox 로 월드와 플레이어를 만질 수 있다.
 if (new URLSearchParams(window.location.search).has("debug")) {
-  (window as unknown as { __vox: unknown }).__vox = { world, player, camera, scene, audio, generateMs, worldMesh, mobSim, health, applyQuality, crops, achievements, inventory, hurt, setMode: (m: "survival" | "creative") => { mode = m; refreshHotbar(); }, drops, furnaces, controls, currentTarget, getMode: () => mode, getMining: () => ({ mining, miningProgress }), stepMining: updateMining, stepDrops: (dt: number) => drops.update(dt, world, player.x, player.y, player.z, () => Infinity), dropRenderer, renderNow: () => { camera.position.set(player.x, player.y + EYE_HEIGHT, player.z); camera.rotation.set(player.pitch, player.yaw, 0); dropRenderer.update(drops.drops, worldSeconds, solidMaterial.color); renderer.render(scene, camera); } };
+  (window as unknown as { __vox: unknown }).__vox = { world, player, camera, scene, audio, generateMs, worldMesh, mobSim, health, applyQuality, crops, achievements, inventory, hurt, setMode: (m: "survival" | "creative") => { mode = m; refreshHotbar(); }, drops, furnaces, controls, currentTarget, getMode: () => mode, getMining: () => ({ mining, miningProgress }), stepMining: updateMining, stepDrops: (dt: number) => drops.update(dt, world, player.x, player.y, player.z, () => Infinity), dropRenderer, renderNow: () => { camera.position.set(player.x, player.y + EYE_HEIGHT, player.z); camera.rotation.set(player.pitch, player.yaw, 0); dropRenderer.update(drops.drops, worldSeconds, solidMaterial.color); mobRenderer.update(mobSim.mobs, solidMaterial.color, worldSeconds); renderer.render(scene, camera); }, mobRenderer, spawnArrow, spawnExplosion };
 }
 
 const achievementPanel = document.getElementById("achievement-panel") as HTMLElement;
@@ -1116,11 +1149,30 @@ function frame(now: number): void {
     audio.playMob(call.kind, 1 - Math.hypot(call.x - player.x, call.z - player.z) / 28);
   }
   if (mobResult.damage > 0) hurt(mobResult.damage);
+  for (const shot of mobResult.shots) {
+    audio.playArrow();
+    spawnArrow(shot.fromX, shot.fromY, shot.fromZ, shot.toX, shot.toY, shot.toZ);
+  }
+  for (const explosion of mobResult.explosions) {
+    audio.playExplosion();
+    spawnExplosion(explosion.x, explosion.y, explosion.z);
+  }
+  if (arrowFade > 0) {
+    arrowFade = Math.max(0, arrowFade - dt);
+    arrowMaterial.opacity = arrowFade > 0 ? Math.min(1, arrowFade / ARROW_FADE_SECONDS + 0.3) : 0;
+  }
+  if (explosionTimer > 0) {
+    explosionTimer = Math.max(0, explosionTimer - dt);
+    const ratio = explosionTimer / EXPLOSION_SECONDS;
+    explosionFx.scale.setScalar(0.6 + (1 - ratio) * 3);
+    explosionMaterial.opacity = ratio * 0.85;
+    if (explosionTimer <= 0) explosionFx.visible = false;
+  }
   if (health.hp !== shownHp) {
     shownHp = health.hp;
     refreshHearts();
   }
-  mobRenderer.update(mobSim.mobs, solidMaterial.color);
+  mobRenderer.update(mobSim.mobs, solidMaterial.color, worldSeconds);
   if (mode === "survival") {
     const result = drops.update(dt, world, player.x, player.y, player.z, () => Infinity);
     if (result.picked.length > 0) {
