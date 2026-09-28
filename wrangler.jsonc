@@ -1,0 +1,10 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "voxelgame-multiplayer",
+  "main": "party/server.ts",
+  "compatibility_date": "2026-09-28",
+  "durable_objects": {
+    "bindings": [{ "name": "VOXEL_ROOM", "class_name": "VoxelRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["VoxelRoom"] }]
+}

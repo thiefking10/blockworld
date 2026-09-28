@@ -65,8 +65,8 @@ function removeStorage(key: string): void {
 // ---- 멀티플레이: 주소에 ?room=방코드 가 있으면, 월드를 만들기 전에 먼저 그 방에 들어가서
 // 다 같이 볼 시드와 지금까지 바뀐 블록을 받아 온다. 없으면 지금까지처럼 혼자 시작한다.
 // 방을 새로 만드는 건 게임 화면의 "함께하기" 버튼으로 한다 (아래쪽, controls 만든 뒤).
-// 서버 배포 방법은 README를 보고, 배포한 뒤에는 이 주소를 자신의 것으로 바꾸세요.
-const PARTY_HOST_DEFAULT = "voxelgame.YOUR-PARTYKIT-USERNAME.partykit.dev";
+// 서버 배포 방법은 README를 보고, 직접 배포했다면 이 주소를 자신의 것으로 바꾸세요.
+const PARTY_HOST_DEFAULT = "voxelgame-multiplayer.thiefking10.workers.dev";
 const NICKNAME_KEY = "voxelgame:nickname";
 const AVATAR_COLORS = [0xff6b6b, 0x4dd0e1, 0xffd166, 0x9b7bd6, 0x81c784, 0xf48fb1];
 

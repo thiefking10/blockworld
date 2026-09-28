@@ -51,7 +51,7 @@ npm run build            # 배포용 빌드 (dist 폴더)
 - `?time=0.5` 시간을 멈춤 (0 한밤중, 0.25 해 뜸, 0.5 한낮, 0.75 해 짐)
 - `?debug` 콘솔에서 `__vox`로 월드·플레이어·가방 등을 만질 수 있음
 - `?room=방코드` 그 방에 바로 들어가기 (친구가 "함께" 버튼으로 만든 주소를 그대로 열면 됨)
-- `?party=주소` 멀티플레이 서버를 다른 곳으로 지정 (개발 중 `npm run party:dev`로 띄운 로컬 서버를 쓰려면 `?party=127.0.0.1:1999`)
+- `?party=주소` 멀티플레이 서버를 다른 곳으로 지정 (개발 중 `npm run party:dev`로 띄운 로컬 서버를 쓰려면 `?party=127.0.0.1:8787`)
 
 ## 구조
 
@@ -70,7 +70,7 @@ src/
   controls.ts   터치·키보드 입력, main.ts 모든 것을 잇는 곳
   protocol.ts   멀티플레이 메시지 모양(순수 로직), net.ts 서버 접속, playerRender.ts 다른 사람 아바타
 party/
-  server.ts     멀티플레이 서버 (PartyKit). 방마다 시드와 블록 변화를 기억했다가 새로 들어온 사람에게 알려줌
+  server.ts     멀티플레이 서버 (Cloudflare Workers + Durable Objects, wrangler로 배포). 방마다 시드와 블록 변화를 기억했다가 새로 들어온 사람에게 알려줌
 ```
 
 게임 규칙 파일(`*.ts`, 화면과 무관한 것)은 `*.test.ts`로 테스트합니다.
@@ -81,21 +81,23 @@ party/
 `master`에 push할 때마다 테스트 → 빌드 → Pages 배포가 자동으로 실행됩니다.
 저장소 Settings → Pages → Source를 "GitHub Actions"로 바꿔 주세요.
 
-## 배포 (멀티플레이 서버, PartyKit)
+## 배포 (멀티플레이 서버, Cloudflare Workers)
 
 멀티플레이는 GitHub Pages(정적 파일)와 별도로, 실시간으로 메시지를 주고받는 작은 서버가 하나 더 필요합니다.
-[PartyKit](https://www.partykit.io/)이라는 무료 서비스(Cloudflare 기반)를 씁니다.
+[Cloudflare Workers](https://workers.cloudflare.com/)(Durable Objects)에 [wrangler](https://developers.cloudflare.com/workers/wrangler/)로 직접 배포합니다 — 무료 요금제로 충분하고, 이미 만든 Cloudflare 계정을 그대로 쓸 수 있습니다.
 
 ```
-npx partykit login    # 처음 한 번, 브라우저로 로그인
-npm run party:deploy  # party/server.ts를 배포 (voxelgame.내계정.partykit.dev 같은 주소가 나옵니다)
+npx wrangler login    # 처음 한 번, 브라우저로 로그인 (이미 로그인돼 있으면 안 해도 됨)
+npm run party:deploy  # party/server.ts를 배포 (voxelgame-multiplayer.내계정.workers.dev 같은 주소가 나옵니다)
 ```
+
+(로그인 대신 `CLOUDFLARE_ACCOUNT_ID`·`CLOUDFLARE_API_TOKEN` 환경변수로 인증할 수도 있습니다 — 계정 ID는 Cloudflare 대시보드 주소창에, 토큰은 dash.cloudflare.com/profile/api-tokens → "Edit Cloudflare Workers" 템플릿으로 만듭니다.)
 
 배포된 주소가 나오면 `src/main.ts`에서 `PARTY_HOST_DEFAULT` 값을 그 주소로 바꾸고 다시 `npm run build`(또는 GitHub Pages는 push)하면
 "함께" 버튼이 그 서버를 쓰게 됩니다. 개발 중에는 `npm run party:dev`로 컴퓨터에서 서버를 띄우고 주소 끝에
-`?party=127.0.0.1:1999`를 붙이면 배포 없이 테스트할 수 있습니다.
+`?party=127.0.0.1:8787`을 붙이면 배포 없이 테스트할 수 있습니다.
 
-같은 방에 최대 4명까지 들어갈 수 있고, 방의 블록 변화는 서버에 저장되어 다시 들어와도 남아 있습니다.
+같은 방에 최대 4명까지 들어갈 수 있고, 방의 블록 변화는 서버(Durable Object 저장소)에 저장되어 다시 들어와도 남아 있습니다.
 
 ## 앱처럼 설치하기 (PWA)
 
