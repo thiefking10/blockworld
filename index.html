@@ -355,10 +355,21 @@
         max-width: 280px;
         line-height: 1.5;
       }
-      #items-row {
+      #items-row,
+      #equipment-row {
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
+      }
+      #equipment-row {
+        margin-bottom: 4px;
+      }
+      .item-chip.equipped {
+        border-color: #8adf8a;
+        background: rgba(120, 220, 120, 0.15);
+      }
+      .item-chip.unequipped {
+        opacity: 0.55;
       }
       .item-chip {
         box-sizing: border-box;
@@ -775,6 +786,7 @@
           </div>
           <div id="mode-toggle">방식 바꾸기</div>
         </div>
+        <div id="equipment-row"></div>
         <div id="inventory-body">
           <div class="inv-column">
             <div class="section-title" id="pick-title">블록 고르기 (선택한 칸에 들어가요)</div>

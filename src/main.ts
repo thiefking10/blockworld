@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { ARMOR, ARMOR_BY_ID, reduceDamage, totalArmorPoints } from "./armor";
+import { ARMOR, ARMOR_BY_ID, bestArmor, reduceDamage, totalArmorPoints, type ArmorSlot } from "./armor";
 import { iconTile, tileIconDataUrl } from "./atlas";
 import { audio } from "./audio";
 import { Achievements, ACHIEVEMENTS } from "./achievements";
@@ -415,7 +415,6 @@ function heldItem(): number {
   return hotbarBlocks[selectedSlot];
 }
 
-/** 화면 오른쪽 아래에 지금 손에 든 것을 아이콘으로 보여준다 (빈손이면 숨김). */
 /** 1인칭 손 모형이 지금 손에 든 것과 같은 걸 들게 한다. */
 function refreshHeldItemView(): void {
   heldHand.setItem(heldItem());
@@ -476,6 +475,7 @@ const inventoryGrid = document.getElementById("inventory-grid") as HTMLElement;
 const inventoryEmpty = document.getElementById("inventory-empty") as HTMLElement;
 const itemsRow = document.getElementById("items-row") as HTMLElement;
 const itemsTitle = document.getElementById("items-title") as HTMLElement;
+const equipmentRow = document.getElementById("equipment-row") as HTMLElement;
 const craftSection = document.getElementById("craft-section") as HTMLElement;
 const craftList = document.getElementById("craft-list") as HTMLElement;
 const modeLabel = document.getElementById("mode-label") as HTMLElement;
@@ -523,6 +523,8 @@ function giveItem(item: number): void {
     return;
   }
   audio.playPickup();
+  // 방어구는 자동으로 걸쳐져서 손에 들 필요가 없다. 그 밖의 것(도구·검·활 등)은 받자마자 손에 들려서 바로 쓸 수 있다.
+  if (!ARMOR_BY_ID.has(item)) hotbarBlocks[selectedSlot] = item;
   refreshHotbar();
   refreshOpenPanels();
   scheduleSave();
@@ -752,10 +754,39 @@ function useBlock(): void {
   }
 }
 
+const ARMOR_SLOT_NAMES: Record<ArmorSlot, string> = { helmet: "투구", chestplate: "흉갑", leggings: "바지", boots: "부츠" };
+const ARMOR_SLOT_ORDER: ArmorSlot[] = ["helmet", "chestplate", "leggings", "boots"];
+
+/** 지금 손에 든 것과, 부위별로 걸친 방어구(투구·흉갑·바지·부츠는 동시에 다 걸칠 수 있다)를 한눈에 보여준다. */
+function refreshEquipmentPanel(): void {
+  equipmentRow.replaceChildren();
+
+  const held = heldItem();
+  const heldChip = document.createElement("div");
+  heldChip.className = "item-chip " + (held === 0 ? "unequipped" : "equipped");
+  heldChip.textContent = "✋ 손: " + (held === 0 ? "맨손" : itemLabel(held));
+  equipmentRow.appendChild(heldChip);
+
+  const worn = bestArmor((id) => inventory.count(id) > 0);
+  for (const slot of ARMOR_SLOT_ORDER) {
+    const def = worn.find((a) => a.slot === slot);
+    const chip = document.createElement("div");
+    chip.className = "item-chip " + (def ? "equipped" : "unequipped");
+    chip.textContent = ARMOR_SLOT_NAMES[slot] + ": " + (def ? itemLabel(def.id) + " (방어 " + def.points + ")" : "없음");
+    equipmentRow.appendChild(chip);
+  }
+
+  const totalChip = document.createElement("div");
+  totalChip.className = "item-chip";
+  totalChip.textContent = "🛡 방어 총합 " + totalArmorPoints((id) => inventory.count(id) > 0);
+  equipmentRow.appendChild(totalChip);
+}
+
 function refreshInventoryPanel(): void {
   const survival = mode === "survival";
   modeLabel.textContent = survival ? "서바이벌: 블록을 모아서 써요" : "창작: 블록이 무한이에요";
   slotLabel.textContent = survival ? "가방 " + inventory.slotsUsed + "/" + inventory.slotCount + "칸" : "";
+  refreshEquipmentPanel();
 
   inventoryGrid.replaceChildren();
   const shown = survival ? PLACEABLE_BLOCKS.filter((b) => inventory.count(b.block) > 0) : PLACEABLE_BLOCKS;
