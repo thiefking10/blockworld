@@ -89,9 +89,17 @@ export class NetClient {
     return this.socket !== null && this.welcomed;
   }
 
-  /** 내가 호스트인지 (혼자 하거나 연결이 없으면 늘 호스트처럼 게임을 직접 돌린다). */
+  /**
+   * 서버가 호스트·채팅·공유 같은 새 기능을 아는지. 예전 서버(호스트를 알려 주지 않는다)에 접속했다면 false라서,
+   * 그때는 예전처럼 각자 자기 화면의 동물을 돌리고 채팅 등은 쓰지 않는다.
+   */
+  get shared(): boolean {
+    return this.connected && this.hostId !== "";
+  }
+
+  /** 내가 호스트인지 (혼자 하거나 연결이 없거나 예전 서버면 늘 호스트처럼 게임을 직접 돌린다). */
   get isHost(): boolean {
-    return !this.connected || this.hostId === this.myId;
+    return !this.shared || this.hostId === this.myId;
   }
 
   sendMove(x: number, y: number, z: number, yaw: number, pitch: number): void {

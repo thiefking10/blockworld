@@ -101,13 +101,14 @@ function amHost(): boolean {
 
 /** 호스트가 아닌 사람의 화면인지 (동물·아이템을 호스트에게서 받아 보여 주기만 한다). */
 function isGuest(): boolean {
-  return net.connected && !net.isHost;
+  return net.shared && !net.isHost;
 }
 
 /** 같은 방의 모든 사람(나 포함)의 자리. 동물이 가까운 사람을 노릴 때 쓴다. */
 function everyonePositions(includeMe = true): { id: string; x: number; y: number; z: number }[] {
   const list = includeMe ? [{ id: net.connected ? net.myId : "", x: player.x, y: player.y, z: player.z }] : [];
-  for (const p of remotePlayers.values()) list.push({ id: p.id, x: p.x, y: p.y, z: p.z });
+  // 예전 서버에서는 다른 사람의 피해를 전달할 길이 없으니, 그때는 나만 상대한다.
+  if (net.shared) for (const p of remotePlayers.values()) list.push({ id: p.id, x: p.x, y: p.y, z: p.z });
   return list;
 }
 
@@ -1566,13 +1567,13 @@ function removeBlock(x: number, y: number, z: number, harvest = true): boolean {
   const broken = world.get(x, y, z);
   if (broken === Block.Furnace) {
     const contents = furnaces.remove(x, y, z, worldSeconds);
-    if (net.connected) net.sendContainer(containerKey("furnace", x, y, z), null);
+    if (net.shared) net.sendContainer(containerKey("furnace", x, y, z), null);
     if (mode === "survival") for (const slot of contents) spawnDrop(slot.item, slot.count, x + 0.5, y + 0.3, z + 0.5);
     if (openFurnace && openFurnace.x === x && openFurnace.y === y && openFurnace.z === z) closeStations();
   }
   if (isChest(broken)) {
     const contents = chests.remove(x, y, z);
-    if (net.connected) net.sendContainer(containerKey("chest", x, y, z), null);
+    if (net.shared) net.sendContainer(containerKey("chest", x, y, z), null);
     if (mode === "survival") for (const [item, amount] of contents) spawnDrop(item, amount, x + 0.5, y + 0.3, z + 0.5);
     if (openChest && openChest.x === x && openChest.y === y && openChest.z === z) closeStations();
   }
@@ -1841,11 +1842,11 @@ function handleHostReply(reply: HostReply): void {
 const containerKey = (kind: "chest" | "furnace", x: number, y: number, z: number): string => kind + ":" + x + "," + y + "," + z;
 
 function syncChest(x: number, y: number, z: number): void {
-  if (net.connected) net.sendContainer(containerKey("chest", x, y, z), chests.rawAt(x, y, z));
+  if (net.shared) net.sendContainer(containerKey("chest", x, y, z), chests.rawAt(x, y, z));
 }
 
 function syncFurnace(x: number, y: number, z: number): void {
-  if (net.connected) net.sendContainer(containerKey("furnace", x, y, z), furnaces.rawAt(x, y, z));
+  if (net.shared) net.sendContainer(containerKey("furnace", x, y, z), furnaces.rawAt(x, y, z));
 }
 
 /** 서버가 알려 준 상자·화로 내용을 적용한다 (화면은 건드리지 않는다). */
@@ -1893,7 +1894,7 @@ function addChatLine(name: string, text: string, mine: boolean): void {
 
 function sendChat(): void {
   const text = sanitizeChat(chatInput.value);
-  if (!text || !net.connected) return;
+  if (!text || !net.shared) return;
   net.sendChat(text);
   addChatLine("나", text, true);
   chatInput.value = "";
@@ -2230,7 +2231,7 @@ if (net.connected) {
   net.sendMove(player.x, player.y, player.z, player.yaw, player.pitch);
   for (const p of remotePlayers.values()) avatarRenderer.upsert(p.id, p);
   document.getElementById("multiplayer-button")?.classList.add("connected");
-  chatButton.classList.add("show");
+  chatButton.classList.toggle("show", net.shared);
 }
 
 const heartsElement = document.getElementById("hearts") as HTMLElement;
@@ -2486,8 +2487,8 @@ async function hostRoom(): Promise<void> {
 
 function refreshMultiplayerPanel(): void {
   multiplayerButton.classList.toggle("connected", net.connected);
-  chatButton.classList.toggle("show", net.connected);
-  if (!net.connected) chatPanel.classList.remove("open");
+  chatButton.classList.toggle("show", net.shared);
+  if (!net.shared) chatPanel.classList.remove("open");
   multiplayerBody.replaceChildren();
   if (net.connected && myRoomCode) {
     const codeRow = document.createElement("div");
@@ -2785,10 +2786,10 @@ function frame(now: number): void {
   for (const explosion of mobResult.explosions) {
     audio.playExplosion();
     spawnExplosion(explosion.x, explosion.y, explosion.z);
-    if (net.connected) net.sendFx("explosion", explosion.x, explosion.y, explosion.z);
+    if (net.shared) net.sendFx("explosion", explosion.x, explosion.y, explosion.z);
   }
   // (호스트) 1초에 다섯 번 동물·아이템·화살의 모습과 시각을 모두에게 알린다.
-  if (net.connected && amHost()) {
+  if (net.shared && amHost()) {
     snapshotTimer -= dt;
     if (snapshotTimer <= 0) {
       snapshotTimer = SNAPSHOT_INTERVAL;
