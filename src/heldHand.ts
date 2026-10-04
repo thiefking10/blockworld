@@ -6,7 +6,7 @@ import { Item } from "./items";
 import { TOOL_BY_ID, type ToolType } from "./tools";
 
 /** 재질(나무/돌/철/다이아몬드)별 도구 색. tools.ts의 TIER_NAMES 순서와 같다. */
-const TIER_COLORS = [0xb08968, 0x9e9e9e, 0xe8e8e8, 0x7de3e3];
+const TIER_COLORS = [0xb08968, 0x9e9e9e, 0xe8e8e8, 0x7de3e3, 0x4a3b40];
 const SKIN_COLOR = 0xe0a978;
 
 const tileTextureCache = new Map<number, THREE.Texture>();

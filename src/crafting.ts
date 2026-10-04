@@ -40,9 +40,10 @@ for (const recipe of RECIPES) {
   const out = recipe.output[0];
   const material = recipe.inputs[0][0];
   const tool = TOOL_BY_ID.get(out);
-  if (tool) define(recipe.name, TOOL_ROWS[tool.type], { M: material, S: Item.Stick });
+  // 네더라이트 장비 같은 "업그레이드" 제작법(재료가 도구·갑옷 자체)은 모양 없이 두 칸만 맞으면 된다.
+  if (tool && !TOOL_BY_ID.has(material)) define(recipe.name, TOOL_ROWS[tool.type], { M: material, S: Item.Stick });
   const armor = ARMOR_BY_ID.get(out);
-  if (armor) define(recipe.name, ARMOR_ROWS[armor.slot], { M: material });
+  if (armor && !ARMOR_BY_ID.has(material)) define(recipe.name, ARMOR_ROWS[armor.slot], { M: material });
 }
 
 define("막대", ["P", "P"], { P: Block.Planks });

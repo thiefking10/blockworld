@@ -45,6 +45,8 @@ export const Block = {
   /** 인챈트 테이블과 양조대는 네모 블록이다 (모양 블록 번호 59~74 다음) */
   EnchantTable: 75,
   BrewingStand: 76,
+  /** 고대 잔해: 월드 맨 밑에서 아주 드물게 나온다. 구우면 네더라이트 조각. (나중에 네더 차원이 생기면 이 자리는 네더로 옮긴다) */
+  AncientDebris: 77,
 } as const;
 export type BlockId = (typeof Block)[keyof typeof Block];
 
@@ -193,6 +195,7 @@ export function terrainHeight(x: number, z: number, seed: number): number {
 const CAVE_TOP = 90;
 const IRON_TOP = 72;
 const COAL_TOP = 100;
+const DEBRIS_TOP = 9;
 const DIAMOND_TOP = 14;
 
 /** 두 개의 3차원 노이즈가 동시에 "중간값 근처"인 자리가 구불구불한 터널이 된다. */
@@ -461,6 +464,19 @@ export class World {
     }
   }
 
+  /** 고대 잔해는 다이아몬드보다 더 깊은 곳(맨 밑 9칸)에서, 훨씬 드물게 작은 덩어리로 나온다. */
+  private scatterDebris(seed: number): void {
+    for (let x = 0; x < SIZE_X; x++) {
+      for (let z = 0; z < SIZE_Z; z++) {
+        for (let y = 1; y <= DEBRIS_TOP; y++) {
+          if (this.get(x, y, z) !== Block.Stone) continue;
+          if (hash3(x >> 1, y >> 1, z >> 1, seed + 88801) > 0.0005) continue;
+          if (hash3(x, y, z, seed + 131) < 0.7) this.set(x, y, z, Block.AncientDebris);
+        }
+      }
+    }
+  }
+
   private scatterDiamond(seed: number): void {
     for (let x = 0; x < SIZE_X; x++) {
       for (let z = 0; z < SIZE_Z; z++) {
@@ -546,6 +562,7 @@ export class World {
     this.scatterCoal(seed);
     this.scatterGravel(seed);
     this.scatterDiamond(seed);
+    this.scatterDebris(seed);
     this.plantTrees(seed);
     this.villages = buildVillages(this, seed);
     this.scatterFlowers(seed);

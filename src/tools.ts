@@ -12,18 +12,18 @@ export interface ToolDef {
 }
 
 /** 재질별 채굴 속도 배율 (맞는 도구일 때) */
-export const TIER_SPEED = [2, 4, 6, 9];
+export const TIER_SPEED = [2, 4, 6, 9, 10];
 /** 재질별 내구도 (블록을 몇 개 캘 수 있는지, 검은 몇 번 칠 수 있는지) */
-export const TIER_DURABILITY = [59, 131, 250, 1561];
+export const TIER_DURABILITY = [59, 131, 250, 1561, 2031];
 /** 재질별 검의 공격력 (맨손은 1) */
-export const SWORD_DAMAGE = [2, 4, 6, 8];
-export const TIER_NAMES = ["나무", "돌", "철", "다이아몬드"];
+export const SWORD_DAMAGE = [2, 4, 6, 8, 9];
+export const TIER_NAMES = ["나무", "돌", "철", "다이아몬드", "네더라이트"];
 
 const TOOL_IDS: Record<ToolType, number[]> = {
-  pickaxe: [Item.WoodPickaxe, Item.StonePickaxe, Item.IronPickaxe, Item.DiamondPickaxe],
-  axe: [Item.WoodAxe, Item.StoneAxe, Item.IronAxe, Item.DiamondAxe],
-  shovel: [Item.WoodShovel, Item.StoneShovel, Item.IronShovel, Item.DiamondShovel],
-  sword: [Item.WoodClub, Item.StoneClub, Item.IronClub, Item.DiamondClub],
+  pickaxe: [Item.WoodPickaxe, Item.StonePickaxe, Item.IronPickaxe, Item.DiamondPickaxe, Item.NetheritePickaxe],
+  axe: [Item.WoodAxe, Item.StoneAxe, Item.IronAxe, Item.DiamondAxe, Item.NetheriteAxe],
+  shovel: [Item.WoodShovel, Item.StoneShovel, Item.IronShovel, Item.DiamondShovel, Item.NetheriteShovel],
+  sword: [Item.WoodClub, Item.StoneClub, Item.IronClub, Item.DiamondClub, Item.NetheriteClub],
 };
 
 export const TOOLS: ToolDef[] = (Object.keys(TOOL_IDS) as ToolType[]).flatMap((type) =>
@@ -73,6 +73,7 @@ export const HARDNESS: Record<number, number> = {
   [Block.Gravel]: 0.6,
   [Block.EnchantTable]: 5,
   [Block.BrewingStand]: 2.5,
+  [Block.AncientDebris]: 6,
   [Block.Flower]: 0,
   [Block.YellowFlower]: 0,
   [Block.Sprout]: 0,
@@ -102,6 +103,7 @@ export const EFFECTIVE_TOOL: Record<number, ToolType | undefined> = {
   [Block.Gravel]: "shovel",
   [Block.EnchantTable]: "pickaxe",
   [Block.BrewingStand]: "pickaxe",
+  [Block.AncientDebris]: "pickaxe",
   [Block.Wood]: "axe",
   [Block.Planks]: "axe",
   [Block.CraftingTable]: "axe",
@@ -115,6 +117,7 @@ export const MIN_PICKAXE_TIER: Record<number, number | undefined> = {
   [Block.CoalOre]: 0,
   [Block.EnchantTable]: 2,
   [Block.BrewingStand]: 0,
+  [Block.AncientDebris]: 3,
   [Block.StoneSlab]: 0,
   [Block.StoneStairs]: 0,
   [Block.IronOre]: 1,

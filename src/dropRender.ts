@@ -8,7 +8,7 @@ import { TOOL_BY_ID } from "./tools";
 /** 블록이 아닌 아이템의 모양 색 */
 function itemColor(item: number): number {
   const tool = TOOL_BY_ID.get(item);
-  if (tool) return [0xb98b4d, 0x8d8d92, 0xd8dde3][tool.tier];
+  if (tool) return [0xb98b4d, 0x8d8d92, 0xd8dde3, 0x7de3e3, 0x4a3b40][tool.tier];
   switch (item) {
     case Item.Meat:
       return 0xe8908f;

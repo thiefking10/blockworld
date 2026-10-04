@@ -10,11 +10,11 @@ const tool = (id: number) => {
 };
 
 describe("도구 목록", () => {
-  it("곡괭이, 도끼, 삽, 검이 재질 네 가지씩(나무·돌·철·다이아몬드), 번호가 겹치지 않는다", () => {
-    expect(TOOLS).toHaveLength(16);
-    expect(new Set(TOOLS.map((t) => t.id)).size).toBe(16);
+  it("곡괭이, 도끼, 삽, 검이 재질 다섯 가지씩(나무·돌·철·다이아몬드·네더라이트), 번호가 겹치지 않는다", () => {
+    expect(TOOLS).toHaveLength(20);
+    expect(new Set(TOOLS.map((t) => t.id)).size).toBe(20);
     for (const type of ["pickaxe", "axe", "shovel", "sword"]) {
-      expect(TOOLS.filter((t) => t.type === type).map((t) => t.tier)).toEqual([0, 1, 2, 3]);
+      expect(TOOLS.filter((t) => t.type === type).map((t) => t.tier)).toEqual([0, 1, 2, 3, 4]);
     }
   });
 });

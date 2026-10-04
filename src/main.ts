@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { ARMOR, ARMOR_BY_ID, bestArmor, reduceDamage, totalArmorPoints, type ArmorSlot } from "./armor";
+import { ARMOR, ARMOR_BY_ID, armorResistances, bestArmor, reduceDamage, totalArmorPoints, type ArmorSlot } from "./armor";
 import { Effects, EFFECTS, POTION_BY_ID } from "./effects";
 import { efficiencyMultiplier, enchantLabel, isEnchantable, powerMultiplier, protectionPoints, rollEnchant, sharpnessBonus, ENCHANT_TIERS } from "./enchant";
 import { BLOCK_XP, Experience, MOB_XP, SMELT_XP } from "./xp";
@@ -334,6 +334,7 @@ function checkInventoryAchievements(): void {
   if (has(Item.Bread)) unlockAchievement("bread");
   if (has(Block.Torch)) unlockAchievement("torch");
   if (has(Item.Diamond) || has(Block.DiamondOre)) unlockAchievement("diamond");
+  if (has(Item.NetheriteIngot)) unlockAchievement("netherite");
   if (ARMOR.some((a) => has(a.id))) unlockAchievement("armor");
   if (has(Item.RawFish) || has(Item.CookedFish)) unlockAchievement("fish");
 }
@@ -1522,9 +1523,11 @@ function takeHit(damage: number, sx: number, sz: number, kind: "melee" | "explos
     if (kind !== "explosion") return;
     amount = damage * SHIELD_EXPLOSION_TAKEN;
   }
-  // 낙하 피해와 달리, 동물·괴물의 공격은 걸친 방어구만큼 줄어든다.
+  // 낙하 피해와 달리, 동물·괴물의 공격은 걸친 방어구만큼 줄어든다. 네더라이트는 불 피해와 밀림도 줄여 준다.
+  const resist = armorResistances((id) => inventory.count(id) > 0);
+  if (kind === "fire") amount *= 1 - resist.fire;
   if (!hurt(reduceDamage(amount, (id) => inventory.count(id) > 0, wornProtection()))) return;
-  player.knock(sx, sz, kind === "explosion" ? 9 : kind === "fire" ? 5 : kind === "arrow" ? 3 : 5.5);
+  player.knock(sx, sz, (kind === "explosion" ? 9 : kind === "fire" ? 5 : kind === "arrow" ? 3 : 5.5) * (1 - resist.knock));
 }
 
 /** 빛(횃불)이 바뀌었으면 15칸 너머까지, 아니면 그 자리만 다시 그린다. */

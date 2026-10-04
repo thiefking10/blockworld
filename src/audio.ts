@@ -13,6 +13,7 @@ export function materialOf(block: number): Material {
     case Block.IronOre:
     case Block.DiamondOre:
     case Block.CoalOre:
+    case Block.AncientDebris:
     case Block.StoneSlab:
     case Block.StoneStairs:
     case Block.Furnace:

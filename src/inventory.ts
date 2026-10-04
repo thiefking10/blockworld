@@ -111,6 +111,16 @@ export const RECIPES: Recipe[] = [
   { name: "속도 물약", station: "brewing", inputs: [[Item.GlassBottle, 1], [Block.YellowFlower, 1]], output: [Item.SpeedPotion, 1] },
   { name: "힘 물약", station: "brewing", inputs: [[Item.GlassBottle, 1], [Item.Gunpowder, 1]], output: [Item.StrengthPotion, 1] },
   { name: "재생 물약", station: "brewing", inputs: [[Item.GlassBottle, 1], [Item.Grain, 2]], output: [Item.RegenPotion, 1] },
+  // 네더라이트: 고대 잔해를 화로에 구우면 조각이 나온다 (금 대신 철 주괴를 쓴다). 장비는 다이아몬드 장비에 주괴를 합쳐서 만들고, 붙은 인챈트는 그대로 따라간다.
+  { name: "네더라이트 주괴", station: "table", inputs: [[Item.NetheriteScrap, 4], [Item.IronIngot, 4]], output: [Item.NetheriteIngot, 1] },
+  { name: "네더라이트 곡괭이", station: "table", inputs: [[Item.DiamondPickaxe, 1], [Item.NetheriteIngot, 1]], output: [Item.NetheritePickaxe, 1] },
+  { name: "네더라이트 도끼", station: "table", inputs: [[Item.DiamondAxe, 1], [Item.NetheriteIngot, 1]], output: [Item.NetheriteAxe, 1] },
+  { name: "네더라이트 삽", station: "table", inputs: [[Item.DiamondShovel, 1], [Item.NetheriteIngot, 1]], output: [Item.NetheriteShovel, 1] },
+  { name: "네더라이트 검", station: "table", inputs: [[Item.DiamondClub, 1], [Item.NetheriteIngot, 1]], output: [Item.NetheriteClub, 1] },
+  { name: "네더라이트 투구", station: "table", inputs: [[Item.DiamondHelmet, 1], [Item.NetheriteIngot, 1]], output: [Item.NetheriteHelmet, 1] },
+  { name: "네더라이트 흉갑", station: "table", inputs: [[Item.DiamondChestplate, 1], [Item.NetheriteIngot, 1]], output: [Item.NetheriteChestplate, 1] },
+  { name: "네더라이트 바지", station: "table", inputs: [[Item.DiamondLeggings, 1], [Item.NetheriteIngot, 1]], output: [Item.NetheriteLeggings, 1] },
+  { name: "네더라이트 부츠", station: "table", inputs: [[Item.DiamondBoots, 1], [Item.NetheriteIngot, 1]], output: [Item.NetheriteBoots, 1] },
   { name: "용의 뿔", station: "table", inputs: [[Item.Diamond, 4], [Item.IronIngot, 2], [Item.Stick, 1]], output: [Item.DragonHorn, 1] },
 ];
 

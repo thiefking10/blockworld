@@ -42,6 +42,8 @@ export const TILE = {
   EnchantSide: 36,
   BrewTop: 37,
   BrewSide: 38,
+  DebrisTop: 39,
+  DebrisSide: 40,
 } as const;
 
 export const ATLAS_COLS = 7;
@@ -122,6 +124,8 @@ export function tileForFace(block: number, dirY: number, dirX = 0, dirZ = 0): nu
       return dirY === 1 ? TILE.EnchantTop : TILE.EnchantSide;
     case Block.BrewingStand:
       return dirY === 1 ? TILE.BrewTop : TILE.BrewSide;
+    case Block.AncientDebris:
+      return dirY !== 0 ? TILE.DebrisTop : TILE.DebrisSide;
     default:
       return TILE.Stone;
   }
@@ -347,6 +351,22 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: number): void {
       }
       break;
     }
+    case TILE.DebrisTop:
+    case TILE.DebrisSide: {
+      // 짙은 갈색 바탕에 붉은 금속 결이 가로로 지나간다 (윗면은 동심 무늬).
+      noiseFill(ctx, ox, oy, [92, 62, 58], 22, random);
+      if (tile === TILE.DebrisSide) {
+        for (const y of [3, 4, 9, 10, 13]) for (let x = 0; x < 16; x++) if (random() < 0.85) px(x, y, shade([150, 92, 74], (random() - 0.5) * 26));
+      } else {
+        for (let y = 0; y < 16; y++) {
+          for (let x = 0; x < 16; x++) {
+            const ring = Math.floor(Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5)));
+            if (ring % 3 === 1) px(x, y, shade([150, 92, 74], (random() - 0.5) * 22));
+          }
+        }
+      }
+      break;
+    }
     case TILE.BrewTop:
     case TILE.BrewSide: {
       noiseFill(ctx, ox, oy, [120, 120, 126], 24, random);
@@ -539,7 +559,7 @@ export function createAtlasTexture(): THREE.Texture {
   const canvas = document.createElement("canvas");
   atlasCanvas = canvas;
   canvas.width = ATLAS_COLS * TILE_PIXELS;
-  canvas.height = ATLAS_COLS * TILE_PIXELS; // 7×7 = 49칸 (지금 39칸 사용)
+  canvas.height = ATLAS_COLS * TILE_PIXELS; // 7×7 = 49칸 (지금 41칸 사용)
   const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
 
   for (const tile of Object.values(TILE)) drawTile(ctx, tile);

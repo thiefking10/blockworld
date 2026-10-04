@@ -69,6 +69,7 @@ export const BLOCK_XP: Record<number, number> = {
   [Block.CoalOre]: 2,
   [Block.IronOre]: 1,
   [Block.DiamondOre]: 6,
+  [Block.AncientDebris]: 10,
 };
 
 /** 화로에서 다 구운 것을 꺼낼 때, 하나당 얻는 경험치 */
@@ -77,4 +78,5 @@ export const SMELT_XP: Record<number, number> = {
   [Block.Glass]: 1,
   [Item.CookedMeat]: 1,
   [Item.CookedFish]: 1,
+  [Item.NetheriteScrap]: 4,
 };

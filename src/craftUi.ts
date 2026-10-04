@@ -1,5 +1,5 @@
 import { matchGrid, planFill, usableAt, type CraftContext } from "./crafting";
-import { enchantLabel } from "./enchant";
+import { enchantLabel, enchantsFor, isEnchantable, type EnchantId } from "./enchant";
 import { Inventory, RECIPES, type Recipe } from "./inventory";
 import { ArrayHost, pickUp, placeInto, type SlotHost, type Stack } from "./slotOps";
 import { maxDurability } from "./tools";
@@ -172,11 +172,36 @@ export class CraftUi {
       this.deps.showToast("손에 든 것을 먼저 내려놓으세요", 1800);
       return;
     }
+    const carried = this.carriedEnchants(recipe);
     this.consumeOnce();
-    this.cursor = this.cursor ? { ...this.cursor, count: this.cursor.count + count } : { item, count };
+    this.cursor = this.cursor ? { ...this.cursor, count: this.cursor.count + count } : carried.length > 0 ? { item, count, enchants: carried } : { item, count };
     this.deps.playCraft();
     this.deps.onCrafted(recipe);
     this.changed();
+  }
+
+  /** 업그레이드(예: 다이아몬드 검 → 네더라이트 검)로 만들 때, 재료로 쓰는 장비에 붙은 인챈트를 따라가게 모아 둔다. */
+  private carriedEnchants(recipe: Recipe): [EnchantId, number][] {
+    const [output] = recipe.output;
+    if (!isEnchantable(output)) return [];
+    const carried: [EnchantId, number][] = [];
+    for (let i = 0; i < this.size * this.size; i++) {
+      const stack = this.grid.get(i);
+      if (!stack || !isEnchantable(stack.item) || !recipe.inputs.some(([item]) => item === stack.item)) continue;
+      for (const [id, level] of stack.enchants ?? []) if (enchantsFor(output).includes(id)) carried.push([id, level]);
+    }
+    return carried;
+  }
+
+  /** 가방에서 하나를 꺼내 격자 칸에 놓을 모양으로 만든다 (장비라면 인챈트가 따라간다). */
+  private takeOne(item: number): Stack {
+    const inventory = this.deps.inventory;
+    const stack: Stack = { item, count: 1 };
+    const enchants = inventory.enchantsOf(item);
+    if (enchants.length > 0) stack.enchants = enchants;
+    if (maxDurability(item) > 0 && inventory.count(item) === 1) stack.wear = inventory.toolLeft(item);
+    inventory.remove(item, 1);
+    return stack;
   }
 
   /** 격자 칸마다 하나씩 쓴다. */
@@ -197,8 +222,7 @@ export class CraftUi {
     for (const [item, amount] of need) if (this.deps.inventory.count(item) < amount) return false;
     plan.forEach((item, i) => {
       if (item === 0) return;
-      this.deps.inventory.remove(item, 1);
-      this.grid.set(i, { item, count: 1 });
+      this.grid.set(i, this.takeOne(item));
     });
     return true;
   }
@@ -215,8 +239,10 @@ export class CraftUi {
         if (made === 0) this.deps.showToast("가방이 가득 찼어요", 1800);
         break;
       }
+      const carried = this.carriedEnchants(recipe);
       this.consumeOnce();
       this.deps.inventory.add(item, count);
+      for (const [id, level] of carried) this.deps.inventory.addEnchant(item, id, level);
       this.deps.onCrafted(recipe);
       made++;
       recipe = this.match();
@@ -249,8 +275,7 @@ export class CraftUi {
     }
     plan.forEach((item, i) => {
       if (item === 0) return;
-      this.deps.inventory.remove(item, 1);
-      this.grid.set(i, { item, count: 1 });
+      this.grid.set(i, this.takeOne(item));
     });
     this.deps.playPickup();
     this.changed();

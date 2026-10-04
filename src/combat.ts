@@ -8,9 +8,9 @@ export interface WeaponStats {
 }
 
 /** 도끼는 검보다 세지만 느리다. 곡괭이·삽은 무기로는 약하다 (재질 순서: 나무, 돌, 철, 다이아몬드). */
-export const AXE_DAMAGE = [3, 5, 7, 9];
-export const PICKAXE_DAMAGE = [2, 3, 4, 5];
-export const SHOVEL_DAMAGE = [1.5, 2.5, 3.5, 4.5];
+export const AXE_DAMAGE = [3, 5, 7, 9, 10];
+export const PICKAXE_DAMAGE = [2, 3, 4, 5, 6];
+export const SHOVEL_DAMAGE = [1.5, 2.5, 3.5, 4.5, 5.5];
 
 export const FIST: WeaponStats = { damage: 1, cooldown: 0.3, knock: 1 };
 

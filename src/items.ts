@@ -63,6 +63,17 @@ export const Item = {
   SpiderEgg: 168,
   FishEgg: 169,
   DragonEgg: 170,
+  /** 네더라이트: 고대 잔해를 구우면 조각, 조각 4개와 철 주괴 4개로 주괴, 다이아몬드 장비 + 주괴 1개로 네더라이트 장비 */
+  NetheriteScrap: 171,
+  NetheriteIngot: 172,
+  NetheritePickaxe: 173,
+  NetheriteAxe: 174,
+  NetheriteShovel: 175,
+  NetheriteClub: 176,
+  NetheriteHelmet: 177,
+  NetheriteChestplate: 178,
+  NetheriteLeggings: 179,
+  NetheriteBoots: 180,
 } as const;
 
 export const ITEM_NAMES: Record<number, string> = {
@@ -128,4 +139,14 @@ export const ITEM_NAMES: Record<number, string> = {
   [Item.SpiderEgg]: "거미 알",
   [Item.FishEgg]: "물고기 알",
   [Item.DragonEgg]: "드래곤 알",
+  [Item.NetheriteScrap]: "네더라이트 조각",
+  [Item.NetheriteIngot]: "네더라이트 주괴",
+  [Item.NetheritePickaxe]: "네더라이트 곡괭이",
+  [Item.NetheriteAxe]: "네더라이트 도끼",
+  [Item.NetheriteShovel]: "네더라이트 삽",
+  [Item.NetheriteClub]: "네더라이트 검",
+  [Item.NetheriteHelmet]: "네더라이트 투구",
+  [Item.NetheriteChestplate]: "네더라이트 흉갑",
+  [Item.NetheriteLeggings]: "네더라이트 바지",
+  [Item.NetheriteBoots]: "네더라이트 부츠",
 };

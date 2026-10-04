@@ -7,6 +7,10 @@ export interface ArmorDef {
   slot: ArmorSlot;
   /** 방어구 점수. 마인크래프트처럼 한 점당 받는 피해를 4%씩 줄인다 (전부 합쳐 최대 80%까지). */
   points: number;
+  /** 불(용의 불숨) 피해를 줄이는 비율 (이 조각 하나당) */
+  fireResist?: number;
+  /** 맞았을 때 밀려나는 것을 줄이는 비율 (이 조각 하나당) */
+  knockResist?: number;
 }
 
 /**
@@ -23,6 +27,11 @@ export const ARMOR: ArmorDef[] = [
   { id: Item.DiamondChestplate, slot: "chestplate", points: 8 },
   { id: Item.DiamondLeggings, slot: "leggings", points: 6 },
   { id: Item.DiamondBoots, slot: "boots", points: 3 },
+  // 네더라이트: 다이아몬드보다 단단하고, 불에 강하고, 맞아도 덜 밀린다.
+  { id: Item.NetheriteHelmet, slot: "helmet", points: 4, fireResist: 0.15, knockResist: 0.1 },
+  { id: Item.NetheriteChestplate, slot: "chestplate", points: 9, fireResist: 0.15, knockResist: 0.1 },
+  { id: Item.NetheriteLeggings, slot: "leggings", points: 7, fireResist: 0.15, knockResist: 0.1 },
+  { id: Item.NetheriteBoots, slot: "boots", points: 4, fireResist: 0.15, knockResist: 0.1 },
 ];
 
 export const ARMOR_BY_ID = new Map<number, ArmorDef>(ARMOR.map((a) => [a.id, a]));
@@ -39,6 +48,17 @@ export function bestArmor(has: (id: number) => boolean): ArmorDef[] {
     if (!current || def.points > current.points) bySlot.set(def.slot, def);
   }
   return [...bySlot.values()];
+}
+
+/** 걸친 방어구가 주는 불 피해 감소(0~1)와 밀림 감소(0~1). */
+export function armorResistances(has: (id: number) => boolean): { fire: number; knock: number } {
+  let fire = 0;
+  let knock = 0;
+  for (const def of bestArmor(has)) {
+    fire += def.fireResist ?? 0;
+    knock += def.knockResist ?? 0;
+  }
+  return { fire: Math.min(0.8, fire), knock: Math.min(0.8, knock) };
 }
 
 /** 지금 걸친 것으로 치는 방어구의 점수 합 (최대 20 근처). */
