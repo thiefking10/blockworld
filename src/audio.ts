@@ -338,6 +338,12 @@ class GameAudio {
       this.burst({ duration: 0.18, type: "lowpass", freq: 1000, gain: 0.18 * volume });
       return;
     }
+    if (kind === "horse") {
+      // 말 울음: 높게 올라갔다 떨어지는 소리
+      this.tone(480, 900, 0.18, 0.22 * volume, "sawtooth");
+      window.setTimeout(() => this.tone(900, 420, 0.3, 0.2 * volume, "sawtooth"), 170);
+      return;
+    }
     if (kind === "villager") {
       // 마을 사람의 "흠~": 낮은 콧소리 두 번
       this.tone(210, 175, 0.16, 0.2 * volume, "triangle");

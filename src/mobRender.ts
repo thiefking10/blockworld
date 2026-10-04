@@ -28,6 +28,7 @@ const LOOKS: Record<MobKind, MobLook> = {
   spider: { body: 0x1c1712, head: 0x100d0a, leg: 0x100d0a, bodySize: [0.75, 0.45, 0.95], headSize: [0.32, 0.3, 0.3], legHeight: 0.22 },
   fish: { body: 0xd98a4a, head: 0xc97a3a, leg: 0xc97a3a, bodySize: [0.24, 0.2, 0.4], headSize: [0.16, 0.16, 0.14], legHeight: 0.02 },
   wolf: { body: 0xcfc7ba, head: 0xb8ae9e, leg: 0xb8ae9e, bodySize: [0.4, 0.4, 0.72], headSize: [0.28, 0.28, 0.3], legHeight: 0.36 },
+  horse: { body: 0x8b5a2b, head: 0x6e4520, leg: 0x4a2f16, bodySize: [0.7, 0.75, 1.5], headSize: [0.34, 0.6, 0.55], legHeight: 0.85 },
   villager: { body: 0x8b6b3d, head: 0xd9a77e, leg: 0x5a4630, bodySize: [0.55, 0.8, 0.32], headSize: [0.4, 0.45, 0.4], legHeight: 0.7, upright: true, noArms: true, nose: true },
   dragon: { body: 0x3a1f4d, head: 0x2a1638, leg: 0x2a1638, bodySize: [1.6, 1.0, 2.6], headSize: [0.7, 0.6, 0.9], legHeight: 0.5, wings: true },
 };

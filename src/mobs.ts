@@ -2,7 +2,7 @@ import { professionAt } from "./trades";
 import type { VillageSite } from "./village";
 import { Block, SEA_LEVEL, World } from "./world";
 
-export type MobKind = "pig" | "sheep" | "zombie" | "skeleton" | "creeper" | "spider" | "fish" | "wolf" | "dragon" | "villager";
+export type MobKind = "pig" | "sheep" | "zombie" | "skeleton" | "creeper" | "spider" | "fish" | "wolf" | "dragon" | "villager" | "horse";
 
 export interface MobSpec {
   halfWidth: number;
@@ -34,6 +34,8 @@ export const MOB_SPECS: Record<MobKind, MobSpec> = {
   fish: { halfWidth: 0.18, height: 0.22, speed: 0.7, chaseSpeed: 0.7, hp: 2, hostile: false },
   // 늑대: 야생일 때는 돼지·양처럼 그냥 돌아다니고, 뼈를 주면 길들여져 따라다니며 대신 싸운다.
   wolf: { halfWidth: 0.32, height: 0.6, speed: 1.2, chaseSpeed: 2.4, hp: 8, hostile: false },
+  // 말: 안장이 있으면 올라타서 달릴 수 있다 (플레이어보다 두 배쯤 빠르고, 높이 뛴다).
+  horse: { halfWidth: 0.6, height: 1.6, speed: 1.3, chaseSpeed: 1.3, hp: 15, hostile: false },
   // 마을 사람: 마을 집 근처에서만 서성이고, 말을 걸면 거래한다. 괴물처럼 쫓아오지도 않고 사람을 겁내지도 않는다.
   villager: { halfWidth: 0.3, height: 1.7, speed: 0.9, chaseSpeed: 0.9, hp: 10, hostile: false },
   // 드래곤: 자연적으로 나오지 않고 용의 뿔로 불러낸다. 하늘을 날며 무는 공격과 불숨을 같이 쓰는 보스.
@@ -153,6 +155,8 @@ export class Mob {
   fuse = 0;
   /** 늑대가 뼈로 길들여졌는지. 다른 동물은 항상 false. */
   tamed = false;
+  /** 플레이어가 타고 있는 말. 스스로 움직이지 않고 플레이어를 따라간다. */
+  ridden = false;
   /** 마을 사람의 직업 (trades.ts). 다른 동물은 null. */
   profession: string | null = null;
   /** 마을 사람이 서성이는 중심 (집 안쪽). */
@@ -400,7 +404,7 @@ export function findSpawnSpot(
 
     // 늑대는 생물군계를 가리지 않고(단순화) 풀밭에서 이따금 나온다.
     const roll = rng();
-    const kind: MobKind = ground === Block.Snow ? "sheep" : roll < 0.15 ? "wolf" : roll < 0.55 ? "sheep" : "pig";
+    const kind: MobKind = ground === Block.Snow ? "sheep" : roll < 0.12 ? "wolf" : roll < 0.22 ? "horse" : roll < 0.55 ? "sheep" : "pig";
     return { x: x + 0.5, y: groundY + 1, z: z + 0.5, kind };
   }
   return null;
@@ -553,6 +557,8 @@ export class MobSimulation {
     const wolfKilled: Mob[] = [];
 
     for (const mob of this.mobs) {
+      // 타고 있는 말은 플레이어가 움직인다 (main.ts가 위치를 맞춰 준다).
+      if (mob.ridden) continue;
       const spec = MOB_SPECS[mob.kind];
       const distance = Math.hypot(mob.x - player.x, mob.z - player.z);
       // 보스(드래곤)는 밤이 아니어도 늘 플레이어를 쫓는다 — 직접 불러낸 것이니 낮이라고 봐줄 필요는 없다.
@@ -711,6 +717,7 @@ export class MobSimulation {
   /** 이 블록 칸이 어느 동물 몸과 겹치는지 (겹치는 자리에는 블록을 못 놓게 한다). */
   intersectsBlock(bx: number, by: number, bz: number): boolean {
     return this.mobs.some((mob) => {
+      if (mob.ridden) return false;
       const spec = MOB_SPECS[mob.kind];
       const half = spec.halfWidth * mob.scale;
       return (

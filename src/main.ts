@@ -940,6 +940,38 @@ function refreshTradePanel(): void {
   }
 }
 
+// ---- 말 타기
+/** 눈 높이. 말을 타면 말 등 위로 높아진다. */
+function eyeY(): number {
+  return player.y + EYE_HEIGHT + (mount ? 0.6 : 0);
+}
+const HORSE_SPEED_FACTOR = 2;
+const HORSE_JUMP_FACTOR = 1.3;
+let mount: Mob | null = null;
+
+function dismount(): void {
+  if (!mount) return;
+  mount.ridden = false;
+  mount = null;
+  showToast("말에서 내렸어요");
+}
+
+/** 보고 있는 말에 안장이 있으면 올라탄다. */
+function tryRide(): boolean {
+  const mob = mobInSight(currentTarget());
+  if (!mob || mob.kind !== "horse") return false;
+  if (mode === "survival" && inventory.count(Item.Saddle) === 0) {
+    showToast("안장이 있어야 탈 수 있어요 (제작대: 양털 3 + 철 주괴 1, 사냥꾼에게서도 살 수 있어요)", 3000);
+    return true;
+  }
+  mount = mob;
+  mob.ridden = true;
+  stopFishing();
+  audio.playMob("horse", 1);
+  showToast("🐎 말에 올라탔어요! 사용 버튼으로 내려요", 2600);
+  return true;
+}
+
 /** 보고 있는 마을 사람 (없으면 null). */
 function villagerInSight(): Mob | null {
   const mob = mobInSight(currentTarget());
@@ -1020,6 +1052,11 @@ function doEnchant(item: number, tier: number): void {
 
 /** 가리키고 있는 제작대·화로를 연다. (마인크래프트에서 블록을 우클릭하는 것과 같다.) */
 function useBlock(): void {
+  if (mount) {
+    dismount();
+    return;
+  }
+  if (tryRide()) return;
   const villager = villagerInSight();
   if (villager) {
     openTrade(villager);
@@ -1216,16 +1253,26 @@ window.addEventListener("keydown", (e) => {
 
 function currentTarget(): RayHit | null {
   const [dx, dy, dz] = lookDirection(player.yaw, player.pitch);
-  return raycast(world, player.x, player.y + EYE_HEIGHT, player.z, dx, dy, dz, REACH);
+  return raycast(world, player.x, eyeY(), player.z, dx, dy, dz, REACH);
 }
 
 /** 시선 앞에 있는 동물 (블록보다 가까이 있을 때만). range를 넘겨 활처럼 더 먼 거리도 볼 수 있다. */
 function mobInSight(blockHit: RayHit | null, range = REACH): Mob | null {
+  // 내가 타고 있는 말은 조준 대상이 아니다.
   const ex = player.x;
-  const ey = player.y + EYE_HEIGHT;
+  const ey = eyeY();
   const ez = player.z;
   const [dx, dy, dz] = lookDirection(player.yaw, player.pitch);
-  const found = raycastMobs(mobSim.mobs, ex, ey, ez, dx, dy, dz, range);
+  const found = raycastMobs(
+    mobSim.mobs.filter((m) => !m.ridden),
+    ex,
+    ey,
+    ez,
+    dx,
+    dy,
+    dz,
+    range,
+  );
   if (!found) return null;
   const blockDistance = blockHit ? Math.hypot(blockHit.x + 0.5 - ex, blockHit.y + 0.5 - ey, blockHit.z + 0.5 - ez) - 0.5 : Infinity;
   return found.distance > blockDistance ? null : found.mob;
@@ -1234,7 +1281,7 @@ function mobInSight(blockHit: RayHit | null, range = REACH): Mob | null {
 /** 활 사정거리 안의 블록까지 (멀리 있는 벽에 가려지면 쏘지 못하게 확인할 때 쓴다). */
 function farTarget(): RayHit | null {
   const [dx, dy, dz] = lookDirection(player.yaw, player.pitch);
-  return raycast(world, player.x, player.y + EYE_HEIGHT, player.z, dx, dy, dz, BOW_RANGE);
+  return raycast(world, player.x, eyeY(), player.z, dx, dy, dz, BOW_RANGE);
 }
 
 function toolBroke(tool: ToolDef): void {
@@ -1283,7 +1330,7 @@ function shootBow(mob: Mob): void {
   audio.playArrow();
   swingHeldItem();
   const spec = MOB_SPECS[mob.kind];
-  spawnArrow(player.x, player.y + EYE_HEIGHT, player.z, mob.x, mob.y + spec.height * 0.6, mob.z);
+  spawnArrow(player.x, eyeY(), player.z, mob.x, mob.y + spec.height * 0.6, mob.z);
   if (mobSim.hit(mob, player.x, player.z, BOW_DAMAGE * powerMultiplier(inventory.enchantLevel(Item.Bow, "power")))) handleMobKill(mob.kind, mob.x, mob.y, mob.z, mob.baby);
   unlockAchievement("bow");
   refreshHotbar();
@@ -1473,7 +1520,7 @@ const bobberBase = { x: 0, y: 0, z: 0 };
 function findWaterAhead(): { x: number; y: number; z: number } | null {
   const [dx, dy, dz] = lookDirection(player.yaw, player.pitch);
   const ex = player.x;
-  const ey = player.y + EYE_HEIGHT;
+  const ey = eyeY();
   const ez = player.z;
   for (let t = 0.5; t <= 8; t += 0.25) {
     const x = Math.floor(ex + dx * t);
@@ -1608,6 +1655,7 @@ function placeBlock(): void {
   if (tryFish()) return;
   if (tryTameWolf()) return;
   if (tryBreed()) return;
+  if (tryRide()) return;
   const villager = villagerInSight();
   if (villager) {
     openTrade(villager);
@@ -1788,6 +1836,10 @@ function wornProtection(): number {
 }
 
 function respawn(): void {
+  if (mount) {
+    mount.ridden = false;
+    mount = null;
+  }
   effects.clear();
   refreshEffects();
   player.x = spawnX + 0.5;
@@ -1896,7 +1948,7 @@ function updateEnvironment(): void {
 
 // 개발용: 주소에 ?debug 를 붙이면 콘솔에서 __vox 로 월드와 플레이어를 만질 수 있다.
 if (new URLSearchParams(window.location.search).has("debug")) {
-  (window as unknown as { __vox: unknown }).__vox = { world, player, camera, scene, audio, generateMs, worldMesh, mobSim, health, applyQuality, crops, achievements, inventory, hurt, setMode: (m: "survival" | "creative") => { mode = m; refreshHotbar(); }, drops, furnaces, controls, currentTarget, getMode: () => mode, getMining: () => ({ mining, miningProgress }), stepMining: updateMining, stepDrops: (dt: number) => drops.update(dt, world, player.x, player.y, player.z, () => Infinity), dropRenderer, renderNow: () => { camera.position.set(player.x, player.y + EYE_HEIGHT, player.z); camera.rotation.set(player.pitch, player.yaw, 0); dropRenderer.update(drops.drops, worldSeconds, solidMaterial.color); mobRenderer.update(mobSim.mobs, solidMaterial.color, worldSeconds); renderer.render(scene, camera); }, mobRenderer, spawnArrow, spawnExplosion, hunger, refreshHunger, placeBlock, breakAt, currentTargetPlace: () => currentTarget(), Block, hotbarBlocks, selectSlot, selectedSlotGet: () => selectedSlot, solidMaterial, waterMaterial };
+  (window as unknown as { __vox: unknown }).__vox = { world, player, camera, scene, audio, generateMs, worldMesh, mobSim, health, applyQuality, crops, achievements, inventory, hurt, setMode: (m: "survival" | "creative") => { mode = m; refreshHotbar(); }, drops, furnaces, controls, currentTarget, getMode: () => mode, getMining: () => ({ mining, miningProgress }), stepMining: updateMining, stepDrops: (dt: number) => drops.update(dt, world, player.x, player.y, player.z, () => Infinity), dropRenderer, renderNow: () => { camera.position.set(player.x, eyeY(), player.z); camera.rotation.set(player.pitch, player.yaw, 0); dropRenderer.update(drops.drops, worldSeconds, solidMaterial.color); mobRenderer.update(mobSim.mobs, solidMaterial.color, worldSeconds); renderer.render(scene, camera); }, mobRenderer, spawnArrow, spawnExplosion, hunger, refreshHunger, placeBlock, breakAt, currentTargetPlace: () => currentTarget(), Block, hotbarBlocks, selectSlot, selectedSlotGet: () => selectedSlot, solidMaterial, waterMaterial };
 }
 
 const achievementPanel = document.getElementById("achievement-panel") as HTMLElement;
@@ -2160,7 +2212,22 @@ function frame(now: number): void {
     health.heal(regenHeal);
     refreshHearts();
   }
-  player.speedFactor = effects.speedMultiplier();
+  player.speedFactor = effects.speedMultiplier() * (mount ? HORSE_SPEED_FACTOR : 1);
+  player.jumpFactor = mount ? HORSE_JUMP_FACTOR : 1;
+  if (mount) {
+    if (!mobSim.mobs.includes(mount)) {
+      mount = null;
+    } else {
+      // 타고 있는 말은 플레이어와 같은 자리에서 같은 쪽을 보며 달린다.
+      mount.x = player.x;
+      mount.y = player.y;
+      mount.z = player.z;
+      mount.yaw = player.yaw;
+      mount.vy = 0;
+      mount.moving = moved > 0.002;
+      mount.walkPhase += moved * 5;
+    }
+  }
   effectsTimer += dt;
   if (effectsTimer >= 0.5) {
     effectsTimer = 0;
@@ -2251,13 +2318,13 @@ function frame(now: number): void {
     }
   }
 
-  camera.position.set(player.x, player.y + EYE_HEIGHT, player.z);
+  camera.position.set(player.x, eyeY(), player.z);
   camera.rotation.set(player.pitch, player.yaw, 0);
 
   const target = currentTarget();
   outline.visible = target !== null;
   const aimed = target ? world.get(target.x, target.y, target.z) : Block.Air;
-  useButton.classList.toggle("show", mobInSight(target)?.kind === "villager" || aimed === Block.CraftingTable || aimed === Block.Furnace || aimed === Block.EnchantTable || aimed === Block.BrewingStand || isDoor(aimed) || isChest(aimed));
+  useButton.classList.toggle("show", mount !== null || ["villager", "horse"].includes(mobInSight(target)?.kind ?? "") || aimed === Block.CraftingTable || aimed === Block.Furnace || aimed === Block.EnchantTable || aimed === Block.BrewingStand || isDoor(aimed) || isChest(aimed));
   if (target) outline.position.set(target.x + 0.5, target.y + 0.5, target.z + 0.5);
 
   if (!freezeTime) worldSeconds += dt;

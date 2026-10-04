@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { BITE_WINDOW, Fishing, rollCatch, WAIT_MAX, WAIT_MIN } from "./fishing";
 import { Item, mobDrops, RECIPES } from "./inventory";
-import { BABY_SECONDS, BREED_COOLDOWN, LOVE_SECONDS, Mob, MobSimulation, raycastMobs } from "./mobs";
+import { BABY_SECONDS, BREED_COOLDOWN, findSpawnSpot, LOVE_SECONDS, Mob, MOB_SPECS, MobSimulation, raycastMobs } from "./mobs";
+import { Player } from "./player";
 import { Block, World } from "./world";
 
 function flatWorld(): World {
@@ -143,5 +144,77 @@ describe("번식", () => {
     const side = (mob: Mob) => raycastMobs([mob], 9.7, 1.2, 20, 0, 0, -1, 30);
     expect(side(adult)).not.toBeNull();
     expect(side(baby)).toBeNull();
+  });
+});
+
+describe("말", () => {
+  it("풀밭에서 이따금 말이 나온다", () => {
+    const world = flatWorld();
+    const kinds = new Set<string>();
+    let seed = 3;
+    const rng = () => {
+      seed = (seed * 16807) % 2147483647;
+      return seed / 2147483647;
+    };
+    for (let i = 0; i < 400; i++) {
+      const spot = findSpawnSpot(world, 20, 20, rng);
+      if (spot) kinds.add(spot.kind);
+    }
+    expect(kinds.has("horse")).toBe(true);
+  });
+
+  it("타고 있는 말은 스스로 움직이지 않고, 블록 놓기를 막지도 않고, 조준 대상도 아니다", () => {
+    const world = flatWorld();
+    const sim = new MobSimulation();
+    const horse = new Mob("horse", 10.5, 1, 10.5, fixed(0.5));
+    sim.mobs.push(horse);
+    expect(sim.intersectsBlock(10, 1, 10)).toBe(true);
+    horse.ridden = true;
+    expect(sim.intersectsBlock(10, 1, 10)).toBe(false);
+    const x = horse.x;
+    const z = horse.z;
+    for (let i = 0; i < 120; i++) sim.update(1 / 60, world, fixed(0.2), FAR_PLAYER, false);
+    expect(horse.x).toBe(x);
+    expect(horse.z).toBe(z);
+    horse.ridden = false;
+    for (let i = 0; i < 300; i++) sim.update(1 / 60, world, fixed(0.2), FAR_PLAYER, false);
+    expect(Math.hypot(horse.x - x, horse.z - z)).toBeGreaterThan(0.1);
+  });
+
+  it("말은 몸이 크고 체력이 많다", () => {
+    expect(MOB_SPECS.horse.height).toBeGreaterThan(MOB_SPECS.pig.height);
+    expect(MOB_SPECS.horse.hp).toBeGreaterThan(MOB_SPECS.pig.hp);
+    expect(MOB_SPECS.horse.hostile).toBe(false);
+  });
+
+  it("안장은 양털 3개와 철 주괴 1개로 만든다", () => {
+    const saddle = RECIPES.find((r) => r.name === "안장");
+    expect(saddle?.output).toEqual([Item.Saddle, 1]);
+    expect(saddle?.inputs).toEqual([[Block.Wool, 3], [Item.IronIngot, 1]]);
+  });
+
+  it("말을 타면 더 높이 뛰고 더 빨리 달린다", () => {
+    const run = (jumpFactor: number, speedFactor: number) => {
+      const w = flatWorld();
+      const p = new Player(w);
+      p.x = 20.5;
+      p.z = 20.5;
+      p.y = 1;
+      p.jumpFactor = jumpFactor;
+      p.speedFactor = speedFactor;
+      for (let i = 0; i < 10; i++) p.update(1 / 60, { moveX: 0, moveZ: 0, jump: false }); // 먼저 땅에 선다
+      p.x = 20.5;
+      p.z = 20.5;
+      let top = 1;
+      for (let i = 0; i < 90; i++) {
+        p.update(1 / 60, { moveX: 0, moveZ: 1, jump: i === 0 });
+        top = Math.max(top, p.y);
+      }
+      return { top, dist: Math.hypot(p.x - 20.5, p.z - 20.5) };
+    };
+    const walk = run(1, 1);
+    const ride = run(1.3, 2);
+    expect(ride.top).toBeGreaterThan(walk.top + 0.5);
+    expect(ride.dist).toBeGreaterThan(walk.dist * 1.6);
   });
 });

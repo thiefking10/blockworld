@@ -42,6 +42,8 @@ export class Player {
   flying = false;
   /** 걷는 속도 배율 (속도 물약 같은 효과) */
   speedFactor = 1;
+  /** 점프 힘 배율 (말을 타면 더 높이 뛴다) */
+  jumpFactor = 1;
   /** 사다리에 매달려 있는 중 (떨어지는 높이를 세지 않는다). */
   onLadder = false;
 
@@ -137,7 +139,7 @@ export class Player {
       if (input.jump) this.vy = Math.min(this.vy + WATER_SWIM_UP * dt, WATER_MAX_RISE);
       else this.vy = Math.max(this.vy - WATER_GRAVITY * dt, -WATER_MAX_SINK);
     } else {
-      if ((input.jump || stepUp) && this.onGround) this.vy = JUMP_SPEED;
+      if ((input.jump || stepUp) && this.onGround) this.vy = JUMP_SPEED * this.jumpFactor;
       this.vy -= GRAVITY * dt;
     }
 
