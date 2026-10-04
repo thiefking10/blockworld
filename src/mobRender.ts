@@ -101,6 +101,8 @@ const hurtColor = new THREE.Color(0xff3030);
 const fuseColor = new THREE.Color(0xffffff);
 /** 길들인 늑대를 목줄 색으로 살짝 물들여 야생 늑대와 구별한다. */
 const collarColor = new THREE.Color(0xcc3333);
+/** 밀을 먹고 짝을 찾는 동물은 분홍빛으로 반짝인다. */
+const loveColor = new THREE.Color(0xff6fa8);
 
 /** 동물 목록과 화면의 3D 모델을 맞춰 준다. */
 export class MobRenderer {
@@ -129,6 +131,7 @@ export class MobRenderer {
       }
       model.group.position.set(mob.x, mob.y, mob.z);
       model.group.rotation.y = mob.yaw;
+      model.group.scale.setScalar(mob.scale);
 
       const swing = mob.moving ? Math.sin(mob.walkPhase * 2.2) * 0.6 : 0;
       model.legs.forEach((leg, i) => {
@@ -144,11 +147,13 @@ export class MobRenderer {
 
       const fuseBlink = mob.kind === "creeper" && mob.fuse > 0 ? (0.5 + 0.5 * Math.sin(seconds * 22)) * Math.min(1, mob.fuse / CREEPER_FUSE_SECONDS) : 0;
       const tamed = mob.kind === "wolf" && mob.tamed;
+      const inLove = mob.love > 0;
       model.materials.forEach((material, i) => {
         material.color.setHex(model.colors[i]).multiply(shade);
         if (mob.hurtTimer > 0) material.color.lerp(hurtColor, 0.55);
         if (fuseBlink > 0) material.color.lerp(fuseColor, fuseBlink * 0.75);
         if (tamed) material.color.lerp(collarColor, 0.18);
+        if (inLove) material.color.lerp(loveColor, 0.3 + 0.15 * Math.sin(seconds * 8));
       });
     }
   }

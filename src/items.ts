@@ -47,6 +47,10 @@ export const Item = {
   SpeedPotion: 144,
   StrengthPotion: 145,
   RegenPotion: 146,
+  String: 147,
+  FishingRod: 148,
+  Emerald: 149,
+  Saddle: 150,
 } as const;
 
 export const ITEM_NAMES: Record<number, string> = {
@@ -96,4 +100,8 @@ export const ITEM_NAMES: Record<number, string> = {
   [Item.SpeedPotion]: "속도 물약",
   [Item.StrengthPotion]: "힘 물약",
   [Item.RegenPotion]: "재생 물약",
+  [Item.String]: "실",
+  [Item.FishingRod]: "낚싯대",
+  [Item.Emerald]: "에메랄드",
+  [Item.Saddle]: "안장",
 };

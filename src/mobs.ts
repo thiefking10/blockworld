@@ -44,6 +44,15 @@ const HOSTILE_KINDS: { kind: MobKind; chance: number }[] = [
   { kind: "spider", chance: 0.15 },
 ];
 
+// 번식: 밀을 먹은 같은 종류 두 마리가 가까이 만나면 새끼가 태어난다.
+export const LOVE_SECONDS = 20;
+export const BREED_COOLDOWN = 60;
+export const BABY_SECONDS = 120;
+export const BREED_RANGE = 2.2;
+export const LOVE_SEEK_RANGE = 12;
+/** 번식시킬 수 있는 동물 */
+export const BREEDABLE: ReadonlySet<MobKind> = new Set<MobKind>(["pig", "sheep"]);
+
 export const MAX_HOSTILE_COUNT = 5;
 export const CHASE_RANGE = 18;
 export const ATTACK_RANGE = 1.1;
@@ -135,6 +144,18 @@ export class Mob {
   fuse = 0;
   /** 늑대가 뼈로 길들여졌는지. 다른 동물은 항상 false. */
   tamed = false;
+  /** 새끼인지 (몸이 절반 크기이고, BABY_SECONDS가 지나면 다 자란다). */
+  baby = false;
+  age = 0;
+  /** 밀을 먹고 짝을 찾는 중인 남은 시간(초). 0이면 아니다. */
+  love = 0;
+  /** 새끼를 낳은 뒤 다시 번식할 수 있을 때까지 남은 시간(초). */
+  breedCooldown = 0;
+
+  /** 몸 크기 배율 (새끼는 절반). */
+  get scale(): number {
+    return this.baby ? 0.5 : 1;
+  }
 
   private timer = 0;
   private knockX = 0;
@@ -154,12 +175,13 @@ export class Mob {
 
   private collides(world: World, px: number, py: number, pz: number): boolean {
     const spec = MOB_SPECS[this.kind];
-    const x0 = Math.floor(px - spec.halfWidth);
-    const x1 = Math.floor(px + spec.halfWidth);
+    const half = spec.halfWidth * this.scale;
+    const x0 = Math.floor(px - half);
+    const x1 = Math.floor(px + half);
     const y0 = Math.floor(py);
-    const y1 = Math.floor(py + spec.height);
-    const z0 = Math.floor(pz - spec.halfWidth);
-    const z1 = Math.floor(pz + spec.halfWidth);
+    const y1 = Math.floor(py + spec.height * this.scale);
+    const z0 = Math.floor(pz - half);
+    const z1 = Math.floor(pz + half);
     for (let x = x0; x <= x1; x++) {
       for (let y = y0; y <= y1; y++) {
         for (let z = z0; z <= z1; z++) {
@@ -205,6 +227,12 @@ export class Mob {
     this.hurtTimer = Math.max(0, this.hurtTimer - dt);
     this.attackCooldown = Math.max(0, this.attackCooldown - dt);
     this.fireCooldown = Math.max(0, this.fireCooldown - dt);
+    this.love = Math.max(0, this.love - dt);
+    this.breedCooldown = Math.max(0, this.breedCooldown - dt);
+    if (this.baby) {
+      this.age += dt;
+      if (this.age >= BABY_SECONDS) this.baby = false;
+    }
     this.timer -= dt;
 
     const spec = MOB_SPECS[this.kind];
@@ -288,8 +316,9 @@ export function raycastMobs(
 
   for (const mob of mobs) {
     const spec = MOB_SPECS[mob.kind];
-    const min = [mob.x - spec.halfWidth, mob.y, mob.z - spec.halfWidth];
-    const max = [mob.x + spec.halfWidth, mob.y + spec.height, mob.z + spec.halfWidth];
+    const half = spec.halfWidth * mob.scale;
+    const min = [mob.x - half, mob.y, mob.z - half];
+    const max = [mob.x + half, mob.y + spec.height * mob.scale, mob.z + half];
     const origin = [ox, oy, oz];
     const dir = [dx, dy, dz];
 
@@ -384,6 +413,8 @@ export interface WolfKill {
 }
 
 export interface MobUpdateResult {
+  /** 이번에 태어난 새끼들 */
+  births: Mob[];
   sounds: MobSound[];
   damage: number;
   shots: ArrowShot[];
@@ -416,6 +447,37 @@ export class MobSimulation {
     return true;
   }
 
+  /** 새끼를 하나 만든다 (몸은 절반, 체력도 절반). */
+  spawnBaby(kind: MobKind, x: number, y: number, z: number, rng: Rng): Mob {
+    const baby = new Mob(kind, x, y, z, rng);
+    baby.baby = true;
+    baby.hp = Math.max(1, Math.ceil(baby.hp / 2));
+    this.mobs.push(baby);
+    return baby;
+  }
+
+  /** 밀을 먹여 짝짓기 상태로 만든다. 번식할 수 없는 동물이거나 새끼·쿨타임·이미 짝 찾는 중이면 false. */
+  feed(mob: Mob): boolean {
+    if (!BREEDABLE.has(mob.kind) || mob.baby || mob.love > 0 || mob.breedCooldown > 0) return false;
+    mob.love = LOVE_SECONDS;
+    return true;
+  }
+
+  /** 짝을 찾는 중인 같은 종류 중 가장 가까운 것. */
+  private findPartner(mob: Mob): Mob | null {
+    let best: Mob | null = null;
+    let bestDistance = LOVE_SEEK_RANGE;
+    for (const other of this.mobs) {
+      if (other === mob || other.kind !== mob.kind || other.love <= 0 || other.baby) continue;
+      const distance = Math.hypot(other.x - mob.x, other.z - mob.z);
+      if (distance < bestDistance) {
+        best = other;
+        bestDistance = distance;
+      }
+    }
+    return best;
+  }
+
   /** 뼈를 먹여 늑대를 길들인다. */
   tame(mob: Mob): void {
     mob.tamed = true;
@@ -446,6 +508,7 @@ export class MobSimulation {
     const shots: ArrowShot[] = [];
     const explosions: Explosion[] = [];
     const kills: WolfKill[] = [];
+    const births: Mob[] = [];
     let damage = 0;
     const exploded: Mob[] = [];
     const wolfKilled: Mob[] = [];
@@ -527,7 +590,9 @@ export class MobSimulation {
           });
         }
       } else {
-        const chase = engaged ? player : null;
+        // 밀을 먹은 동물은 가까운 같은 종류 짝을 찾아 다가간다.
+        const partner = mob.love > 0 ? this.findPartner(mob) : null;
+        const chase = engaged ? player : partner;
         mob.update(dt, world, rng, chase);
         if (spec.hostile && targetable && distance < ATTACK_RANGE && Math.abs(mob.y - player.y) < 1.5 && mob.attackCooldown <= 0) {
           mob.attackCooldown = ATTACK_COOLDOWN;
@@ -539,6 +604,23 @@ export class MobSimulation {
       if (mob.soundTimer <= 0) {
         mob.soundTimer = 6 + rng() * 10;
         sounds.push({ kind: mob.kind, x: mob.x, z: mob.z });
+      }
+    }
+
+    // 사랑에 빠진 같은 종류 둘이 가까이 만나면 새끼가 태어난다.
+    for (let i = 0; i < this.mobs.length; i++) {
+      const a = this.mobs[i];
+      if (a.love <= 0 || a.baby) continue;
+      for (let j = i + 1; j < this.mobs.length; j++) {
+        const b = this.mobs[j];
+        if (b.kind !== a.kind || b.love <= 0 || b.baby || a.love <= 0) continue;
+        if (Math.hypot(a.x - b.x, a.z - b.z) > BREED_RANGE) continue;
+        a.love = 0;
+        b.love = 0;
+        a.breedCooldown = BREED_COOLDOWN;
+        b.breedCooldown = BREED_COOLDOWN;
+        births.push(this.spawnBaby(a.kind, (a.x + b.x) / 2, Math.max(a.y, b.y), (a.z + b.z) / 2, rng));
+        break;
       }
     }
 
@@ -566,7 +648,7 @@ export class MobSimulation {
       if (this.mobs.length - hostileCount < TARGET_MOB_COUNT) this.trySpawn(world, player.x, player.z, rng);
       if (fishCount < TARGET_FISH_COUNT) this.trySpawnWater(world, player.x, player.z, rng);
     }
-    return { sounds, damage, shots, explosions, kills };
+    return { births, sounds, damage, shots, explosions, kills };
   }
 
   /** 적대적인 동물을 전부 없앤다 (플레이어가 쓰러져서 다시 시작할 때). */
@@ -590,13 +672,14 @@ export class MobSimulation {
   intersectsBlock(bx: number, by: number, bz: number): boolean {
     return this.mobs.some((mob) => {
       const spec = MOB_SPECS[mob.kind];
+      const half = spec.halfWidth * mob.scale;
       return (
-        mob.x + spec.halfWidth > bx &&
-        mob.x - spec.halfWidth < bx + 1 &&
-        mob.y + spec.height > by &&
+        mob.x + half > bx &&
+        mob.x - half < bx + 1 &&
+        mob.y + spec.height * mob.scale > by &&
         mob.y < by + 1 &&
-        mob.z + spec.halfWidth > bz &&
-        mob.z - spec.halfWidth < bz + 1
+        mob.z + half > bz &&
+        mob.z - half < bz + 1
       );
     });
   }

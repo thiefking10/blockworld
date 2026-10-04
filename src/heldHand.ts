@@ -109,6 +109,19 @@ function buildBowItem(): THREE.Group {
   return group;
 }
 
+/** 낚싯대: 긴 막대 끝에 늘어진 줄 */
+function buildRodItem(): THREE.Group {
+  const group = new THREE.Group();
+  const rod = box([0.04, 0.6, 0.04], 0x8a6a3a);
+  rod.position.set(0, 0.1, 0);
+  rod.rotation.z = -0.35;
+  group.add(rod);
+  const line = box([0.01, 0.3, 0.01], 0xe8e2d0);
+  line.position.set(0.19, 0.18, 0);
+  group.add(line);
+  return group;
+}
+
 /** 도구·활도 아닌 다른 아이템(재료·방어구·음식 등)은 작은 상자로 뭉뚱그려 보여준다. */
 function buildGenericItem(): THREE.Mesh {
   return box([0.22, 0.22, 0.22], 0xc9b27a);
@@ -119,6 +132,7 @@ function buildItemModel(id: number): THREE.Object3D | null {
   if (id === 0) return null;
   if (isPlaceableBlock(id)) return buildBlockItem(id);
   if (id === Item.Bow) return buildBowItem();
+  if (id === Item.FishingRod) return buildRodItem();
   const tool = TOOL_BY_ID.get(id);
   if (tool) return buildToolItem(tool.type, TIER_COLORS[tool.tier]);
   return buildGenericItem();

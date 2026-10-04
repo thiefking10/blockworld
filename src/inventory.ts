@@ -83,6 +83,8 @@ export const RECIPES: Recipe[] = [
   { name: "다이아몬드 바지", station: "table", inputs: [[Item.Diamond, 7]], output: [Item.DiamondLeggings, 1] },
   { name: "다이아몬드 부츠", station: "table", inputs: [[Item.Diamond, 4]], output: [Item.DiamondBoots, 1] },
   // 원래는 부싯돌과 깃털이 있어야 하지만, 아직 없어 막대만으로 단순화했다.
+  { name: "낚싯대", station: "table", inputs: [[Item.Stick, 3], [Item.String, 2]], output: [Item.FishingRod, 1] },
+  { name: "안장", station: "table", inputs: [[Block.Wool, 3], [Item.IronIngot, 1]], output: [Item.Saddle, 1] },
   { name: "화살", station: "table", inputs: [[Item.Stick, 1]], output: [Item.Arrow, 4] },
   { name: "활", station: "table", inputs: [[Item.Stick, 3]], output: [Item.Bow, 1] },
   { name: "침대", station: "table", inputs: [[Block.Wool, 3], [Block.Planks, 3]], output: [Item.Bed, 1] },
@@ -130,6 +132,7 @@ export function mobDrops(kind: string, rng: () => number): [number, number][] {
   if (kind === "sheep") drops.push([Block.Wool, 1 + (rng() < 0.5 ? 1 : 0)]);
   if (kind === "skeleton") drops.push([Item.Bone, 1 + (rng() < 0.5 ? 1 : 0)]);
   if (kind === "creeper") drops.push([Item.Gunpowder, 1 + (rng() < 0.5 ? 1 : 0)]);
+  if (kind === "spider" && rng() < 0.7) drops.push([Item.String, 1 + (rng() < 0.5 ? 1 : 0)]);
   if (kind === "fish") drops.push([Item.RawFish, 1]);
   if (kind === "dragon") {
     drops.push([Item.DragonScale, 3 + Math.floor(rng() * 3)]);
@@ -161,7 +164,7 @@ export class Inventory {
   private readonly enchants = new Map<number, Map<EnchantId, number>>();
 
   private maxStack(item: number): number {
-    if (item === Item.Bow) return 1;
+    if (item === Item.Bow || item === Item.FishingRod || item === Item.Saddle) return 1;
     if (item >= Item.HealPotion && item <= Item.RegenPotion) return 16;
     return TOOL_BY_ID.has(item) || ARMOR_BY_ID.has(item) ? 1 : STACK_MAX;
   }

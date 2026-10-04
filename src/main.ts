@@ -20,10 +20,11 @@ import { MobRenderer } from "./mobRender";
 import { DropField } from "./drops";
 import { DropRenderer } from "./dropRender";
 import { FUELS, FurnaceField, SMELTS } from "./furnace";
+import { Fishing, MAX_LINE_DISTANCE } from "./fishing";
 import { refreshFences } from "./fences";
 import { settleFrom } from "./falling";
 import { HeldHandRenderer } from "./heldHand";
-import { MOB_SPECS, MobSimulation, raycastMobs, type Mob, type MobKind } from "./mobs";
+import { BREEDABLE, MOB_SPECS, MobSimulation, raycastMobs, type Mob, type MobKind } from "./mobs";
 import { connectAndWait, NetClient, randomRoomCode } from "./net";
 import { PlayerAvatarRenderer } from "./playerRender";
 import { RemotePlayer, sanitizeName } from "./protocol";
@@ -244,6 +245,10 @@ function itemEmoji(item: number): string {
   if (item === Item.DragonHorn) return "📯";
   if (item === Item.DragonScale) return "🐲";
   if (item === Item.Coal) return "⚫";
+  if (item === Item.FishingRod) return "🎣";
+  if (item === Item.String) return "🧵";
+  if (item === Item.Emerald) return "💚";
+  if (item === Item.Saddle) return "🏇";
   if (item === Item.GlassBottle) return "⚗️";
   if (POTION_BY_ID.has(item)) return "🧪";
   const tool = TOOL_BY_ID.get(item);
@@ -598,7 +603,7 @@ const GIVEABLE_ITEMS = Object.keys(ITEM_NAMES).map(Number);
 
 /** 창작 모드에서 아이템을 만들거나 캐지 않고 바로 받는다 (도구·방어구·활은 하나, 나머지는 한 칸 가득). */
 function giveItem(item: number): void {
-  const amount = TOOL_BY_ID.has(item) || ARMOR_BY_ID.has(item) || item === Item.Bow ? 1 : STACK_MAX;
+  const amount = TOOL_BY_ID.has(item) || ARMOR_BY_ID.has(item) || item === Item.Bow || item === Item.FishingRod || item === Item.Saddle ? 1 : STACK_MAX;
   const added = inventory.add(item, amount);
   if (added === 0) {
     showToast(itemLabel(item) + "은(는) 이미 있거나 가방이 가득 찼어요");
@@ -1092,6 +1097,9 @@ function refreshInventoryPanel(): void {
       } else if (item === Item.Bow) {
         chip.textContent = "🏹 " + itemLabel(item) + " (손에 들면, 화살이 있을 때 먼 동물·괴물을 쏴요)" + enchantSuffix(item);
         onPress(chip, () => holdItem(item));
+      } else if (item === Item.FishingRod) {
+        chip.textContent = "🎣 " + itemLabel(item) + " (손에 들고 물을 향해 놓기를 눌러 던지고, 물면 다시 눌러요)";
+        onPress(chip, () => holdItem(item));
       } else if (item === Item.Arrow) {
         chip.textContent = "➹ " + itemLabel(item) + " ×" + amount;
       } else if (item === Item.DragonHorn) {
@@ -1167,7 +1175,7 @@ function toolBroke(tool: ToolDef): void {
 }
 
 /** 동물이 죽으면 (플레이어가 때렸든, 활로 맞혔든, 늑대가 대신 잡았든) 도전 과제를 챙기고 전리품을 놓는다. */
-function handleMobKill(kind: MobKind, x: number, y: number, z: number): void {
+function handleMobKill(kind: MobKind, x: number, y: number, z: number, baby = false): void {
   if (kind === "zombie") unlockAchievement("zombie");
   if (kind === "skeleton") unlockAchievement("skeleton");
   if (kind === "creeper") unlockAchievement("creeper");
@@ -1177,7 +1185,8 @@ function handleMobKill(kind: MobKind, x: number, y: number, z: number): void {
     showToast("🐉 드래곤을 물리쳤어요!", 3500);
   }
   gainXp(MOB_XP[kind] ?? 0);
-  const loot = mode === "survival" ? mobDrops(kind, Math.random) : [];
+  // 새끼는 아무것도 떨구지 않는다.
+  const loot = mode === "survival" && !baby ? mobDrops(kind, Math.random) : [];
   for (const [item, amount] of loot) drops.spawn(item, amount, x, y + 0.3, z, Math.random);
   if (loot.length > 0) scheduleSave();
 }
@@ -1194,7 +1203,7 @@ function attackMob(mob: Mob): void {
       ? 4
       : (sword ? SWORD_DAMAGE[sword.tier] + sharpnessBonus(inventory.enchantLevel(sword.id, "sharpness")) : 1) + effects.attackBonus();
   if (sword && inventory.useTool(sword.id)) toolBroke(sword);
-  if (mobSim.hit(mob, player.x, player.z, damage)) handleMobKill(mob.kind, mob.x, mob.y, mob.z);
+  if (mobSim.hit(mob, player.x, player.z, damage)) handleMobKill(mob.kind, mob.x, mob.y, mob.z, mob.baby);
 }
 
 /** 검이 닿지 않는 먼 동물을 활로 쏜다 (화살 하나를 쓰고, 맞으면 즉시 명중한다 — 날아가는 시간은 생략). */
@@ -1207,7 +1216,7 @@ function shootBow(mob: Mob): void {
   swingHeldItem();
   const spec = MOB_SPECS[mob.kind];
   spawnArrow(player.x, player.y + EYE_HEIGHT, player.z, mob.x, mob.y + spec.height * 0.6, mob.z);
-  if (mobSim.hit(mob, player.x, player.z, BOW_DAMAGE * powerMultiplier(inventory.enchantLevel(Item.Bow, "power")))) handleMobKill(mob.kind, mob.x, mob.y, mob.z);
+  if (mobSim.hit(mob, player.x, player.z, BOW_DAMAGE * powerMultiplier(inventory.enchantLevel(Item.Bow, "power")))) handleMobKill(mob.kind, mob.x, mob.y, mob.z, mob.baby);
   unlockAchievement("bow");
   refreshHotbar();
   refreshOpenPanels();
@@ -1385,6 +1394,117 @@ function updateMining(dt: number): void {
   (crack.material as THREE.MeshBasicMaterial).opacity = Math.min(1, miningProgress / needed) * 0.6;
 }
 
+// ---- 낚시: 낚싯대를 손에 들고 물을 향해 놓기를 누르면 던지고, 물었을 때 다시 누르면 잡는다.
+const fishing = new Fishing();
+const bobber = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.16), new THREE.MeshBasicMaterial({ color: 0xe03030 }));
+bobber.visible = false;
+scene.add(bobber);
+const bobberBase = { x: 0, y: 0, z: 0 };
+
+/** 바라보는 방향으로 팔이 닿는 거리 안에서 처음 만나는 물 칸 (물 앞에 단단한 블록이 있으면 없음). */
+function findWaterAhead(): { x: number; y: number; z: number } | null {
+  const [dx, dy, dz] = lookDirection(player.yaw, player.pitch);
+  const ex = player.x;
+  const ey = player.y + EYE_HEIGHT;
+  const ez = player.z;
+  for (let t = 0.5; t <= 8; t += 0.25) {
+    const x = Math.floor(ex + dx * t);
+    const y = Math.floor(ey + dy * t);
+    const z = Math.floor(ez + dz * t);
+    const block = world.get(x, y, z);
+    if (block === Block.Water) return { x, y, z };
+    if (world.isSolid(x, y, z)) return null;
+  }
+  return null;
+}
+
+function stopFishing(): void {
+  fishing.cancel();
+  bobber.visible = false;
+}
+
+/** 낚싯줄을 당긴다. 물었을 때 당기면 잡힌다. */
+function reelIn(): void {
+  const result = fishing.reel(Math.random);
+  bobber.visible = false;
+  if (result.kind !== "catch") {
+    showToast("아무것도 안 잡혔어요 — 찌가 흔들릴 때 당겨 보세요");
+    return;
+  }
+  const { item, count, xp } = result.loot;
+  const added = inventory.add(item, count);
+  if (added < count) drops.spawn(item, count - added, player.x, player.y + 1, player.z, Math.random);
+  audio.playPickup();
+  showToast("🎣 " + itemLabel(item) + (count > 1 ? " ×" + count : "") + "을(를) 낚았어요!", 2200);
+  gainXp(xp);
+  refreshHotbar();
+  refreshOpenPanels();
+  scheduleSave();
+}
+
+/** 낚싯대를 들고 있으면 낚시 동작을 한다 (던지기 / 당기기). 낚싯대를 안 들었으면 false. */
+function tryFish(): boolean {
+  if (heldItem() !== Item.FishingRod) return false;
+  if (mode === "survival" && inventory.count(Item.FishingRod) === 0) return false;
+  swingHeldItem();
+  if (fishing.state !== "idle") {
+    reelIn();
+    return true;
+  }
+  const water = findWaterAhead();
+  if (!water) {
+    showToast("물을 향해 던져 주세요");
+    return true;
+  }
+  fishing.cast(Math.random);
+  bobberBase.x = water.x + 0.5;
+  bobberBase.y = water.y + 0.85;
+  bobberBase.z = water.z + 0.5;
+  bobber.position.set(bobberBase.x, bobberBase.y, bobberBase.z);
+  bobber.visible = true;
+  audio.splash();
+  showToast("🎣 낚싯줄을 던졌어요… 찌가 움직이면 다시 눌러요", 2200);
+  return true;
+}
+
+/** 매 프레임 낚시를 진행한다: 찌가 흔들리고, 물고기가 물면 알려 준다. 멀어지거나 낚싯대를 내려놓으면 줄이 풀린다. */
+function updateFishing(dt: number, seconds: number): void {
+  if (fishing.state === "idle") return;
+  const farAway = Math.hypot(bobberBase.x - player.x, bobberBase.z - player.z) > MAX_LINE_DISTANCE;
+  if (heldItem() !== Item.FishingRod || farAway) {
+    stopFishing();
+    return;
+  }
+  const event = fishing.update(dt);
+  if (event === "bite") {
+    audio.splash();
+    showToast("❗ 물었어요! 지금 당겨요!", 1500);
+  } else if (event === "missed") {
+    bobber.visible = false;
+    showToast("놓쳤어요… 다시 던져 보세요");
+    return;
+  }
+  const biting = fishing.state === "bite";
+  bobber.position.y = bobberBase.y + (biting ? -0.12 + Math.sin(seconds * 30) * 0.05 : Math.sin(seconds * 3) * 0.03);
+}
+
+/** 밀을 가지고 돼지·양을 보며 놓기를 누르면 먹인다. 먹은 같은 종류 둘이 만나면 새끼가 태어난다. */
+function tryBreed(): boolean {
+  const mob = mobInSight(currentTarget());
+  if (!mob || !BREEDABLE.has(mob.kind) || mode !== "survival" || inventory.count(Item.Grain) === 0) return false;
+  if (!mobSim.feed(mob)) {
+    showToast("지금은 먹이를 줄 수 없어요 (새끼이거나 방금 새끼를 낳았어요)");
+    return true;
+  }
+  inventory.remove(Item.Grain, 1);
+  audio.playEat();
+  showToast("💕 밀을 먹었어요! 같은 동물이 가까이 오면 새끼가 태어나요", 2400);
+  refreshHotbar();
+  refreshOpenPanels();
+  scheduleSave();
+  return true;
+}
+
 /** 야생 늑대를 보고 있고 뼈가 있으면, 블록을 놓는 대신 뼈를 먹여 길들인다. */
 function tryTameWolf(): boolean {
   const mob = mobInSight(currentTarget());
@@ -1417,7 +1537,9 @@ function tryUseDragonHorn(): boolean {
 }
 
 function placeBlock(): void {
+  if (tryFish()) return;
   if (tryTameWolf()) return;
+  if (tryBreed()) return;
   if (tryUseDragonHorn()) return;
   const hit = currentTarget();
   if (!hit) return;
@@ -1981,6 +2103,12 @@ function frame(now: number): void {
   }
   if (mode !== "survival" || !hunger.empty) health.update(dt);
   const mobResult = mobSim.update(dt, world, Math.random, { x: player.x, y: player.y, z: player.z }, dayFactor < 0.3, mode !== "creative");
+  for (const baby of mobResult.births) {
+    gainXp(3);
+    audio.playMob(baby.kind, 1 - Math.hypot(baby.x - player.x, baby.z - player.z) / 28);
+    showToast("🐣 새끼가 태어났어요!", 2000);
+  }
+  updateFishing(dt, worldSeconds);
   for (const call of mobResult.sounds) {
     audio.playMob(call.kind, 1 - Math.hypot(call.x - player.x, call.z - player.z) / 28);
   }
