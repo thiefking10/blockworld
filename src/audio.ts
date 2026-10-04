@@ -338,6 +338,12 @@ class GameAudio {
       this.burst({ duration: 0.18, type: "lowpass", freq: 1000, gain: 0.18 * volume });
       return;
     }
+    if (kind === "villager") {
+      // 마을 사람의 "흠~": 낮은 콧소리 두 번
+      this.tone(210, 175, 0.16, 0.2 * volume, "triangle");
+      window.setTimeout(() => this.tone(190, 160, 0.2, 0.2 * volume, "triangle"), 170);
+      return;
+    }
     if (kind === "dragon") {
       this.burst({ duration: 1.1, type: "lowpass", freq: 260, q: 0.7, gain: 0.5 * volume });
       window.setTimeout(() => this.burst({ duration: 0.4, type: "bandpass", freq: 600, q: 1.2, gain: 0.3 * volume }), 200);

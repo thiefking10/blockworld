@@ -1,3 +1,5 @@
+import { buildVillages, type VillageSite } from "./village";
+
 export const Block = {
   Air: 0,
   Grass: 1,
@@ -230,6 +232,8 @@ export class World {
   private readonly top = new Int16Array(SIZE_X * SIZE_Z).fill(-1);
   /** 열(x,z)마다 지금까지 놓인 가장 높은 "공기가 아닌 블록"의 높이 (줄어들 수는 있어도 여기선 안 줄인다 — 위쪽 한계로만 쓴다). */
   private readonly high = new Int16Array(SIZE_X * SIZE_Z).fill(-1);
+  /** generate가 지은 마을들 (마을 사람이 나올 자리) */
+  villages: VillageSite[] = [];
   /** 횃불에서 퍼진 빛(0~15). 횃불이 하나도 없으면 전부 0이고 계산도 건너뛴다. */
   private readonly light = new Uint8Array(SIZE_X * SIZE_Y * SIZE_Z);
   /** 지금 세워진 횃불 개수. 0이면 set()에서 빛 계산을 건너뛰어 세계를 만들 때 느려지지 않는다. */
@@ -543,6 +547,7 @@ export class World {
     this.scatterGravel(seed);
     this.scatterDiamond(seed);
     this.plantTrees(seed);
+    this.villages = buildVillages(this, seed);
     this.scatterFlowers(seed);
   }
 }

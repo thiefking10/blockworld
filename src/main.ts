@@ -28,6 +28,7 @@ import { BREEDABLE, MOB_SPECS, MobSimulation, raycastMobs, type Mob, type MobKin
 import { connectAndWait, NetClient, randomRoomCode } from "./net";
 import { PlayerAvatarRenderer } from "./playerRender";
 import { RemotePlayer, sanitizeName } from "./protocol";
+import { canTrade, doTrade, isProfession, PROFESSION_INFO } from "./trades";
 import { breakSeconds, canHarvest, SWORD_DAMAGE, TOOL_BY_ID, toolDurability, type ToolDef } from "./tools";
 import { AdaptiveQuality, fogFar, QUALITY_LEVELS } from "./quality";
 import { EYE_HEIGHT, Player } from "./player";
@@ -667,6 +668,10 @@ const stationTitle = document.getElementById("station-title") as HTMLElement;
 /** 제작대와 양조대는 같은 화면을 쓰고, 양조대에서는 물약 제작법만 보인다. */
 let stationMode: "table" | "brewing" = "table";
 const stationFilter = (recipe: Recipe): boolean => (stationMode === "brewing" ? recipe.station === "brewing" : recipe.station !== "brewing");
+const tradePanel = document.getElementById("trade-panel") as HTMLElement;
+const tradeBody = document.getElementById("trade-body") as HTMLElement;
+const tradeTitle = document.getElementById("trade-title") as HTMLElement;
+let tradeWith: Mob | null = null;
 const enchantPanel = document.getElementById("enchant-panel") as HTMLElement;
 const enchantBody = document.getElementById("enchant-body") as HTMLElement;
 let enchantSelected: number | null = null;
@@ -700,6 +705,8 @@ function renderRecipeRows(container: HTMLElement, filter: (recipe: Recipe) => bo
 function closeStations(): void {
   stationPanel.classList.remove("open");
   enchantPanel.classList.remove("open");
+  tradePanel.classList.remove("open");
+  tradeWith = null;
   enchantSelected = null;
   furnacePanel.classList.remove("open");
   chestPanel.classList.remove("open");
@@ -712,6 +719,7 @@ function refreshOpenPanels(): void {
   if (inventoryPanel.classList.contains("open")) refreshInventoryPanel();
   if (stationPanel.classList.contains("open")) renderRecipeRows(stationList, stationFilter);
   if (enchantPanel.classList.contains("open")) refreshEnchantPanel();
+  if (tradePanel.classList.contains("open")) refreshTradePanel();
   if (furnacePanel.classList.contains("open")) refreshFurnacePanel();
   if (chestPanel.classList.contains("open")) refreshChestPanel();
 }
@@ -898,6 +906,60 @@ function toggleDoorAt(x: number, y: number, z: number): void {
   scheduleSave();
 }
 
+/** 거래 화면: 마을 사람의 직업에 맞는 거래 목록. 낼 것이 있고 받을 자리가 있으면 눌러서 거래한다. */
+function refreshTradePanel(): void {
+  const villager = tradeWith;
+  if (!villager || !mobSim.mobs.includes(villager) || !isProfession(villager.profession)) {
+    closeStations();
+    return;
+  }
+  const info = PROFESSION_INFO[villager.profession];
+  tradeTitle.textContent = info.name + " (에메랄드가 돈이에요 — 필요한 물건을 팔아 에메랄드를 벌어요)";
+  tradeBody.replaceChildren();
+  const wallet = document.createElement("div");
+  wallet.className = "furnace-line";
+  wallet.textContent = "💚 내 에메랄드: " + inventory.count(Item.Emerald);
+  tradeBody.append(wallet);
+  for (const trade of info.trades) {
+    const label = itemLabel(trade.give[0]) + " ×" + trade.give[1] + "  →  " + itemLabel(trade.get[0]) + " ×" + trade.get[1];
+    const ready = canTrade(inventory, trade);
+    const row = chipButton(label, () => {
+      if (!doTrade(inventory, trade)) {
+        showToast(inventory.count(trade.give[0]) < trade.give[1] ? "낼 물건이 모자라요" : "가방에 자리가 없거나 이미 가진 물건이에요", 1800);
+        return;
+      }
+      audio.playCraft();
+      showToast(itemLabel(trade.get[0]) + " ×" + trade.get[1] + " 거래했어요", 1500);
+      gainXp(1);
+      refreshHotbar();
+      refreshOpenPanels();
+      scheduleSave();
+    });
+    if (!ready) row.classList.add("unequipped");
+    tradeBody.append(row);
+  }
+}
+
+/** 보고 있는 마을 사람 (없으면 null). */
+function villagerInSight(): Mob | null {
+  const mob = mobInSight(currentTarget());
+  return mob && mob.kind === "villager" ? mob : null;
+}
+
+/** 마을 사람과 거래를 시작한다. */
+function openTrade(villager: Mob): void {
+  if (mode === "creative") {
+    showToast("창작 모드에서는 거래가 필요 없어요");
+    return;
+  }
+  toggleInventory(false);
+  closeStations();
+  audio.playMob("villager", 1);
+  tradeWith = villager;
+  tradePanel.classList.add("open");
+  refreshTradePanel();
+}
+
 /** 도구·방어구·활에 붙은 인챈트를 "✨효율 Ⅱ, 내구성 Ⅰ" 처럼 보여 준다 (없으면 빈 글자). */
 function enchantSuffix(item: number): string {
   const list = inventory.enchantsOf(item);
@@ -958,6 +1020,11 @@ function doEnchant(item: number, tier: number): void {
 
 /** 가리키고 있는 제작대·화로를 연다. (마인크래프트에서 블록을 우클릭하는 것과 같다.) */
 function useBlock(): void {
+  const villager = villagerInSight();
+  if (villager) {
+    openTrade(villager);
+    return;
+  }
   const hit = currentTarget();
   if (!hit) return;
   const block = world.get(hit.x, hit.y, hit.z);
@@ -1125,6 +1192,7 @@ onPress(document.getElementById("station-close") as HTMLElement, closeStations);
 onPress(document.getElementById("furnace-close") as HTMLElement, closeStations);
 onPress(document.getElementById("chest-close") as HTMLElement, closeStations);
 onPress(document.getElementById("enchant-close") as HTMLElement, closeStations);
+onPress(document.getElementById("trade-close") as HTMLElement, closeStations);
 
 onPress(document.getElementById("mode-toggle") as HTMLElement, () => {
   mode = mode === "survival" ? "creative" : "survival";
@@ -1540,6 +1608,11 @@ function placeBlock(): void {
   if (tryFish()) return;
   if (tryTameWolf()) return;
   if (tryBreed()) return;
+  const villager = villagerInSight();
+  if (villager) {
+    openTrade(villager);
+    return;
+  }
   if (tryUseDragonHorn()) return;
   const hit = currentTarget();
   if (!hit) return;
@@ -1731,6 +1804,8 @@ function respawn(): void {
   showToast("쓰러졌어요... 처음 자리에서 다시 일어났어요", 3000);
 }
 mobSim.populate(world, player.x, player.z, 10, Math.random);
+mobSim.maintainVillagers(world.villages, player.x, player.z, Math.random);
+let villagerTimer = 0;
 document.getElementById("loading")?.remove();
 
 const controls = new Controls(canvas);
@@ -2064,6 +2139,11 @@ function frame(now: number): void {
   updateMining(dt);
   worldMesh.update(player.x, player.z);
   cropTimer += dt;
+  villagerTimer += dt;
+  if (villagerTimer >= 2) {
+    villagerTimer = 0;
+    mobSim.maintainVillagers(world.villages, player.x, player.z, Math.random);
+  }
   if (cropTimer >= 1) {
     cropTimer = 0;
     for (const [x, y, z] of crops.harvestReady(worldSeconds)) {
@@ -2177,7 +2257,7 @@ function frame(now: number): void {
   const target = currentTarget();
   outline.visible = target !== null;
   const aimed = target ? world.get(target.x, target.y, target.z) : Block.Air;
-  useButton.classList.toggle("show", aimed === Block.CraftingTable || aimed === Block.Furnace || aimed === Block.EnchantTable || aimed === Block.BrewingStand || isDoor(aimed) || isChest(aimed));
+  useButton.classList.toggle("show", mobInSight(target)?.kind === "villager" || aimed === Block.CraftingTable || aimed === Block.Furnace || aimed === Block.EnchantTable || aimed === Block.BrewingStand || isDoor(aimed) || isChest(aimed));
   if (target) outline.position.set(target.x + 0.5, target.y + 0.5, target.z + 0.5);
 
   if (!freezeTime) worldSeconds += dt;

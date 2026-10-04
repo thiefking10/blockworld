@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { CREEPER_FUSE_SECONDS, Mob, MobKind } from "./mobs";
+import { isProfession, PROFESSION_INFO } from "./trades";
 
 interface MobLook {
   body: number;
@@ -14,6 +15,8 @@ interface MobLook {
   noArms?: boolean;
   /** 날개가 있다 (드래곤). 계속 퍼덕인다. */
   wings?: boolean;
+  /** 얼굴 가운데에 코가 튀어나와 있다 (마을 사람). */
+  nose?: boolean;
 }
 
 const LOOKS: Record<MobKind, MobLook> = {
@@ -25,6 +28,7 @@ const LOOKS: Record<MobKind, MobLook> = {
   spider: { body: 0x1c1712, head: 0x100d0a, leg: 0x100d0a, bodySize: [0.75, 0.45, 0.95], headSize: [0.32, 0.3, 0.3], legHeight: 0.22 },
   fish: { body: 0xd98a4a, head: 0xc97a3a, leg: 0xc97a3a, bodySize: [0.24, 0.2, 0.4], headSize: [0.16, 0.16, 0.14], legHeight: 0.02 },
   wolf: { body: 0xcfc7ba, head: 0xb8ae9e, leg: 0xb8ae9e, bodySize: [0.4, 0.4, 0.72], headSize: [0.28, 0.28, 0.3], legHeight: 0.36 },
+  villager: { body: 0x8b6b3d, head: 0xd9a77e, leg: 0x5a4630, bodySize: [0.55, 0.8, 0.32], headSize: [0.4, 0.45, 0.4], legHeight: 0.7, upright: true, noArms: true, nose: true },
   dragon: { body: 0x3a1f4d, head: 0x2a1638, leg: 0x2a1638, bodySize: [1.6, 1.0, 2.6], headSize: [0.7, 0.6, 0.9], legHeight: 0.5, wings: true },
 };
 
@@ -71,6 +75,12 @@ function buildModel(kind: MobKind): MobModel {
     leg.position.set(sx * (look.upright ? bw / 4 : bw / 2 - 0.12), look.legHeight, sz * (bd / 2 - 0.14));
     group.add(leg);
     model.legs.push(leg);
+  }
+
+  if (look.nose) {
+    const nose = box([0.1, 0.18, 0.1], 0xc48a62, model);
+    nose.position.set(0, look.legHeight + bh + hh / 2 - 0.04, -(look.headSize[2] / 2 + 0.04));
+    group.add(nose);
   }
 
   if (look.upright && !look.noArms) {
@@ -126,6 +136,8 @@ export class MobRenderer {
       let model = this.models.get(mob);
       if (!model) {
         model = buildModel(mob.kind);
+        // 마을 사람은 직업마다 옷 색이 다르다 (몸통이 첫 번째 상자).
+        if (mob.kind === "villager" && isProfession(mob.profession)) model.colors[0] = PROFESSION_INFO[mob.profession].color;
         this.models.set(mob, model);
         this.scene.add(model.group);
       }

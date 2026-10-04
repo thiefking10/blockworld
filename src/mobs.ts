@@ -1,6 +1,8 @@
+import { professionAt } from "./trades";
+import type { VillageSite } from "./village";
 import { Block, SEA_LEVEL, World } from "./world";
 
-export type MobKind = "pig" | "sheep" | "zombie" | "skeleton" | "creeper" | "spider" | "fish" | "wolf" | "dragon";
+export type MobKind = "pig" | "sheep" | "zombie" | "skeleton" | "creeper" | "spider" | "fish" | "wolf" | "dragon" | "villager";
 
 export interface MobSpec {
   halfWidth: number;
@@ -32,6 +34,8 @@ export const MOB_SPECS: Record<MobKind, MobSpec> = {
   fish: { halfWidth: 0.18, height: 0.22, speed: 0.7, chaseSpeed: 0.7, hp: 2, hostile: false },
   // 늑대: 야생일 때는 돼지·양처럼 그냥 돌아다니고, 뼈를 주면 길들여져 따라다니며 대신 싸운다.
   wolf: { halfWidth: 0.32, height: 0.6, speed: 1.2, chaseSpeed: 2.4, hp: 8, hostile: false },
+  // 마을 사람: 마을 집 근처에서만 서성이고, 말을 걸면 거래한다. 괴물처럼 쫓아오지도 않고 사람을 겁내지도 않는다.
+  villager: { halfWidth: 0.3, height: 1.7, speed: 0.9, chaseSpeed: 0.9, hp: 10, hostile: false },
   // 드래곤: 자연적으로 나오지 않고 용의 뿔로 불러낸다. 하늘을 날며 무는 공격과 불숨을 같이 쓰는 보스.
   dragon: { halfWidth: 1.3, height: 1.6, speed: 2, chaseSpeed: 4.5, hp: 150, hostile: true, flies: true, boss: true },
 };
@@ -52,6 +56,11 @@ export const BREED_RANGE = 2.2;
 export const LOVE_SEEK_RANGE = 12;
 /** 번식시킬 수 있는 동물 */
 export const BREEDABLE: ReadonlySet<MobKind> = new Set<MobKind>(["pig", "sheep"]);
+
+/** 마을 사람이 집에서 이 거리 안에서만 돌아다닌다. */
+export const HOME_RANGE = 9;
+/** 마을이 이 거리 안에 있으면 마을 사람이 나타난다. */
+export const VILLAGE_SPAWN_RANGE = 60;
 
 export const MAX_HOSTILE_COUNT = 5;
 export const CHASE_RANGE = 18;
@@ -144,6 +153,12 @@ export class Mob {
   fuse = 0;
   /** 늑대가 뼈로 길들여졌는지. 다른 동물은 항상 false. */
   tamed = false;
+  /** 마을 사람의 직업 (trades.ts). 다른 동물은 null. */
+  profession: string | null = null;
+  /** 마을 사람이 서성이는 중심 (집 안쪽). */
+  home: { x: number; z: number } | null = null;
+  /** 이 마을 사람이 어느 집 사람인지 (같은 집 사람을 또 만들지 않으려고) */
+  homeKey = "";
   /** 새끼인지 (몸이 절반 크기이고, BABY_SECONDS가 지나면 다 자란다). */
   baby = false;
   age = 0;
@@ -203,6 +218,11 @@ export class Mob {
     this.moving = rng() < 0.6;
     this.yaw = rng() * Math.PI * 2;
     this.timer = 1.5 + rng() * 3.5;
+    // 마을 사람은 집에서 너무 멀어지면 집 쪽으로 돌아선다.
+    if (this.home && Math.hypot(this.home.x - this.x, this.home.z - this.z) > HOME_RANGE) {
+      this.yaw = Math.atan2(-(this.home.x - this.x), -(this.home.z - this.z));
+      this.moving = true;
+    }
   }
 
   /** 맞았을 때 뒤로 밀려나고 잠깐 멈춘다. 죽었으면 true. */
@@ -447,6 +467,25 @@ export class MobSimulation {
     return true;
   }
 
+  /** 가까운 마을의 집마다 마을 사람이 한 명씩 있도록 채운다 (멀어져서 사라졌어도 다시 돌아오면 다시 나타난다). */
+  maintainVillagers(sites: VillageSite[], playerX: number, playerZ: number, rng: Rng): Mob[] {
+    const spawned: Mob[] = [];
+    for (const site of sites) {
+      if (Math.hypot(site.cx - playerX, site.cz - playerZ) > VILLAGE_SPAWN_RANGE) continue;
+      site.homes.forEach((home, index) => {
+        const key = site.cx + "," + site.cz + "," + index;
+        if (this.mobs.some((m) => m.kind === "villager" && m.homeKey === key)) return;
+        const villager = new Mob("villager", home.x, home.y, home.z, rng);
+        villager.homeKey = key;
+        villager.home = { x: home.x, z: home.z };
+        villager.profession = professionAt(index + (site.cx >> 3)); // 마을마다 직업 배치가 다르다
+        this.mobs.push(villager);
+        spawned.push(villager);
+      });
+    }
+    return spawned;
+  }
+
   /** 새끼를 하나 만든다 (몸은 절반, 체력도 절반). */
   spawnBaby(kind: MobKind, x: number, y: number, z: number, rng: Rng): Mob {
     const baby = new Mob(kind, x, y, z, rng);
@@ -645,7 +684,8 @@ export class MobSimulation {
       const hostileCount = this.mobs.filter((m) => MOB_SPECS[m.kind].hostile).length;
       const fishCount = this.mobs.filter((m) => m.kind === "fish").length;
       if (night && hostileCount < MAX_HOSTILE_COUNT) this.trySpawn(world, player.x, player.z, rng, true);
-      if (this.mobs.length - hostileCount < TARGET_MOB_COUNT) this.trySpawn(world, player.x, player.z, rng);
+      const villagerCount = this.mobs.filter((m) => m.kind === "villager").length;
+      if (this.mobs.length - hostileCount - villagerCount < TARGET_MOB_COUNT) this.trySpawn(world, player.x, player.z, rng);
       if (fishCount < TARGET_FISH_COUNT) this.trySpawnWater(world, player.x, player.z, rng);
     }
     return { births, sounds, damage, shots, explosions, kills };
