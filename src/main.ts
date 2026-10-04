@@ -26,7 +26,7 @@ import { AdaptiveQuality, fogFar, QUALITY_LEVELS } from "./quality";
 import { EYE_HEIGHT, Player } from "./player";
 import { lookDirection, raycast, RayHit } from "./raycast";
 import { decodeSave, EditLog, encodeSave, SaveData } from "./save";
-import { Block, BlockId, SIZE_X, SIZE_Z, World, isPassable, isPlant } from "./world";
+import { Block, BlockId, SIZE_X, SIZE_Z, WORLD_VERSION, World, isPassable, isPlant } from "./world";
 
 const REACH = 5;
 
@@ -72,6 +72,8 @@ const AVATAR_COLORS = [0xff6b6b, 0x4dd0e1, 0xffd166, 0x9b7bd6, 0x81c784, 0xf48fb
 
 const urlParams = new URLSearchParams(window.location.search);
 const partyHost = urlParams.get("party") || PARTY_HOST_DEFAULT;
+/** 월드 규격이 다르면 서버에 남은 예전 방(블록 수정 기록)과 섞이지 않게 방 이름 앞에 규격 번호를 붙인다. */
+const serverRoom = (code: string): string => "w" + WORLD_VERSION + "-" + code;
 const roomParam = urlParams.get("room");
 
 const net = new NetClient();
@@ -145,7 +147,7 @@ if (roomParam) {
     const result = await connectAndWait(
       net,
       partyHost,
-      roomParam,
+      serverRoom(roomParam),
       { name, color: myColor, seed: fallbackSeed, x: 0, y: 20, z: 0, yaw: 0, pitch: 0 },
       { ...netCallbacks(), onFull: () => { multiplayerJoinError = "방이 꽉 찼어요(최대 4명). 혼자 시작할게요."; } },
     );
@@ -162,7 +164,11 @@ const lastSeed = Number(readStorage(LAST_SEED_KEY));
 const seed = remoteSeed ?? (seedParam ? Number(seedParam) || 1 : lastSeed > 0 ? lastSeed : Math.floor(Math.random() * 100000) + 1);
 writeStorage(LAST_SEED_KEY, String(seed));
 
-const saved = decodeSave(readStorage(saveKey(seed)));
+const loadedSave = decodeSave(readStorage(saveKey(seed)));
+/** 예전(낮은) 월드에서 저장한 것이면, 지형이 달라져서 블록 수정·작물·화로·떨어진 물건·위치는 버리고 가방·모드·배고픔 등만 이어간다. */
+const oldWorldSave = loadedSave !== null && (loadedSave.worldVersion ?? 1) !== WORLD_VERSION;
+const saved: SaveData | null =
+  loadedSave && oldWorldSave ? { ...loadedSave, edits: [], crops: [], furnaces: [], drops: [] } : loadedSave;
 /** 이제 블록뿐 아니라 도구·검·활도 들어갈 수 있다 (0은 빈손). */
 const hotbarBlocks: number[] = sanitizeHotbar(saved?.hotbar);
 
@@ -390,7 +396,7 @@ const [spawnX, spawnZ] = findSpawn();
 player.x = spawnX + 0.5;
 player.z = spawnZ + 0.5;
 player.y = world.surfaceHeight(spawnX, spawnZ) + 0.01;
-if (saved && saved.seed === seed) {
+if (saved && saved.seed === seed && !oldWorldSave) {
   player.x = saved.player.x;
   player.y = saved.player.y;
   player.z = saved.player.z;
@@ -1165,6 +1171,7 @@ function saveNow(): void {
   if (resetting) return;
   const data: SaveData = {
     version: 1,
+    worldVersion: WORLD_VERSION,
     seed,
     edits: editLog.toArray(),
     player: { x: player.x, y: player.y, z: player.z, yaw: player.yaw, pitch: player.pitch },
@@ -1211,6 +1218,7 @@ const dropRenderer = new DropRenderer(scene);
 const avatarRenderer = new PlayerAvatarRenderer(scene);
 
 if (multiplayerJoinError) showToast(multiplayerJoinError, 3500);
+else if (oldWorldSave) showToast("세계가 더 높아졌어요! 가방은 그대로, 지형은 새로 만들어졌어요", 4500);
 if (net.connected) {
   // 접속할 때는 자리를 몰라 임시 위치로 알렸으니, 이제 진짜 자리로 다시 알린다.
   net.sendMove(player.x, player.y, player.z, player.yaw, player.pitch);
@@ -1427,7 +1435,7 @@ async function hostRoom(): Promise<void> {
   multiplayerBody.replaceChildren();
   multiplayerBody.append("방을 만드는 중...");
   try {
-    const result = await connectAndWait(net, partyHost, code, { name, color: myColor, seed, x: player.x, y: player.y, z: player.z, yaw: player.yaw, pitch: player.pitch }, netCallbacks());
+    const result = await connectAndWait(net, partyHost, serverRoom(code), { name, color: myColor, seed, x: player.x, y: player.y, z: player.z, yaw: player.yaw, pitch: player.pitch }, netCallbacks());
     for (const p of result.players) {
       remotePlayers.set(p.id, p);
       avatarRenderer.upsert(p.id, p);

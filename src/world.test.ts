@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { Block, BlockId, biomeAt, blocksLight, MAX_LIGHT, occludes, SEA_LEVEL, SIZE_X, SIZE_Y, SIZE_Z, World, isCave, isPassable, terrainNoise } from "./world";
+import { Block, BlockId, biomeAt, blocksLight, MAX_LIGHT, occludes, ROCK_LINE, SEA_LEVEL, SIZE_X, SIZE_Y, SIZE_Z, SNOW_LINE, World, isCave, isPassable, isPlant, terrainHeight, terrainNoise } from "./world";
+
+/** 수백만 칸을 toEqual로 비교하면 느려서, 직접 훑어 비교한다. */
+function sameData(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
 
 describe("world", () => {
   it("같은 시드면 같은 지형이 나온다", () => {
@@ -7,15 +14,16 @@ describe("world", () => {
     const b = new World();
     a.generate(7);
     b.generate(7);
-    expect(a.data).toEqual(b.data);
-  }, 15000);
+    // 2천만 칸을 하나씩 비교하면 느려서, 바이트 덩어리째 비교한다.
+    expect(sameData(a.data, b.data)).toBe(true);
+  }, 30000);
 
   it("시드가 다르면 지형도 다르다", () => {
     const a = new World();
     const b = new World();
     a.generate(1);
     b.generate(2);
-    expect(a.data).not.toEqual(b.data);
+    expect(sameData(a.data, b.data)).toBe(false);
   });
 
   it("높이 노이즈는 0~1 사이다", () => {
@@ -52,7 +60,7 @@ describe("world", () => {
     let leaves = 0;
     for (let x = 0; x < SIZE_X; x++) {
       for (let z = 0; z < SIZE_Z; z++) {
-        for (let y = 1; y < 32; y++) {
+        for (let y = 1; y < SIZE_Y; y++) {
           if (world.get(x, y, z) === Block.Leaves) leaves++;
           if (world.get(x, y, z) !== Block.Wood) continue;
           woods++;
@@ -104,7 +112,7 @@ describe("world", () => {
     let candidates = 0;
     for (let x = 0; x < SIZE_X; x += 2) {
       for (let z = 0; z < SIZE_Z; z += 2) {
-        for (let y = 3; y < 8; y++) {
+        for (let y = 20; y < 30; y++) {
           candidates++;
           if (world.get(x, y, z) === Block.Air) carved++;
         }
@@ -201,12 +209,82 @@ describe("world", () => {
           if (world.get(x, y, z) !== Block.IronOre) continue;
           ore++;
           expect(y).toBeGreaterThanOrEqual(2);
-          expect(y).toBeLessThanOrEqual(14);
+          expect(y).toBeLessThanOrEqual(72);
           expect(y).toBeLessThan(world.surfaceHeight(x, z) - 2);
         }
       }
     }
     expect(ore).toBeGreaterThan(200);
+  });
+});
+
+describe("높은 세계", () => {
+  it("높이는 128칸이고 바다는 40이다", () => {
+    expect(SIZE_Y).toBe(128);
+    expect(SEA_LEVEL).toBe(40);
+  });
+
+  it("지형 높이는 월드 안에 있고, 산(맨 돌·눈 덮인 봉우리)이 실제로 솟아 있다", () => {
+    let max = 0;
+    let min = SIZE_Y;
+    for (let x = 0; x < SIZE_X; x += 2) {
+      for (let z = 0; z < SIZE_Z; z += 2) {
+        const h = terrainHeight(x, z, 7);
+        max = Math.max(max, h);
+        min = Math.min(min, h);
+      }
+    }
+    expect(min).toBeGreaterThan(5);
+    expect(max).toBeLessThan(SIZE_Y - 4);
+    expect(max).toBeGreaterThanOrEqual(SNOW_LINE);
+  });
+
+  it("높은 산은 맨 돌이고 가장 높은 곳은 눈이 덮여 있다", () => {
+    const world = new World();
+    world.generate(7);
+    let rock = 0;
+    let snowCap = 0;
+    for (let x = 0; x < SIZE_X; x++) {
+      for (let z = 0; z < SIZE_Z; z++) {
+        let top = world.surfaceHeight(x, z) - 1;
+        if (isPlant(world.get(x, top, z))) top--; // 꽃·풀은 한 칸 아래 땅을 본다
+        const block = world.get(x, top, z);
+        if (top >= SNOW_LINE && block === Block.Snow) snowCap++;
+        else if (top >= ROCK_LINE && top < SNOW_LINE && block === Block.Stone) rock++;
+        if (top >= ROCK_LINE) expect([Block.Stone, Block.Snow, Block.Wood, Block.Leaves, Block.Cactus]).toContain(block);
+      }
+    }
+    expect(rock).toBeGreaterThan(50);
+    expect(snowCap).toBeGreaterThan(20);
+  });
+
+  it("다이아몬드는 맨 밑에서만, 철광석은 훨씬 높은 곳에도 있다", () => {
+    const world = new World();
+    world.generate(7);
+    let highestIron = 0;
+    let highestDiamond = 0;
+    for (let x = 0; x < SIZE_X; x++) {
+      for (let z = 0; z < SIZE_Z; z++) {
+        for (let y = 0; y < SIZE_Y; y++) {
+          const b = world.get(x, y, z);
+          if (b === Block.IronOre) highestIron = Math.max(highestIron, y);
+          if (b === Block.DiamondOre) highestDiamond = Math.max(highestDiamond, y);
+        }
+      }
+    }
+    expect(highestDiamond).toBeGreaterThan(0);
+    expect(highestDiamond).toBeLessThanOrEqual(14);
+    expect(highestIron).toBeGreaterThan(40);
+  });
+
+  it("surfaceHeight와 highestIn은 실제로 놓인 블록과 맞는다", () => {
+    const world = new World();
+    world.set(10, 77, 10, Block.Stone);
+    expect(world.surfaceHeight(10, 10)).toBe(78);
+    expect(world.highestIn(0, 0, 16)).toBe(77);
+    expect(world.highestIn(16, 16, 16)).toBe(-1);
+    world.set(10, 77, 10, Block.Air);
+    expect(world.surfaceHeight(10, 10)).toBe(0);
   });
 });
 

@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { createAtlasTexture, tileForFace, tileUV } from "./atlas";
 import { CHUNK_SIZE } from "./chunkMath";
-import { Block, BlockId, MAX_LIGHT, SIZE_Y, World, isPlant, occludes } from "./world";
+import { Block, BlockId, MAX_LIGHT, World, isPlant, occludes } from "./world";
 
 /** 하늘이 안 보이는 곳(동굴 안, 지붕 밑)의 밝기 */
 const DARK_LIGHT = 0.45;
@@ -113,7 +113,9 @@ export function buildChunkMesh(world: World, chunkX: number, chunkZ: number): Ch
   const startX = chunkX * CHUNK_SIZE;
   const startZ = chunkZ * CHUNK_SIZE;
 
-  for (let y = 0; y < SIZE_Y; y++) {
+  // 구역 위쪽은 대부분 빈 하늘이라, 블록이 있을 수 있는 높이까지만 훑는다.
+  const lastY = world.highestIn(startX, startZ, CHUNK_SIZE);
+  for (let y = 0; y <= lastY; y++) {
     for (let z = startZ; z < startZ + CHUNK_SIZE; z++) {
       for (let x = startX; x < startX + CHUNK_SIZE; x++) {
         const block: BlockId = world.get(x, y, z);

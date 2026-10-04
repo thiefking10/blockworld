@@ -26,9 +26,16 @@ export const Block = {
 export type BlockId = (typeof Block)[keyof typeof Block];
 
 export const SIZE_X = 256;
-export const SIZE_Y = 32;
+/** 높이 128칸: 바다 40, 평지 50~60 안팎, 산꼭대기는 100 근처까지 올라간다. */
+export const SIZE_Y = 128;
 export const SIZE_Z = 256;
-export const SEA_LEVEL = 9;
+export const SEA_LEVEL = 40;
+/** 지형 생성 방식이 바뀔 때마다 올린다. 옛 저장·옛 멀티플레이 방과 섞이지 않게 하는 데 쓴다. */
+export const WORLD_VERSION = 2;
+
+/** 이 높이 이상의 산은 맨 돌이 드러나고, 더 높으면 눈이 덮인다. */
+export const ROCK_LINE = SEA_LEVEL + 36;
+export const SNOW_LINE = SEA_LEVEL + 46;
 
 /** 빛의 최댓값 (횃불 바로 옆). 한 칸 지날 때마다 1씩 줄어든다. */
 export const MAX_LIGHT = 15;
@@ -125,6 +132,19 @@ export function terrainNoise(x: number, z: number, seed: number): number {
   return total / norm;
 }
 
+/** 땅 높이. 완만한 언덕(30~60) 위에, 넓은 범위의 산 노이즈가 높은 곳에서 산을 100 근처까지 솟게 한다. */
+export function terrainHeight(x: number, z: number, seed: number): number {
+  const t = terrainNoise(x, z, seed);
+  const mountain = valueNoise(x / 90, z / 90, seed + 7001);
+  const lift = Math.max(0, mountain - 0.52) * 140 * (0.5 + t);
+  return Math.min(SIZE_Y - 8, Math.floor(30 + t * 30 + lift));
+}
+
+/** 동굴은 이 높이까지만 파고, 철광석·다이아몬드는 각각 이 높이 아래에서만 나온다. */
+const CAVE_TOP = 90;
+const IRON_TOP = 72;
+const DIAMOND_TOP = 14;
+
 /** 두 개의 3차원 노이즈가 동시에 "중간값 근처"인 자리가 구불구불한 터널이 된다. */
 export function isCave(x: number, y: number, z: number, seed: number): boolean {
   const a = valueNoise3(x * 0.07, y * 0.09, z * 0.07, seed + 301);
@@ -160,6 +180,8 @@ export class World {
   readonly data = new Uint8Array(SIZE_X * SIZE_Y * SIZE_Z);
   /** 열(x,z)마다 가장 높은 "빛을 막는 블록"의 높이. 없으면 -1. 동굴 안을 어둡게 그릴 때 쓴다. */
   private readonly top = new Int16Array(SIZE_X * SIZE_Z).fill(-1);
+  /** 열(x,z)마다 지금까지 놓인 가장 높은 "공기가 아닌 블록"의 높이 (줄어들 수는 있어도 여기선 안 줄인다 — 위쪽 한계로만 쓴다). */
+  private readonly high = new Int16Array(SIZE_X * SIZE_Z).fill(-1);
   /** 횃불에서 퍼진 빛(0~15). 횃불이 하나도 없으면 전부 0이고 계산도 건너뛴다. */
   private readonly light = new Uint8Array(SIZE_X * SIZE_Y * SIZE_Z);
   /** 지금 세워진 횃불 개수. 0이면 set()에서 빛 계산을 건너뛰어 세계를 만들 때 느려지지 않는다. */
@@ -254,6 +276,7 @@ export class World {
     this.data[idx] = block;
 
     const column = x + SIZE_X * z;
+    if (block !== Block.Air && y > this.high[column]) this.high[column] = y;
     if (blocksLight(block)) {
       if (y > this.top[column]) this.top[column] = y;
     } else if (y === this.top[column]) {
@@ -308,10 +331,23 @@ export class World {
 
   /** x,z 자리에서 가장 높은 블록 위 높이(서 있을 수 있는 y). 물도 센다. */
   surfaceHeight(x: number, z: number): number {
-    for (let y = SIZE_Y - 1; y >= 0; y--) {
+    if (x < 0 || x >= SIZE_X || z < 0 || z >= SIZE_Z) return 0;
+    for (let y = this.high[x + SIZE_X * z]; y >= 0; y--) {
       if (this.get(x, y, z) !== Block.Air) return y + 1;
     }
     return 0;
+  }
+
+  /** 가로 size칸 구역 안에서 블록이 있을 수 있는 가장 높은 y (그림 조각을 만들 때 빈 하늘을 건너뛰는 데 쓴다). -1이면 비었다. */
+  highestIn(startX: number, startZ: number, size: number): number {
+    let best = -1;
+    for (let z = Math.max(0, startZ); z < Math.min(SIZE_Z, startZ + size); z++) {
+      for (let x = Math.max(0, startX); x < Math.min(SIZE_X, startX + size); x++) {
+        const h = this.high[x + SIZE_X * z];
+        if (h > best) best = h;
+      }
+    }
+    return best;
   }
 
   /** 땅 밑을 3차원 노이즈로 파내 동굴을 만든다. 바다 근처와 맨 아래층은 건드리지 않는다. */
@@ -320,34 +356,36 @@ export class World {
       for (let z = 0; z < SIZE_Z; z++) {
         const surface = this.top[x + SIZE_X * z];
         if (surface < SEA_LEVEL + 2) continue;
-        for (let y = 3; y <= surface; y++) {
+        const ceiling = Math.min(surface, CAVE_TOP);
+        for (let y = 4; y <= ceiling; y++) {
           if (isCave(x, y, z, seed)) this.set(x, y, z, Block.Air);
         }
       }
     }
   }
 
-  /** 땅속 돌 사이에 철광석을 덩어리(2x2x2 칸 단위)로 흩뿌린다. 동굴 벽에서 눈에 띈다. */
+  /** 땅속 돌 사이에 철광석을 덩어리(2x2x2 칸 단위)로 흩뿌린다. 땅속 깊은 곳에 더 많고, 높은 산 위쪽엔 드물다. */
   private scatterOre(seed: number): void {
     for (let x = 0; x < SIZE_X; x++) {
       for (let z = 0; z < SIZE_Z; z++) {
         const surface = this.top[x + SIZE_X * z];
-        for (let y = 2; y <= Math.min(surface - 3, 14); y++) {
+        for (let y = 2; y <= Math.min(surface - 3, IRON_TOP); y++) {
           if (this.get(x, y, z) !== Block.Stone) continue;
-          if (hash3(x >> 1, y >> 1, z >> 1, seed + 31337) > 0.02) continue;
+          const chance = y <= SEA_LEVEL ? 0.02 : 0.008;
+          if (hash3(x >> 1, y >> 1, z >> 1, seed + 31337) > chance) continue;
           if (hash3(x, y, z, seed + 11) < 0.85) this.set(x, y, z, Block.IronOre);
         }
       }
     }
   }
 
-  /** 다이아몬드는 철보다 훨씬 드물고, 맨 밑 몇 칸에서만 나온다 (진짜 마인크래프트처럼 깊을수록 귀하다). */
+  /** 다이아몬드는 철보다 훨씬 드물고, 땅속 아주 깊은 곳(맨 밑 14칸)에서만 나온다 (진짜 마인크래프트처럼 깊을수록 귀하다). */
   private scatterDiamond(seed: number): void {
     for (let x = 0; x < SIZE_X; x++) {
       for (let z = 0; z < SIZE_Z; z++) {
-        for (let y = 2; y <= 6; y++) {
+        for (let y = 2; y <= DIAMOND_TOP; y++) {
           if (this.get(x, y, z) !== Block.Stone) continue;
-          if (hash3(x >> 1, y >> 1, z >> 1, seed + 51413) > 0.006) continue;
+          if (hash3(x >> 1, y >> 1, z >> 1, seed + 51413) > 0.003) continue;
           if (hash3(x, y, z, seed + 71) < 0.8) this.set(x, y, z, Block.DiamondOre);
         }
       }
@@ -370,6 +408,7 @@ export class World {
           continue;
         }
         if (groundBlock !== Block.Grass && groundBlock !== Block.Snow) continue;
+        if (ground >= ROCK_LINE - 6) continue; // 높은 산자락엔 나무가 안 자란다
 
         const top = ground + 4 + Math.floor(hash2(x, z, seed + 5) * 2);
         if (top + 2 >= SIZE_Y) continue;
@@ -406,11 +445,12 @@ export class World {
   generate(seed: number): void {
     for (let x = 0; x < SIZE_X; x++) {
       for (let z = 0; z < SIZE_Z; z++) {
-        const height = Math.floor(5 + terrainNoise(x, z, seed) * 16);
+        const height = terrainHeight(x, z, seed);
         const biome = biomeAt(x, z, seed);
         const sandy = height <= SEA_LEVEL || biome === "desert";
-        const topBlock: BlockId = sandy ? Block.Sand : biome === "snow" ? Block.Snow : Block.Grass;
-        const underBlock: BlockId = sandy ? Block.Sand : Block.Dirt;
+        const rocky = height >= ROCK_LINE;
+        const topBlock: BlockId = height >= SNOW_LINE ? Block.Snow : rocky ? Block.Stone : sandy ? Block.Sand : biome === "snow" ? Block.Snow : Block.Grass;
+        const underBlock: BlockId = rocky ? Block.Stone : sandy ? Block.Sand : Block.Dirt;
         for (let y = 0; y <= height && y < SIZE_Y; y++) {
           let block: BlockId = Block.Stone;
           if (y === height) block = topBlock;
