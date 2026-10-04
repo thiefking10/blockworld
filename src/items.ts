@@ -51,6 +51,17 @@ export const Item = {
   FishingRod: 148,
   Emerald: 149,
   Saddle: 150,
+  PigEgg: 160,
+  SheepEgg: 161,
+  HorseEgg: 162,
+  WolfEgg: 163,
+  VillagerEgg: 164,
+  ZombieEgg: 165,
+  SkeletonEgg: 166,
+  CreeperEgg: 167,
+  SpiderEgg: 168,
+  FishEgg: 169,
+  DragonEgg: 170,
 } as const;
 
 export const ITEM_NAMES: Record<number, string> = {
@@ -104,4 +115,15 @@ export const ITEM_NAMES: Record<number, string> = {
   [Item.FishingRod]: "낚싯대",
   [Item.Emerald]: "에메랄드",
   [Item.Saddle]: "안장",
+  [Item.PigEgg]: "돼지 알",
+  [Item.SheepEgg]: "양 알",
+  [Item.HorseEgg]: "말 알",
+  [Item.WolfEgg]: "늑대 알",
+  [Item.VillagerEgg]: "마을 사람 알",
+  [Item.ZombieEgg]: "좀비 알",
+  [Item.SkeletonEgg]: "해골 알",
+  [Item.CreeperEgg]: "크리퍼 알",
+  [Item.SpiderEgg]: "거미 알",
+  [Item.FishEgg]: "물고기 알",
+  [Item.DragonEgg]: "드래곤 알",
 };

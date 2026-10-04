@@ -31,6 +31,8 @@ export interface SaveData {
   achievements?: string[];
   /** 배고픔 (0~20). 없으면(예전 저장) 가득 찬 채로 이어간다. */
   hunger?: number;
+  /** 길들인 동물들 [종류, x, y, z, 새끼 여부(0/1)]. */
+  pets?: [string, number, number, number, number][];
   /** 경험치 [레벨, 그 레벨에서 모은 양]. 없으면 0레벨. */
   xp?: [number, number];
   /** 인챈트가 붙은 아이템들 [번호, [[종류, 단계]]]. */
@@ -117,6 +119,14 @@ export function decodeSave(text: string | null): SaveData | null {
     if (data.crops !== undefined && !(Array.isArray(data.crops) && data.crops.every((e: unknown) => Array.isArray(e) && e.length === 4 && isFiniteNumbers(e)))) return null;
     if (data.achievements !== undefined && !(Array.isArray(data.achievements) && data.achievements.every((a: unknown) => typeof a === "string"))) return null;
     if (data.hunger !== undefined && !Number.isFinite(data.hunger)) return null;
+    if (
+      data.pets !== undefined &&
+      !(
+        Array.isArray(data.pets) &&
+        data.pets.every((e: unknown) => Array.isArray(e) && e.length === 5 && typeof e[0] === "string" && isFiniteNumbers(e.slice(1)))
+      )
+    )
+      return null;
     if (data.xp !== undefined && !(Array.isArray(data.xp) && data.xp.length === 2 && isFiniteNumbers(data.xp))) return null;
     if (
       data.enchants !== undefined &&

@@ -32,6 +32,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: "fish", name: "손맛", hint: "물고기를 잡아요" },
   { id: "summon", name: "소환사", hint: "용의 뿔로 드래곤을 불러내요" },
   { id: "dragon", name: "용 사냥꾼", hint: "드래곤을 물리쳐요" },
+  { id: "pet", name: "새 식구", hint: "돼지·양·말·늑대 중 하나를 먹이로 길들여요" },
   { id: "level5", name: "경험을 쌓다", hint: "경험치 레벨 5에 이르러요" },
   { id: "enchant", name: "마법 부여", hint: "인챈트 테이블에서 도구에 인챈트를 붙여요" },
   { id: "potion", name: "물약 한 모금", hint: "양조대에서 만든 물약을 마셔요" },

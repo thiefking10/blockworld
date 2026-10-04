@@ -85,6 +85,17 @@ export const RECIPES: Recipe[] = [
   // 원래는 부싯돌과 깃털이 있어야 하지만, 아직 없어 막대만으로 단순화했다.
   { name: "낚싯대", station: "table", inputs: [[Item.Stick, 3], [Item.String, 2]], output: [Item.FishingRod, 1] },
   { name: "안장", station: "table", inputs: [[Block.Wool, 3], [Item.IronIngot, 1]], output: [Item.Saddle, 1] },
+  // 스폰 알: 그 동물이 떨구는 재료를 모아 만든다 (드래곤 알은 못 만들고, 창작 모드에서만 받는다).
+  { name: "돼지 알", station: "table", inputs: [[Item.Meat, 2], [Item.Grain, 3]], output: [Item.PigEgg, 1] },
+  { name: "양 알", station: "table", inputs: [[Block.Wool, 2], [Item.Grain, 3]], output: [Item.SheepEgg, 1] },
+  { name: "말 알", station: "table", inputs: [[Item.Grain, 8], [Item.IronIngot, 1]], output: [Item.HorseEgg, 1] },
+  { name: "늑대 알", station: "table", inputs: [[Item.Bone, 4], [Item.Meat, 2]], output: [Item.WolfEgg, 1] },
+  { name: "마을 사람 알", station: "table", inputs: [[Item.Emerald, 6]], output: [Item.VillagerEgg, 1] },
+  { name: "좀비 알", station: "table", inputs: [[Item.Meat, 4], [Item.Bone, 2], [Item.Coal, 1]], output: [Item.ZombieEgg, 1] },
+  { name: "해골 알", station: "table", inputs: [[Item.Bone, 6], [Item.Coal, 1]], output: [Item.SkeletonEgg, 1] },
+  { name: "크리퍼 알", station: "table", inputs: [[Item.Gunpowder, 4], [Item.Coal, 1]], output: [Item.CreeperEgg, 1] },
+  { name: "거미 알", station: "table", inputs: [[Item.String, 4], [Item.Bone, 1]], output: [Item.SpiderEgg, 1] },
+  { name: "물고기 알", station: "table", inputs: [[Item.RawFish, 3]], output: [Item.FishEgg, 1] },
   { name: "화살", station: "table", inputs: [[Item.Stick, 1]], output: [Item.Arrow, 4] },
   { name: "활", station: "table", inputs: [[Item.Stick, 3]], output: [Item.Bow, 1] },
   { name: "침대", station: "table", inputs: [[Block.Wool, 3], [Block.Planks, 3]], output: [Item.Bed, 1] },

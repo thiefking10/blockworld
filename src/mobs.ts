@@ -1,3 +1,4 @@
+import { Item } from "./items";
 import { professionAt } from "./trades";
 import type { VillageSite } from "./village";
 import { Block, SEA_LEVEL, World } from "./world";
@@ -63,6 +64,22 @@ export const BREEDABLE: ReadonlySet<MobKind> = new Set<MobKind>(["pig", "sheep"]
 export const HOME_RANGE = 9;
 /** 마을이 이 거리 안에 있으면 마을 사람이 나타난다. */
 export const VILLAGE_SPAWN_RANGE = 60;
+
+/**
+ * 길들이는 법: 이 동물을 보고 먹이를 가지고 놓기를 누른다. need번 먹이면 길들여진다.
+ * 길들여진 동물은 플레이어를 따라다니고, 멀어지거나 아침이 와도 사라지지 않고, 저장된다.
+ * (밀은 번식에도 쓰이므로, 돼지와 양은 번식과 겹치지 않는 먹이를 쓴다.)
+ */
+export const TAME_FOODS: Partial<Record<MobKind, { item: number; need: number }>> = {
+  wolf: { item: Item.Bone, need: 1 },
+  pig: { item: Item.Bread, need: 1 },
+  sheep: { item: Block.Sprout, need: 1 },
+  horse: { item: Item.Grain, need: 3 },
+};
+/** 길들인 동물이 이 거리보다 가까우면 가만히 있고, 멀어지면 따라온다. */
+export const PET_FOLLOW_DISTANCE = 4;
+/** 길들인 동물이 이만큼 멀어지면 플레이어 곁으로 순간이동한다 (길을 잃지 않도록). */
+export const PET_TELEPORT_DISTANCE = 28;
 
 export const MAX_HOSTILE_COUNT = 5;
 export const CHASE_RANGE = 18;
@@ -170,6 +187,11 @@ export class Mob {
   love = 0;
   /** 새끼를 낳은 뒤 다시 번식할 수 있을 때까지 남은 시간(초). */
   breedCooldown = 0;
+
+  /** 알이나 길들이기로 얻은 동물: 아침이 와도 사라지지 않는다. */
+  persistent = false;
+  /** 길들이기 먹이를 지금까지 먹은 횟수 */
+  tameProgress = 0;
 
   /** 몸 크기 배율 (새끼는 절반). */
   get scale(): number {
@@ -521,9 +543,47 @@ export class MobSimulation {
     return best;
   }
 
-  /** 뼈를 먹여 늑대를 길들인다. */
+  /** 길들인다 (늑대는 대신 싸우고, 나머지는 따라다닌다). */
   tame(mob: Mob): void {
     mob.tamed = true;
+    mob.persistent = true;
+  }
+
+  /**
+   * 먹이(item)를 먹인다. 길들일 수 없는 동물이나 다른 먹이면 "no", 먹이를 더 줘야 하면 "progress", 길들여졌으면 "tamed".
+   * 이미 길들여졌거나 새끼면 "no".
+   */
+  feedTame(mob: Mob, item: number): "no" | "progress" | "tamed" {
+    const food = TAME_FOODS[mob.kind];
+    if (!food || food.item !== item || mob.tamed || mob.baby) return "no";
+    mob.tameProgress++;
+    if (mob.tameProgress < food.need) return "progress";
+    this.tame(mob);
+    return "tamed";
+  }
+
+  /** 알이나 불러오기로 동물을 만든다. persistent면 아침이 와도 사라지지 않는다. */
+  spawn(kind: MobKind, x: number, y: number, z: number, rng: Rng, persistent = false): Mob {
+    const mob = new Mob(kind, x, y, z, rng);
+    mob.persistent = persistent;
+    if (kind === "villager") {
+      mob.profession = professionAt(Math.floor(rng() * 4));
+      mob.home = { x, z };
+    }
+    this.mobs.push(mob);
+    return mob;
+  }
+
+  /** 저장된 길들인 동물을 되살린다. 길들일 수 없는 종류나 이상한 값이면 null. */
+  restorePet(kind: string, x: number, y: number, z: number, baby: boolean, rng: Rng): Mob | null {
+    if (!(kind in MOB_SPECS) || !TAME_FOODS[kind as MobKind]) return null;
+    if (![x, y, z].every(Number.isFinite)) return null;
+    const mob = new Mob(kind as MobKind, x, y, z, rng);
+    mob.baby = baby;
+    if (baby) mob.hp = Math.max(1, Math.ceil(mob.hp / 2));
+    this.tame(mob);
+    this.mobs.push(mob);
+    return mob;
   }
 
   /** 용의 뿔을 써서 드래곤을 불러낸다 (자연적으로는 나오지 않는다). */
@@ -637,7 +697,17 @@ export class MobSimulation {
       } else {
         // 밀을 먹은 동물은 가까운 같은 종류 짝을 찾아 다가간다.
         const partner = mob.love > 0 ? this.findPartner(mob) : null;
-        const chase = engaged ? player : partner;
+        // 길들인 동물은 멀어지면 플레이어를 따라온다 (너무 멀면 곁으로 순간이동한다).
+        let follow: { x: number; z: number } | null = null;
+        if (mob.tamed && !spec.hostile) {
+          if (distance > PET_TELEPORT_DISTANCE) {
+            mob.x = player.x + 1.2;
+            mob.z = player.z;
+            mob.y = player.y;
+            mob.vy = 0;
+          } else if (distance > PET_FOLLOW_DISTANCE) follow = player;
+        }
+        const chase = engaged ? player : (partner ?? follow);
         mob.update(dt, world, rng, chase);
         if (spec.hostile && targetable && distance < ATTACK_RANGE && Math.abs(mob.y - player.y) < 1.5 && mob.attackCooldown <= 0) {
           mob.attackCooldown = ATTACK_COOLDOWN;
@@ -677,10 +747,10 @@ export class MobSimulation {
     for (let i = this.mobs.length - 1; i >= 0; i--) {
       const mob = this.mobs[i];
       // 길들인 늑대는 플레이어를 따라다니느라 안 그래도 잘 안 멀어지지만, 혹시 멀어져도 사라지지 않는다.
-      const tamedPet = mob.kind === "wolf" && mob.tamed;
+      const tamedPet = mob.tamed;
       const far = (!tamedPet && Math.hypot(mob.x - player.x, mob.z - player.z) > DESPAWN_DISTANCE) || mob.y < -5;
       // 보스(드래곤)는 직접 불러낸 것이니 아침이 됐다고 사라지지는 않는다 (너무 멀어지면 다른 동물처럼 사라진다).
-      const sunrise = MOB_SPECS[mob.kind].hostile && !MOB_SPECS[mob.kind].boss && !night && rng() < dt * DAY_DESPAWN_RATE;
+      const sunrise = MOB_SPECS[mob.kind].hostile && !MOB_SPECS[mob.kind].boss && !mob.persistent && !night && rng() < dt * DAY_DESPAWN_RATE;
       if (far || sunrise) this.mobs.splice(i, 1);
     }
 

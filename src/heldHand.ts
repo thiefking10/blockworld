@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { tileForFace, tileIconDataUrl } from "./atlas";
 import { isPlaceableBlock } from "./blocks";
+import { EGG_BY_ITEM } from "./eggs";
 import { Item } from "./items";
 import { TOOL_BY_ID, type ToolType } from "./tools";
 
@@ -122,6 +123,20 @@ function buildRodItem(): THREE.Group {
   return group;
 }
 
+/** 스폰 알: 그 동물 색의 알 모양 (큰 상자 + 작은 상자로 둥글게 보이게) */
+function buildEggItem(color: number): THREE.Group {
+  const group = new THREE.Group();
+  const body = box([0.2, 0.26, 0.2], color);
+  group.add(body);
+  const top = box([0.14, 0.08, 0.14], color);
+  top.position.set(0, 0.16, 0);
+  group.add(top);
+  const spot = box([0.06, 0.06, 0.21], 0xffffff);
+  spot.position.set(0.02, 0.02, 0);
+  group.add(spot);
+  return group;
+}
+
 /** 도구·활도 아닌 다른 아이템(재료·방어구·음식 등)은 작은 상자로 뭉뚱그려 보여준다. */
 function buildGenericItem(): THREE.Mesh {
   return box([0.22, 0.22, 0.22], 0xc9b27a);
@@ -133,6 +148,8 @@ function buildItemModel(id: number): THREE.Object3D | null {
   if (isPlaceableBlock(id)) return buildBlockItem(id);
   if (id === Item.Bow) return buildBowItem();
   if (id === Item.FishingRod) return buildRodItem();
+  const egg = EGG_BY_ITEM.get(id);
+  if (egg) return buildEggItem(egg.color);
   const tool = TOOL_BY_ID.get(id);
   if (tool) return buildToolItem(tool.type, TIER_COLORS[tool.tier]);
   return buildGenericItem();

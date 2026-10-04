@@ -110,7 +110,7 @@ function buildModel(kind: MobKind): MobModel {
 
 const hurtColor = new THREE.Color(0xff3030);
 const fuseColor = new THREE.Color(0xffffff);
-/** 길들인 늑대를 목줄 색으로 살짝 물들여 야생 늑대와 구별한다. */
+/** 길들인 동물을 목줄 색으로 살짝 물들여 야생 늑대와 구별한다. */
 const collarColor = new THREE.Color(0xcc3333);
 /** 밀을 먹고 짝을 찾는 동물은 분홍빛으로 반짝인다. */
 const loveColor = new THREE.Color(0xff6fa8);
@@ -159,7 +159,7 @@ export class MobRenderer {
       }
 
       const fuseBlink = mob.kind === "creeper" && mob.fuse > 0 ? (0.5 + 0.5 * Math.sin(seconds * 22)) * Math.min(1, mob.fuse / CREEPER_FUSE_SECONDS) : 0;
-      const tamed = mob.kind === "wolf" && mob.tamed;
+      const tamed = mob.tamed;
       const inLove = mob.love > 0;
       model.materials.forEach((material, i) => {
         material.color.setHex(model.colors[i]).multiply(shade);

@@ -24,7 +24,8 @@ import { Fishing, MAX_LINE_DISTANCE } from "./fishing";
 import { refreshFences } from "./fences";
 import { settleFrom } from "./falling";
 import { HeldHandRenderer } from "./heldHand";
-import { BREEDABLE, MOB_SPECS, MobSimulation, raycastMobs, type Mob, type MobKind } from "./mobs";
+import { EGG_BY_ITEM } from "./eggs";
+import { BREEDABLE, MOB_SPECS, MobSimulation, raycastMobs, TAME_FOODS, type Mob, type MobKind } from "./mobs";
 import { connectAndWait, NetClient, randomRoomCode } from "./net";
 import { PlayerAvatarRenderer } from "./playerRender";
 import { RemotePlayer, sanitizeName } from "./protocol";
@@ -250,6 +251,7 @@ function itemEmoji(item: number): string {
   if (item === Item.String) return "🧵";
   if (item === Item.Emerald) return "💚";
   if (item === Item.Saddle) return "🏇";
+  if (EGG_BY_ITEM.has(item)) return "🥚";
   if (item === Item.GlassBottle) return "⚗️";
   if (POTION_BY_ID.has(item)) return "🧪";
   const tool = TOOL_BY_ID.get(item);
@@ -604,7 +606,7 @@ const GIVEABLE_ITEMS = Object.keys(ITEM_NAMES).map(Number);
 
 /** 창작 모드에서 아이템을 만들거나 캐지 않고 바로 받는다 (도구·방어구·활은 하나, 나머지는 한 칸 가득). */
 function giveItem(item: number): void {
-  const amount = TOOL_BY_ID.has(item) || ARMOR_BY_ID.has(item) || item === Item.Bow || item === Item.FishingRod || item === Item.Saddle ? 1 : STACK_MAX;
+  const amount = TOOL_BY_ID.has(item) || ARMOR_BY_ID.has(item) || item === Item.Bow || item === Item.FishingRod || item === Item.Saddle ? 1 : EGG_BY_ITEM.has(item) ? 16 : STACK_MAX;
   const added = inventory.add(item, amount);
   if (added === 0) {
     showToast(itemLabel(item) + "은(는) 이미 있거나 가방이 가득 찼어요");
@@ -960,6 +962,10 @@ function dismount(): void {
 function tryRide(): boolean {
   const mob = mobInSight(currentTarget());
   if (!mob || mob.kind !== "horse") return false;
+  if (mode === "survival" && !mob.tamed) {
+    showToast("야생 말이에요 — 밀 3개를 먹여서(놓기) 먼저 길들여 주세요", 3000);
+    return true;
+  }
   if (mode === "survival" && inventory.count(Item.Saddle) === 0) {
     showToast("안장이 있어야 탈 수 있어요 (제작대: 양털 3 + 철 주괴 1, 사냥꾼에게서도 살 수 있어요)", 3000);
     return true;
@@ -1200,6 +1206,9 @@ function refreshInventoryPanel(): void {
         chip.textContent = "🛡 " + itemLabel(item) + " (방어 " + def.points + ", 알아서 걸쳐요)" + enchantSuffix(item);
       } else if (item === Item.Bow) {
         chip.textContent = "🏹 " + itemLabel(item) + " (손에 들면, 화살이 있을 때 먼 동물·괴물을 쏴요)" + enchantSuffix(item);
+        onPress(chip, () => holdItem(item));
+      } else if (EGG_BY_ITEM.has(item)) {
+        chip.textContent = "🥚 " + itemLabel(item) + " ×" + amount + " (손에 들고 땅을 향해 놓기를 누르면 나타나요)";
         onPress(chip, () => holdItem(item));
       } else if (item === Item.FishingRod) {
         chip.textContent = "🎣 " + itemLabel(item) + " (손에 들고 물을 향해 놓기를 눌러 던지고, 물면 다시 눌러요)";
@@ -1620,16 +1629,58 @@ function tryBreed(): boolean {
   return true;
 }
 
-/** 야생 늑대를 보고 있고 뼈가 있으면, 블록을 놓는 대신 뼈를 먹여 길들인다. */
-function tryTameWolf(): boolean {
+/** 길들일 수 있는 동물을 보고 맞는 먹이가 가방에 있으면, 블록을 놓는 대신 먹여서 길들인다. (늑대 뼈, 돼지 빵, 양 밀 씨앗, 말 밀 3개) */
+function tryTame(): boolean {
   const mob = mobInSight(currentTarget());
-  if (!mob || mob.kind !== "wolf" || mob.tamed || mode !== "survival" || inventory.count(Item.Bone) === 0) return false;
-  inventory.remove(Item.Bone, 1);
-  mobSim.tame(mob);
-  audio.playCraft();
-  showToast("🐺 늑대를 길들였어요! 이제 따라다니며 대신 싸워줘요");
-  unlockAchievement("wolf");
+  if (!mob || mob.tamed || mode !== "survival") return false;
+  const food = TAME_FOODS[mob.kind];
+  if (!food || mob.baby || inventory.count(food.item) === 0) return false;
+  const result = mobSim.feedTame(mob, food.item);
+  if (result === "no") return false;
+  inventory.remove(food.item, 1);
+  audio.playEat();
+  if (result === "progress") {
+    showToast("🍽 먹이를 먹었어요 (" + mob.tameProgress + "/" + food.need + ")", 2000);
+  } else {
+    audio.playCraft();
+    audio.playMob(mob.kind, 1);
+    const fighter = mob.kind === "wolf" ? " 이제 따라다니며 대신 싸워줘요" : mob.kind === "horse" ? " 안장을 얹어 탈 수 있어요" : " 이제 따라다녀요";
+    showToast("💕 " + (mob.kind === "wolf" ? "늑대" : mob.kind === "pig" ? "돼지" : mob.kind === "sheep" ? "양" : "말") + "을(를) 길들였어요!" + fighter, 3000);
+    if (mob.kind === "wolf") unlockAchievement("wolf");
+    unlockAchievement("pet");
+  }
   refreshHotbar();
+  refreshOpenPanels();
+  scheduleSave();
+  return true;
+}
+
+/** 스폰 알을 손에 들고 땅을 향해 놓기를 누르면, 그 자리에 동물이 나타난다. */
+function tryUseEgg(): boolean {
+  const egg = EGG_BY_ITEM.get(heldItem());
+  if (!egg) return false;
+  if (mode === "survival" && inventory.count(egg.item) === 0) return false;
+  const hit = currentTarget();
+  if (!hit) {
+    showToast("땅이나 블록을 향해 놓아 주세요");
+    return true;
+  }
+  const { px, py, pz } = hit;
+  if (!world.inBounds(px, py, pz) || !isPassable(world.get(px, py, pz))) return true;
+  if (egg.kind === "fish" && world.get(px, py, pz) !== Block.Water) {
+    showToast("물고기 알은 물속에 놓아 주세요");
+    return true;
+  }
+  if (mode === "survival") inventory.remove(egg.item, 1);
+  const x = px + 0.5;
+  const z = pz + 0.5;
+  if (egg.kind === "dragon") mobSim.summonDragon(x, py, z, Math.random);
+  else mobSim.spawn(egg.kind, x, py, z, Math.random, true);
+  audio.playMob(egg.kind, 1);
+  swingHeldItem();
+  showToast("🥚 " + egg.name.replace(" 알", "") + " 등장!", 1800);
+  refreshHotbar();
+  refreshOpenPanels();
   scheduleSave();
   return true;
 }
@@ -1653,7 +1704,8 @@ function tryUseDragonHorn(): boolean {
 
 function placeBlock(): void {
   if (tryFish()) return;
-  if (tryTameWolf()) return;
+  if (tryUseEgg()) return;
+  if (tryTame()) return;
   if (tryBreed()) return;
   if (tryRide()) return;
   const villager = villagerInSight();
@@ -1733,6 +1785,7 @@ function saveNow(): void {
     xp: experience.toArray(),
     enchants: inventory.enchantEntries(),
     effects: effects.entries(),
+    pets: mobSim.mobs.filter((m) => m.tamed).map((m): [string, number, number, number, number] => [m.kind, m.x, m.y, m.z, m.baby ? 1 : 0]),
   };
   writeStorage(saveKey(seed), encodeSave(data));
 }
@@ -1857,6 +1910,8 @@ function respawn(): void {
 }
 mobSim.populate(world, player.x, player.z, 10, Math.random);
 mobSim.maintainVillagers(world.villages, player.x, player.z, Math.random);
+// 저장해 둔 길들인 동물을 되살린다 (이어하기).
+if (saved && saved.seed === seed && saved.pets) for (const [kind, x, y, z, baby] of saved.pets) mobSim.restorePet(kind, x, y, z, baby === 1, Math.random);
 let villagerTimer = 0;
 document.getElementById("loading")?.remove();
 

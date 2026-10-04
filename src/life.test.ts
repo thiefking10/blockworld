@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { BITE_WINDOW, Fishing, rollCatch, WAIT_MAX, WAIT_MIN } from "./fishing";
-import { Item, mobDrops, RECIPES } from "./inventory";
+import { EGGS, isEgg } from "./eggs";
+import { Item, ITEM_NAMES, mobDrops, RECIPES } from "./inventory";
+import { decodeSave, encodeSave, type SaveData } from "./save";
 import { BABY_SECONDS, BREED_COOLDOWN, findSpawnSpot, LOVE_SECONDS, Mob, MOB_SPECS, MobSimulation, raycastMobs } from "./mobs";
 import { Player } from "./player";
 import { Block, World } from "./world";
@@ -216,5 +218,122 @@ describe("말", () => {
     const ride = run(1.3, 2);
     expect(ride.top).toBeGreaterThan(walk.top + 0.5);
     expect(ride.dist).toBeGreaterThan(walk.dist * 1.6);
+  });
+});
+
+describe("스폰 알", () => {
+  it("알은 동물·괴물마다 하나씩 있고, 이름과 종류가 맞는다", () => {
+    expect(EGGS).toHaveLength(Object.keys(MOB_SPECS).length);
+    for (const kind of Object.keys(MOB_SPECS)) expect(EGGS.some((e) => e.kind === kind)).toBe(true);
+    expect(new Set(EGGS.map((e) => e.item)).size).toBe(EGGS.length);
+    expect(isEgg(Item.PigEgg)).toBe(true);
+    expect(isEgg(Item.Bread)).toBe(false);
+    for (const egg of EGGS) expect(ITEM_NAMES[egg.item]).toBe(egg.name);
+  });
+
+  it("드래곤 알만 빼고 모두 제작대에서 만들 수 있다", () => {
+    for (const egg of EGGS) {
+      const recipe = RECIPES.find((r) => r.output[0] === egg.item);
+      if (egg.kind === "dragon") expect(recipe).toBeUndefined();
+      else expect(recipe?.station).toBe("table");
+    }
+  });
+
+  it("알로 만든 동물은 아침이 와도 사라지지 않는다 (자연 괴물은 사라진다)", () => {
+    const world = flatWorld();
+    const sim = new MobSimulation();
+    const egged = sim.spawn("zombie", 10, 1, 10, fixed(0.5), true);
+    const natural = sim.spawn("zombie", 12, 1, 12, fixed(0.5), false);
+    for (let i = 0; i < 60 * 40; i++) sim.update(1 / 60, world, fixed(0.001), FAR_PLAYER, false);
+    expect(sim.mobs).toContain(egged);
+    expect(sim.mobs).not.toContain(natural);
+  });
+
+  it("마을 사람 알은 직업이 정해지고 그 자리 근처에 머문다", () => {
+    const sim = new MobSimulation();
+    const villager = sim.spawn("villager", 10, 1, 10, fixed(0.3), true);
+    expect(villager.profession).not.toBeNull();
+    expect(villager.home).toEqual({ x: 10, z: 10 });
+  });
+});
+
+describe("길들이기", () => {
+  it("늑대는 뼈 1개, 돼지는 빵 1개, 양은 씨앗 1개, 말은 밀 3개로 길들인다", () => {
+    const sim = new MobSimulation();
+    const wolf = new Mob("wolf", 5, 1, 5, fixed(0.5));
+    const pig = new Mob("pig", 6, 1, 5, fixed(0.5));
+    const sheep = new Mob("sheep", 7, 1, 5, fixed(0.5));
+    const horse = new Mob("horse", 8, 1, 5, fixed(0.5));
+    expect(sim.feedTame(wolf, Item.Bone)).toBe("tamed");
+    expect(sim.feedTame(pig, Item.Bread)).toBe("tamed");
+    expect(sim.feedTame(sheep, Block.Sprout)).toBe("tamed");
+    expect(sim.feedTame(horse, Item.Grain)).toBe("progress");
+    expect(horse.tamed).toBe(false);
+    expect(sim.feedTame(horse, Item.Grain)).toBe("progress");
+    expect(sim.feedTame(horse, Item.Grain)).toBe("tamed");
+    for (const m of [wolf, pig, sheep, horse]) {
+      expect(m.tamed).toBe(true);
+      expect(m.persistent).toBe(true);
+    }
+  });
+
+  it("맞지 않는 먹이, 괴물, 새끼, 이미 길들인 동물은 안 된다", () => {
+    const sim = new MobSimulation();
+    const pig = new Mob("pig", 6, 1, 5, fixed(0.5));
+    expect(sim.feedTame(pig, Item.Bone)).toBe("no");
+    expect(sim.feedTame(pig, Item.Grain)).toBe("no"); // 밀은 번식용
+    expect(pig.tamed).toBe(false);
+    expect(sim.feedTame(new Mob("zombie", 1, 1, 1, fixed(0.5)), Item.Bone)).toBe("no");
+    expect(sim.feedTame(sim.spawnBaby("pig", 1, 1, 1, fixed(0.5)), Item.Bread)).toBe("no");
+    sim.feedTame(pig, Item.Bread);
+    expect(sim.feedTame(pig, Item.Bread)).toBe("no");
+  });
+
+  it("길들인 동물은 멀어지면 따라오고, 아주 멀면 곁으로 순간이동하며, 멀리 있어도 사라지지 않는다", () => {
+    const world = flatWorld();
+    const sim = new MobSimulation();
+    const pig = new Mob("pig", 5, 1, 5, fixed(0.5));
+    sim.mobs.push(pig);
+    sim.tame(pig);
+    const player = { x: 20, y: 1, z: 5 };
+    const before = Math.hypot(pig.x - player.x, pig.z - player.z);
+    for (let i = 0; i < 60 * 5; i++) sim.update(1 / 60, world, fixed(0.9), player, false);
+    expect(Math.hypot(pig.x - player.x, pig.z - player.z)).toBeLessThan(before - 5);
+
+    const far = { x: 200, y: 1, z: 5 };
+    sim.update(0.1, world, fixed(0.9), far, false);
+    expect(Math.hypot(pig.x - far.x, pig.z - far.z)).toBeLessThan(3);
+    expect(sim.mobs).toContain(pig);
+  });
+
+  it("길들이지 않은 동물은 플레이어를 따라오지 않는다", () => {
+    const world = flatWorld();
+    const sim = new MobSimulation();
+    const pig = new Mob("pig", 5, 1, 5, fixed(0.5));
+    sim.mobs.push(pig);
+    const player = { x: 25, y: 1, z: 5 };
+    for (let i = 0; i < 60 * 3; i++) sim.update(1 / 60, world, fixed(0.2), player, false);
+    expect(pig.tamed).toBe(false);
+  });
+
+  it("저장한 길들인 동물을 되살린다 (이상한 값·길들일 수 없는 종류는 무시)", () => {
+    const sim = new MobSimulation();
+    const pet = sim.restorePet("wolf", 10, 1, 10, false, fixed(0.5));
+    expect(pet?.tamed).toBe(true);
+    const baby = sim.restorePet("pig", 11, 1, 10, true, fixed(0.5));
+    expect(baby?.baby).toBe(true);
+    expect(sim.restorePet("zombie", 1, 1, 1, false, fixed(0.5))).toBeNull();
+    expect(sim.restorePet("엉터리", 1, 1, 1, false, fixed(0.5))).toBeNull();
+    expect(sim.restorePet("pig", NaN, 1, 1, false, fixed(0.5))).toBeNull();
+    expect(sim.mobs).toHaveLength(2);
+  });
+
+  it("저장 파일에 길들인 동물이 들어가고, 모양이 이상하면 거부한다", () => {
+    const sample: SaveData = { version: 1, seed: 1, edits: [], player: { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 } };
+    const full: SaveData = { ...sample, pets: [["wolf", 1, 2, 3, 0]] };
+    expect(decodeSave(encodeSave(full))).toEqual(full);
+    expect(decodeSave(encodeSave(sample))?.pets).toBeUndefined();
+    expect(decodeSave(JSON.stringify({ ...sample, pets: [["wolf", 1, 2]] }))).toBeNull();
+    expect(decodeSave(JSON.stringify({ ...sample, pets: [[5, 1, 2, 3, 0]] }))).toBeNull();
   });
 });
