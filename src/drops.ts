@@ -13,6 +13,10 @@ export interface ItemDrop {
   vz: number;
   /** 떨어진 뒤 지난 시간(초) */
   age: number;
+  /** 호스트가 아닌 사람 화면에서 따라갈 자리 */
+  tx?: number;
+  ty?: number;
+  tz?: number;
 }
 
 /** 이 거리 안에 오면 줍는다 (가로 기준) */
@@ -126,6 +130,49 @@ export class DropField {
       else blocked = true;
     }
     return { picked, blocked };
+  }
+
+  /** 지금 떨어진 아이템들의 모습 (호스트가 다른 사람에게 알릴 때 쓴다). */
+  snapshot(): [number, number, number, number, number, number][] {
+    return this.drops.slice(0, 128).map((d) => [d.id, d.item, d.count, round(d.x), round(d.y), round(d.z)]);
+  }
+
+  /** 호스트가 알려 준 목록으로 맞춘다 (호스트가 아닌 사람의 화면용). 목록에 없어진 것은 지운다. */
+  applySnapshot(list: [number, number, number, number, number, number][]): void {
+    const seen = new Set<number>();
+    for (const [id, item, count, x, y, z] of list) {
+      seen.add(id);
+      const existing = this.drops.find((d) => d.id === id);
+      if (existing) {
+        existing.count = count;
+        existing.tx = x;
+        existing.ty = y;
+        existing.tz = z;
+      } else {
+        this.drops.push({ id, item, count, x, y, z, vx: 0, vy: 0, vz: 0, age: PICKUP_DELAY, tx: x, ty: y, tz: z });
+        if (id >= this.nextId) this.nextId = id + 1;
+      }
+    }
+    this.drops = this.drops.filter((d) => seen.has(d.id));
+  }
+
+  /** 호스트가 아닌 사람의 화면: 아이템을 알려 준 자리로 부드럽게 옮긴다. */
+  smoothProxies(dt: number): void {
+    const k = Math.min(1, dt * 12);
+    for (const d of this.drops) {
+      if (d.tx === undefined || d.ty === undefined || d.tz === undefined) continue;
+      d.x += (d.tx - d.x) * k;
+      d.y += (d.ty - d.y) * k;
+      d.z += (d.tz - d.z) * k;
+      d.age += dt;
+    }
+  }
+
+  /** 번호로 하나 가져간다 (다른 사람이 줍겠다고 했을 때). 가져간 것을 돌려주고 없으면 null. */
+  take(id: number): ItemDrop | null {
+    const index = this.drops.findIndex((d) => d.id === id);
+    if (index < 0) return null;
+    return this.drops.splice(index, 1)[0];
   }
 
   /** 저장용: [아이템, 개수, x, y, z, 지난 시간] */

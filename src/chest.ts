@@ -29,6 +29,31 @@ export class ChestField {
     return chest ? chest.entries() : [];
   }
 
+  /** 다른 사람에게 알릴 때 쓰는 글자 (비었으면 null). */
+  rawAt(x: number, y: number, z: number): string | null {
+    const chest = this.chests.get(this.key(x, y, z));
+    if (!chest) return null;
+    const entries = chest.entries();
+    return entries.length === 0 ? null : JSON.stringify([entries, chest.wearEntries(), chest.enchantEntries()]);
+  }
+
+  /** 다른 사람이 알려 준 글자로 상자 내용을 바꾼다 (null이면 비운다). 이상한 글자는 무시한다. */
+  setRaw(x: number, y: number, z: number, data: string | null): void {
+    if (data === null) {
+      this.chests.delete(this.key(x, y, z));
+      return;
+    }
+    try {
+      const [entries, wear, enchants] = JSON.parse(data) as [[number, number][], [number, number][], [number, [string, number][]][]];
+      if (!Array.isArray(entries)) return;
+      const chest = new Inventory();
+      chest.load(entries, Array.isArray(wear) ? wear : [], Array.isArray(enchants) ? enchants : []);
+      this.chests.set(this.key(x, y, z), chest);
+    } catch {
+      // 모양이 이상한 글자는 무시한다.
+    }
+  }
+
   /** 저장용: 안에 뭔가 든 상자들만. */
   toArray(): ChestEntry[] {
     const out: ChestEntry[] = [];

@@ -35,9 +35,16 @@ export class Projectile {
   }
 }
 
+export interface PlayerBox {
+  id?: string;
+  x: number;
+  y: number;
+  z: number;
+}
+
 export type ProjectileEvent =
   | { type: "mob"; projectile: Projectile; mob: Mob }
-  | { type: "player"; projectile: Projectile }
+  | { type: "player"; projectile: Projectile; playerId: string }
   | { type: "block"; projectile: Projectile };
 
 /** 날아가는 화살들. 화면 없이 움직임과 맞았는지만 계산한다. */
@@ -58,8 +65,9 @@ export class ProjectileField {
    * 한 프레임 진행한다. 빠른 화살이 얇은 벽을 뚫고 지나가지 않도록 작은 걸음으로 나눠 움직이고,
    * 이번에 맞은 것(동물, 플레이어, 블록)들을 돌려준다. 동물·플레이어에 맞은 화살은 사라지고, 블록에 맞은 화살은 박힌다.
    */
-  update(dt: number, world: World, mobs: readonly Mob[], player: { x: number; y: number; z: number } | null): ProjectileEvent[] {
+  update(dt: number, world: World, mobs: readonly Mob[], playerInput: PlayerBox | readonly PlayerBox[] | null): ProjectileEvent[] {
     const events: ProjectileEvent[] = [];
+    const players: readonly PlayerBox[] = playerInput === null ? [] : Array.isArray(playerInput) ? playerInput : [playerInput as PlayerBox];
     for (let i = this.arrows.length - 1; i >= 0; i--) {
       const arrow = this.arrows[i];
       arrow.age += dt;
@@ -99,9 +107,12 @@ export class ProjectileField {
             events.push({ type: "mob", projectile: arrow, mob });
             removed = true;
           }
-        } else if (player && Math.abs(nx - player.x) < PLAYER_HALF && Math.abs(nz - player.z) < PLAYER_HALF && ny >= player.y && ny <= player.y + PLAYER_HEIGHT) {
-          events.push({ type: "player", projectile: arrow });
-          removed = true;
+        } else {
+          const player = players.find((p) => Math.abs(nx - p.x) < PLAYER_HALF && Math.abs(nz - p.z) < PLAYER_HALF && ny >= p.y && ny <= p.y + PLAYER_HEIGHT);
+          if (player) {
+            events.push({ type: "player", projectile: arrow, playerId: player.id ?? "" });
+            removed = true;
+          }
         }
       }
       if (removed) this.arrows.splice(i, 1);

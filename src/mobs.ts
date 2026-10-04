@@ -1,4 +1,5 @@
 import { Item } from "./items";
+import type { MobSnap } from "./protocol";
 import { professionAt } from "./trades";
 import type { VillageSite } from "./village";
 import { Block, SEA_LEVEL, World } from "./world";
@@ -129,6 +130,30 @@ const SPAWN_MAX = 48;
 
 export type Rng = () => number;
 
+/** 동물이 노리거나 따라갈 수 있는 사람 (id는 멀티플레이에서 누구인지 구별할 때 쓴다). */
+export interface PlayerPos {
+  id?: string;
+  x: number;
+  y: number;
+  z: number;
+}
+
+/** 가장 가까운 사람 */
+function nearestPlayer(players: readonly PlayerPos[], mob: { x: number; z: number }): PlayerPos {
+  let best = players[0];
+  let bestDistance = Math.hypot(best.x - mob.x, best.z - mob.z);
+  for (let i = 1; i < players.length; i++) {
+    const distance = Math.hypot(players[i].x - mob.x, players[i].z - mob.z);
+    if (distance < bestDistance) {
+      best = players[i];
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+let nextMobId = 1;
+
 export interface MobSound {
   kind: MobKind;
   x: number;
@@ -146,6 +171,8 @@ export interface ArrowShot {
   hit: boolean;
   /** 화살이 아니라 드래곤의 불숨이면 true (다른 소리로 재생한다). */
   fire?: boolean;
+  /** 노린 사람 (PlayerPos.id) */
+  target?: string;
 }
 
 /** 크리퍼가 터진 자리 */
@@ -157,6 +184,13 @@ export interface Explosion {
 
 /** 돌아다니는 동물 한 마리. 걷기, 중력, 벽 충돌, 한 칸 오르기, 물에 뜨기를 스스로 처리한다. */
 export class Mob {
+  /** 동물마다 다른 번호 (멀티플레이에서 호스트와 다른 사람이 같은 동물을 가리킬 때 쓴다) */
+  id = nextMobId++;
+  /** 멀티플레이에서 호스트가 아닌 사람 화면의 동물은, 호스트가 알려 준 자리(t*)로 부드럽게 따라간다. */
+  tx = NaN;
+  ty = NaN;
+  tz = NaN;
+  tyaw = 0;
   vy = 0;
   yaw = 0;
   hp: number;
@@ -466,6 +500,8 @@ export interface DamageHit {
   x: number;
   z: number;
   kind: "melee" | "explosion" | "fire";
+  /** 누가 맞았는지 (PlayerPos.id, 혼자 하면 "") */
+  target: string;
 }
 
 export interface MobUpdateResult {
@@ -484,6 +520,7 @@ export interface MobUpdateResult {
 export class MobSimulation {
   readonly mobs: Mob[] = [];
   private spawnTimer = 0;
+  private spawnCursor = 0;
 
   /** 처음 시작할 때 주변에 동물을 미리 깔아 둔다. */
   populate(world: World, centerX: number, centerZ: number, count: number, rng: Rng): void {
@@ -522,6 +559,76 @@ export class MobSimulation {
       });
     }
     return spawned;
+  }
+
+  /** 지금 모든 동물의 모습 (호스트가 다른 사람에게 알릴 때 쓴다). */
+  snapshot(): MobSnap[] {
+    const r = (v: number): number => Math.round(v * 100) / 100;
+    return this.mobs.slice(0, 64).map((m): MobSnap => {
+      const flags = (m.baby ? 1 : 0) | (m.tamed ? 2 : 0) | (m.love > 0 ? 4 : 0) | (m.moving ? 8 : 0) | (m.hurtTimer > 0 ? 16 : 0) | (m.fuse > 0 ? 32 : 0) | (m.ridden ? 64 : 0);
+      return [m.id, m.kind, r(m.x), r(m.y), r(m.z), r(m.yaw), Math.round(m.hp * 10) / 10, flags, m.profession, m.homeKey];
+    });
+  }
+
+  /**
+   * 호스트가 알려 준 동물들로 이 목록을 맞춘다 (호스트가 아닌 사람의 화면용).
+   * 이미 있는 동물은 자리만 새로 정해 두고(부드럽게 따라가며 움직인다), 없는 동물은 만들고, 목록에 없어진 동물은 지운다.
+   */
+  applySnapshot(list: MobSnap[], rng: Rng): void {
+    const seen = new Set<number>();
+    for (const [id, kind, x, y, z, yaw, hp, flags, profession, homeKey] of list) {
+      if (!(kind in MOB_SPECS)) continue;
+      seen.add(id);
+      let mob = this.mobs.find((m) => m.id === id);
+      if (!mob) {
+        mob = new Mob(kind as MobKind, x, y, z, rng);
+        mob.id = id;
+        this.mobs.push(mob);
+        if (id >= nextMobId) nextMobId = id + 1;
+      }
+      mob.tx = x;
+      mob.ty = y;
+      mob.tz = z;
+      mob.tyaw = yaw;
+      mob.hp = hp;
+      mob.baby = (flags & 1) !== 0;
+      mob.tamed = (flags & 2) !== 0;
+      mob.love = (flags & 4) !== 0 ? 1 : 0;
+      mob.moving = (flags & 8) !== 0;
+      mob.hurtTimer = (flags & 16) !== 0 ? 0.2 : 0;
+      mob.fuse = (flags & 32) !== 0 ? 0.5 : 0;
+      mob.ridden = (flags & 64) !== 0;
+      mob.profession = profession;
+      mob.homeKey = homeKey;
+      if (profession && homeKey && !mob.home) mob.home = { x, z };
+      if (mob.tamed) mob.persistent = true;
+    }
+    for (let i = this.mobs.length - 1; i >= 0; i--) if (!seen.has(this.mobs[i].id)) this.mobs.splice(i, 1);
+  }
+
+  /** 호스트가 아닌 사람의 화면: 동물을 호스트가 알려 준 자리로 부드럽게 옮긴다. */
+  smoothProxies(dt: number): void {
+    const k = Math.min(1, dt * 10);
+    for (const mob of this.mobs) {
+      if (Number.isNaN(mob.tx)) continue;
+      const startX = mob.x;
+      const startZ = mob.z;
+      // 너무 멀리 떨어졌으면(순간이동·처음 나타남) 바로 맞춘다.
+      if (Math.hypot(mob.tx - mob.x, mob.tz - mob.z) > 6) {
+        mob.x = mob.tx;
+        mob.z = mob.tz;
+      } else {
+        mob.x += (mob.tx - mob.x) * k;
+        mob.z += (mob.tz - mob.z) * k;
+      }
+      mob.y += (mob.ty - mob.y) * k;
+      let dYaw = mob.tyaw - mob.yaw;
+      while (dYaw > Math.PI) dYaw -= Math.PI * 2;
+      while (dYaw < -Math.PI) dYaw += Math.PI * 2;
+      mob.yaw += dYaw * k;
+      mob.hurtTimer = Math.max(0, mob.hurtTimer - dt);
+      mob.walkPhase += Math.hypot(mob.x - startX, mob.z - startZ) * 5;
+    }
   }
 
   /** 새끼를 하나 만든다 (몸은 절반, 체력도 절반). */
@@ -614,7 +721,7 @@ export class MobSimulation {
     dt: number,
     world: World,
     rng: Rng,
-    player: { x: number; y: number; z: number },
+    playerInput: PlayerPos | readonly PlayerPos[],
     night: boolean,
     /** false면 적대적인 동물이 플레이어를 쫓지도 공격하지도 않는다 (창작 모드). */
     targetable = true,
@@ -628,11 +735,15 @@ export class MobSimulation {
     let damage = 0;
     const exploded: Mob[] = [];
     const wolfKilled: Mob[] = [];
+    const players: readonly PlayerPos[] = Array.isArray(playerInput) ? playerInput : [playerInput as PlayerPos];
+    if (players.length === 0) return { hits, births, sounds, damage, shots, explosions, kills };
 
     for (const mob of this.mobs) {
       // 타고 있는 말은 플레이어가 움직인다 (main.ts가 위치를 맞춰 준다).
       if (mob.ridden) continue;
       const spec = MOB_SPECS[mob.kind];
+      const player = nearestPlayer(players, mob);
+      const targetId = player.id ?? "";
       const distance = Math.hypot(mob.x - player.x, mob.z - player.z);
       // 보스(드래곤)는 밤이 아니어도 늘 플레이어를 쫓는다 — 직접 불러낸 것이니 낮이라고 봐줄 필요는 없다.
       const engaged = spec.hostile && (night || spec.boss) && targetable && distance < CHASE_RANGE;
@@ -643,7 +754,7 @@ export class MobSimulation {
         if (engaged && distance < DRAGON_BITE_RANGE && mob.attackCooldown <= 0) {
           mob.attackCooldown = DRAGON_BITE_COOLDOWN;
           damage += DRAGON_BITE_DAMAGE;
-          hits.push({ damage: DRAGON_BITE_DAMAGE, x: mob.x, z: mob.z, kind: "melee" });
+          hits.push({ damage: DRAGON_BITE_DAMAGE, x: mob.x, z: mob.z, kind: "melee", target: targetId });
         }
         if (engaged && distance < DRAGON_FIRE_RANGE && mob.fireCooldown <= 0) {
           mob.fireCooldown = DRAGON_FIRE_COOLDOWN;
@@ -656,9 +767,10 @@ export class MobSimulation {
             toZ: player.z,
             hit: true,
             fire: true,
+            target: targetId,
           });
           damage += DRAGON_FIRE_DAMAGE;
-          hits.push({ damage: DRAGON_FIRE_DAMAGE, x: mob.x, z: mob.z, kind: "fire" });
+          hits.push({ damage: DRAGON_FIRE_DAMAGE, x: mob.x, z: mob.z, kind: "fire", target: targetId });
         }
       } else if (mob.kind === "wolf" && mob.tamed) {
         // 근처(WOLF_GUARD_RANGE 안)에 적대적인 동물이 있으면 대신 쫓아가 물고, 없으면 플레이어를 따라간다.
@@ -684,7 +796,7 @@ export class MobSimulation {
             explosions.push({ x: mob.x, y: mob.y, z: mob.z });
             const falloff = Math.max(0, 1 - distance / CREEPER_EXPLOSION_RADIUS);
             damage += CREEPER_MAX_DAMAGE * falloff;
-            if (falloff > 0) hits.push({ damage: CREEPER_MAX_DAMAGE * falloff, x: mob.x, z: mob.z, kind: "explosion" });
+            if (falloff > 0) hits.push({ damage: CREEPER_MAX_DAMAGE * falloff, x: mob.x, z: mob.z, kind: "explosion", target: targetId });
             exploded.push(mob);
             continue;
           }
@@ -708,6 +820,7 @@ export class MobSimulation {
             toY: player.y + 1.2,
             toZ: player.z,
             hit,
+            target: targetId,
           });
         }
       } else {
@@ -728,7 +841,7 @@ export class MobSimulation {
         if (spec.hostile && targetable && distance < ATTACK_RANGE && Math.abs(mob.y - player.y) < 1.5 && mob.attackCooldown <= 0) {
           mob.attackCooldown = ATTACK_COOLDOWN;
           damage += ATTACK_DAMAGE;
-          hits.push({ damage: ATTACK_DAMAGE, x: mob.x, z: mob.z, kind: "melee" });
+          hits.push({ damage: ATTACK_DAMAGE, x: mob.x, z: mob.z, kind: "melee", target: targetId });
         }
       }
 
@@ -765,7 +878,8 @@ export class MobSimulation {
       const mob = this.mobs[i];
       // 길들인 늑대는 플레이어를 따라다니느라 안 그래도 잘 안 멀어지지만, 혹시 멀어져도 사라지지 않는다.
       const tamedPet = mob.tamed;
-      const far = (!tamedPet && Math.hypot(mob.x - player.x, mob.z - player.z) > DESPAWN_DISTANCE) || mob.y < -5;
+      const nearest = nearestPlayer(players, mob);
+      const far = (!tamedPet && Math.hypot(mob.x - nearest.x, mob.z - nearest.z) > DESPAWN_DISTANCE) || mob.y < -5;
       // 보스(드래곤)는 직접 불러낸 것이니 아침이 됐다고 사라지지는 않는다 (너무 멀어지면 다른 동물처럼 사라진다).
       const sunrise = MOB_SPECS[mob.kind].hostile && !MOB_SPECS[mob.kind].boss && !mob.persistent && !night && rng() < dt * DAY_DESPAWN_RATE;
       if (far || sunrise) this.mobs.splice(i, 1);
@@ -774,12 +888,14 @@ export class MobSimulation {
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
       this.spawnTimer = 1;
+      // 여러 명이 있으면 돌아가며 한 사람 근처에 새로 나타나게 한다.
+      const center = players[this.spawnCursor++ % players.length];
       const hostileCount = this.mobs.filter((m) => MOB_SPECS[m.kind].hostile).length;
       const fishCount = this.mobs.filter((m) => m.kind === "fish").length;
-      if (night && hostileCount < MAX_HOSTILE_COUNT) this.trySpawn(world, player.x, player.z, rng, true);
+      if (night && hostileCount < MAX_HOSTILE_COUNT) this.trySpawn(world, center.x, center.z, rng, true);
       const villagerCount = this.mobs.filter((m) => m.kind === "villager").length;
-      if (this.mobs.length - hostileCount - villagerCount < TARGET_MOB_COUNT) this.trySpawn(world, player.x, player.z, rng);
-      if (fishCount < TARGET_FISH_COUNT) this.trySpawnWater(world, player.x, player.z, rng);
+      if (this.mobs.length - hostileCount - villagerCount < TARGET_MOB_COUNT * Math.max(1, Math.min(players.length, 2))) this.trySpawn(world, center.x, center.z, rng);
+      if (fishCount < TARGET_FISH_COUNT) this.trySpawnWater(world, center.x, center.z, rng);
     }
     return { hits, births, sounds, damage, shots, explosions, kills };
   }

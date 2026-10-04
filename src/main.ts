@@ -18,7 +18,7 @@ import { ambientColor, DAY_LENGTH_SECONDS, daylight, nextMorning, phaseFromSecon
 import { solidMaterial, waterMaterial } from "./mesher";
 import { ChunkedWorldMesh } from "./chunks";
 import { MobRenderer } from "./mobRender";
-import { DropField } from "./drops";
+import { DropField, PICKUP_RADIUS } from "./drops";
 import { DropRenderer } from "./dropRender";
 import { FUELS, FurnaceField, SMELTS } from "./furnace";
 import { Fishing, MAX_LINE_DISTANCE } from "./fishing";
@@ -26,13 +26,13 @@ import { refreshFences } from "./fences";
 import { settleFrom } from "./falling";
 import { HeldHandRenderer } from "./heldHand";
 import { EGG_BY_ITEM } from "./eggs";
-import { BREEDABLE, MOB_SPECS, MobSimulation, raycastMobs, SKELETON_DAMAGE, TAME_FOODS, type Mob, type MobKind } from "./mobs";
+import { BREEDABLE, MOB_SPECS, MobSimulation, raycastMobs, SKELETON_DAMAGE, TAME_FOODS, type Mob, type MobKind, type MobUpdateResult } from "./mobs";
 import { arrowDamage, arrowSpeed, attackStrength, BOW_MIN_POWER, bowPower, meleeResult, SHIELD_EXPLOSION_TAKEN, SHIELD_WALK_FACTOR, shieldBlocks, shieldWear, weaponStats } from "./combat";
-import { aimVelocity, ProjectileField } from "./projectiles";
+import { aimVelocity, Projectile, ProjectileField } from "./projectiles";
 import { ArrowRenderer } from "./projectileRender";
 import { connectAndWait, NetClient, randomRoomCode } from "./net";
 import { PlayerAvatarRenderer } from "./playerRender";
-import { RemotePlayer, sanitizeName } from "./protocol";
+import { type HostReply, type HostRequest, RemotePlayer, sanitizeChat, sanitizeName } from "./protocol";
 import { canTrade, doTrade, isProfession, PROFESSION_INFO } from "./trades";
 import { breakSeconds, canHarvest, maxDurability, TOOL_BY_ID, toolDurability, type ToolDef } from "./tools";
 import { AdaptiveQuality, fogFar, QUALITY_LEVELS } from "./quality";
@@ -94,6 +94,29 @@ const net = new NetClient();
 const remotePlayers = new Map<string, RemotePlayer>();
 const myColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
 
+/** 내가 동물·떨어진 아이템을 움직이는 호스트인지. 혼자 하거나 연결이 없으면 늘 true. */
+function amHost(): boolean {
+  return net.isHost;
+}
+
+/** 호스트가 아닌 사람의 화면인지 (동물·아이템을 호스트에게서 받아 보여 주기만 한다). */
+function isGuest(): boolean {
+  return net.connected && !net.isHost;
+}
+
+/** 같은 방의 모든 사람(나 포함)의 자리. 동물이 가까운 사람을 노릴 때 쓴다. */
+function everyonePositions(includeMe = true): { id: string; x: number; y: number; z: number }[] {
+  const list = includeMe ? [{ id: net.connected ? net.myId : "", x: player.x, y: player.y, z: player.z }] : [];
+  for (const p of remotePlayers.values()) list.push({ id: p.id, x: p.x, y: p.y, z: p.z });
+  return list;
+}
+
+/** 떨어진 아이템을 만든다. 호스트가 아닌 사람은 호스트에게 부탁한다 (아이템은 호스트가 움직이므로). */
+function spawnDrop(item: number, count: number, x: number, y: number, z: number): void {
+  if (isGuest()) net.sendToHost({ act: "spawnDrop", item, count, x, y, z });
+  else drops.spawn(item, count, x, y, z, Math.random);
+}
+
 function askName(): string {
   const remembered = sanitizeName(readStorage(NICKNAME_KEY) ?? undefined);
   // 일부 브라우저·환경(예: 팝업이 막혔거나 자동화 도구)은 prompt() 자체를 막고 오류를 낼 수 있다.
@@ -139,6 +162,18 @@ function netCallbacks() {
       avatarRenderer.remove(id);
       if (name) showToast(name + " 님이 나갔어요");
     },
+    onHost: (id: string) => {
+      if (id === net.myId) showToast("🏠 이제 당신이 동물과 아이템을 움직이는 호스트예요", 3500);
+    },
+    onChat: (_id: string, name: string, text: string) => addChatLine(name, text, false),
+    onSnapshot: applyHostSnapshot,
+    onFx: (_kind: "explosion", x: number, y: number, z: number) => {
+      audio.playExplosion();
+      spawnExplosion(x, y, z);
+    },
+    onToHost: handleHostRequest,
+    onFromHost: handleHostReply,
+    onContainer: applyRemoteContainer,
     onFull: () => showToast("방이 꽉 찼어요(최대 4명)", 3000),
     onDisconnect: () => {
       showToast("멀티플레이 연결이 끊겼어요. 계속 혼자 진행할 수 있어요", 3500);
@@ -150,6 +185,8 @@ function netCallbacks() {
 }
 
 let remoteSeed: number | null = null;
+/** 방에 들어갈 때 받은 상자·화로 내용 (월드를 다 만든 뒤에 적용한다). */
+let initialContainers: [string, string][] = [];
 let multiplayerJoinError: string | null = null;
 
 if (roomParam) {
@@ -166,6 +203,7 @@ if (roomParam) {
       { ...netCallbacks(), onFull: () => { multiplayerJoinError = "방이 꽉 찼어요(최대 4명). 혼자 시작할게요."; } },
     );
     remoteSeed = result.seed;
+    initialContainers = result.containers;
     editLog.load(result.edits);
     for (const p of result.players) remotePlayers.set(p.id, p);
   } catch {
@@ -205,6 +243,7 @@ const furnaces = new FurnaceField();
 if (saved && saved.seed === seed && saved.furnaces) furnaces.load(saved.furnaces);
 const chests = new ChestField();
 if (saved && saved.seed === seed && saved.chests) chests.load(saved.chests);
+for (const [key, data] of initialContainers) applyContainerData(key, data);
 const drops = new DropField();
 if (saved && saved.seed === seed && saved.drops) drops.load(saved.drops);
 
@@ -648,10 +687,14 @@ function sleepInBed(): void {
     showToast("가까이에 좀비가 있어서 잘 수 없어요");
     return;
   }
-  worldSeconds = nextMorning(worldSeconds);
+  if (isGuest()) {
+    net.sendToHost({ act: "setTime", t: nextMorning(worldSeconds) });
+  } else {
+    worldSeconds = nextMorning(worldSeconds);
+    mobSim.clearHostile();
+  }
   unlockAchievement("sleep");
   health.heal(10);
-  mobSim.clearHostile();
   refreshHearts();
   toggleInventory(false);
   showToast("푹 잤어요. 아침이 밝았어요", 2500);
@@ -684,7 +727,7 @@ const craftUi = new CraftUi({
     refreshHotbar();
     scheduleSave();
   },
-  dropStack: (stack) => drops.spawn(stack.item, stack.count, player.x, player.y + 1, player.z, Math.random),
+  dropStack: (stack) => spawnDrop(stack.item, stack.count, player.x, player.y + 1, player.z),
   playCraft: () => audio.playCraft(),
   playPickup: () => audio.playPickup(),
   onCrafted: (recipe) => {
@@ -798,6 +841,7 @@ function refreshFurnacePanel(): void {
   const changed = (): void => {
     refreshHotbar();
     scheduleSave();
+    if (openFurnace) syncFurnace(openFurnace.x, openFurnace.y, openFurnace.z);
     refreshFurnacePanel();
   };
 
@@ -899,6 +943,7 @@ function refreshChestPanel(): void {
           audio.playPlace(Block.Planks);
           refreshHotbar();
           scheduleSave();
+          if (openChest) syncChest(openChest.x, openChest.y, openChest.z);
           refreshChestPanel();
         }),
       );
@@ -989,6 +1034,10 @@ function dismount(): void {
 function tryRide(): boolean {
   const mob = mobInSight(currentTarget());
   if (!mob || mob.kind !== "horse") return false;
+  if (isGuest()) {
+    showToast("말 타기는 방을 만든 사람(호스트)만 할 수 있어요", 2600);
+    return true;
+  }
   if (mode === "survival" && !mob.tamed) {
     showToast("야생 말이에요 — 밀 3개를 먹여서(놓기) 먼저 길들여 주세요", 3000);
     return true;
@@ -1346,7 +1395,7 @@ function handleMobKill(kind: MobKind, x: number, y: number, z: number, baby = fa
   gainXp(MOB_XP[kind] ?? 0);
   // 새끼는 아무것도 떨구지 않는다.
   const loot = mode === "survival" && !baby ? mobDrops(kind, Math.random) : [];
-  for (const [item, amount] of loot) drops.spawn(item, amount, x, y + 0.3, z, Math.random);
+  for (const [item, amount] of loot) spawnDrop(item, amount, x, y + 0.3, z);
   if (loot.length > 0) scheduleSave();
 }
 
@@ -1390,7 +1439,7 @@ function attackMob(mob: Mob): void {
   // 무기로 휘두른 도구는 닳는다 (검뿐 아니라 도끼·곡괭이·삽도).
   const tool = TOOL_BY_ID.get(item);
   if (survival && tool && inventory.useTool(item)) toolBroke(tool);
-  if (mobSim.hit(mob, player.x, player.z, result.damage, result.knock)) handleMobKill(mob.kind, mob.x, mob.y, mob.z, mob.baby);
+  damageMob(mob, result.damage, result.knock, player.x, player.z);
 }
 
 // ---- 활: 부수기를 꾹 눌러 당겼다가 떼면 화살이 날아간다. 화살은 중력으로 휘어서 날아간다.
@@ -1517,18 +1566,20 @@ function removeBlock(x: number, y: number, z: number, harvest = true): boolean {
   const broken = world.get(x, y, z);
   if (broken === Block.Furnace) {
     const contents = furnaces.remove(x, y, z, worldSeconds);
-    if (mode === "survival") for (const slot of contents) drops.spawn(slot.item, slot.count, x + 0.5, y + 0.3, z + 0.5, Math.random);
+    if (net.connected) net.sendContainer(containerKey("furnace", x, y, z), null);
+    if (mode === "survival") for (const slot of contents) spawnDrop(slot.item, slot.count, x + 0.5, y + 0.3, z + 0.5);
     if (openFurnace && openFurnace.x === x && openFurnace.y === y && openFurnace.z === z) closeStations();
   }
   if (isChest(broken)) {
     const contents = chests.remove(x, y, z);
-    if (mode === "survival") for (const [item, amount] of contents) drops.spawn(item, amount, x + 0.5, y + 0.3, z + 0.5, Math.random);
+    if (net.connected) net.sendContainer(containerKey("chest", x, y, z), null);
+    if (mode === "survival") for (const [item, amount] of contents) spawnDrop(item, amount, x + 0.5, y + 0.3, z + 0.5);
     if (openChest && openChest.x === x && openChest.y === y && openChest.z === z) closeStations();
   }
   if (mode === "survival") {
     if (harvest) {
       const gained = dropsFor(broken, Math.random);
-      for (const [item, amount] of gained) drops.spawn(item, amount, x + 0.5, y + 0.4, z + 0.5, Math.random);
+      for (const [item, amount] of gained) spawnDrop(item, amount, x + 0.5, y + 0.4, z + 0.5);
       if (gained.some(([item]) => item === Block.Sprout) && broken === Block.Grass) showToast("밀 씨앗을 얻었어요");
     }
     refreshHotbar();
@@ -1641,6 +1692,225 @@ function updateMining(dt: number): void {
   (crack.material as THREE.MeshBasicMaterial).opacity = Math.min(1, miningProgress / needed) * 0.6;
 }
 
+// ---- 멀티플레이: 호스트가 동물·떨어진 아이템을 움직이고, 다른 사람은 그 모습을 받아 보여 주기만 한다.
+const SNAPSHOT_INTERVAL = 0.2;
+let snapshotTimer = 0;
+/** 호스트에게 먹이를 줘도 되냐고 물어 둔 동물 번호 → 먹이 */
+const pendingFeeds = new Map<number, { item: number; kind: MobKind }>();
+const pendingPickups = new Set<number>();
+
+/** 호스트가 알려 준 동물·아이템·화살·시각을 내 화면에 맞춘다. */
+function applyHostSnapshot(t: number, mobsList: Parameters<MobSimulation["applySnapshot"]>[0], dropsList: Parameters<DropField["applySnapshot"]>[0], arrowsList: [number, number, number, number, number, number][]): void {
+  if (!isGuest()) return;
+  worldSeconds = t;
+  mobSim.applySnapshot(mobsList, Math.random);
+  drops.applySnapshot(dropsList);
+  // 괴물이 쏜 화살은 호스트가 알려 주는 것으로 바꿔 놓고, 다음 알림이 올 때까지는 내 화면에서 날려 둔다.
+  for (let i = projectiles.arrows.length - 1; i >= 0; i--) if (projectiles.arrows[i].owner === "enemy") projectiles.arrows.splice(i, 1);
+  for (const [x, y, z, vx, vy, vz] of arrowsList) projectiles.arrows.push(new Projectile(x, y, z, vx, vy, vz, "enemy", 0));
+}
+
+/** (호스트) 지금 동물·아이템·화살의 모습을 모두에게 알린다. */
+function sendHostSnapshot(): void {
+  const round = (v: number): number => Math.round(v * 100) / 100;
+  const arrows = projectiles.arrows
+    .filter((a) => a.owner === "enemy" && !a.stuck)
+    .slice(0, 32)
+    .map((a): [number, number, number, number, number, number] => [round(a.x), round(a.y), round(a.z), round(a.vx), round(a.vy), round(a.vz)]);
+  net.sendSnapshot(worldSeconds, mobSim.snapshot(), drops.snapshot(), arrows);
+}
+
+/** (호스트가 아닌 사람) 가까이 온 떨어진 아이템을 줍겠다고 호스트에게 알린다. */
+function requestPickups(): void {
+  for (const d of drops.drops) {
+    if (pendingPickups.has(d.id)) continue;
+    if (Math.hypot(d.x - player.x, d.z - player.z) > PICKUP_RADIUS || Math.abs(d.y - (player.y + 0.8)) > 1.6) continue;
+    if (inventory.freeSpace(d.item) <= 0) continue;
+    pendingPickups.add(d.id);
+    net.sendToHost({ act: "pickup", id: d.id });
+    window.setTimeout(() => pendingPickups.delete(d.id), 1500);
+  }
+}
+
+/** 동물에게 피해를 준다. 호스트가 아니면 호스트에게 알려서 대신 입히게 한다. */
+function damageMob(mob: Mob, damage: number, knock: number, fromX: number, fromZ: number): void {
+  if (isGuest()) {
+    net.sendToHost({ act: "hitMob", id: mob.id, damage, knock, fromX, fromZ });
+    mob.hurtTimer = 0.25;
+    return;
+  }
+  if (mobSim.hit(mob, fromX, fromZ, damage, knock)) handleMobKill(mob.kind, mob.x, mob.y, mob.z, mob.baby);
+}
+
+/** (호스트) 다른 사람의 부탁을 처리한다. */
+function handleHostRequest(from: string, request: HostRequest): void {
+  if (!amHost()) return;
+  switch (request.act) {
+    case "hitMob": {
+      const mob = mobSim.mobs.find((m) => m.id === request.id);
+      if (!mob) return;
+      const kind = mob.kind;
+      const [x, y, z, baby] = [mob.x, mob.y, mob.z, mob.baby];
+      if (mobSim.hit(mob, request.fromX, request.fromZ, request.damage, request.knock)) net.sendToPlayer(from, { act: "killed", kind, x, y, z, baby });
+      return;
+    }
+    case "feed": {
+      const mob = mobSim.mobs.find((m) => m.id === request.id);
+      const result = !mob ? "no" : request.item === Item.Grain ? (mobSim.feed(mob) ? "love" : "no") : mobSim.feedTame(mob, request.item);
+      net.sendToPlayer(from, { act: "feedResult", id: request.id, result });
+      return;
+    }
+    case "spawnMob": {
+      if (request.kind === "dragon") mobSim.summonDragon(request.x, request.y, request.z, Math.random);
+      else if (request.kind in MOB_SPECS) mobSim.spawn(request.kind as MobKind, request.x, request.y, request.z, Math.random, true);
+      return;
+    }
+    case "spawnDrop":
+      drops.spawn(request.item, request.count, request.x, request.y, request.z, Math.random);
+      return;
+    case "pickup": {
+      const p = remotePlayers.get(from);
+      const d = drops.drops.find((drop) => drop.id === request.id);
+      if (!p || !d || Math.hypot(d.x - p.x, d.z - p.z) > 4) return;
+      drops.take(request.id);
+      net.sendToPlayer(from, { act: "give", item: d.item, count: d.count });
+      return;
+    }
+    case "setTime":
+      worldSeconds = request.t;
+      mobSim.clearHostile();
+      return;
+  }
+}
+
+/** 먹이를 먹인 결과를 알려 주고 먹이를 쓴다 (호스트가 아닌 사람이 호스트의 답을 받았을 때). */
+function finishFeed(kind: MobKind, item: number, result: string): void {
+  if (result === "no") {
+    showToast("지금은 먹이를 줄 수 없어요");
+    return;
+  }
+  inventory.remove(item, 1);
+  audio.playEat();
+  if (result === "love") {
+    showToast("💕 밀을 먹었어요! 같은 동물이 가까이 오면 새끼가 태어나요", 2400);
+  } else if (result === "tamed") {
+    audio.playCraft();
+    audio.playMob(kind, 1);
+    const name = kind === "wolf" ? "늑대" : kind === "pig" ? "돼지" : kind === "sheep" ? "양" : "말";
+    showToast("💕 " + name + "을(를) 길들였어요!", 3000);
+    if (kind === "wolf") unlockAchievement("wolf");
+    unlockAchievement("pet");
+  } else {
+    showToast("🍽 먹이를 먹었어요", 2000);
+  }
+  refreshHotbar();
+  refreshOpenPanels();
+  scheduleSave();
+}
+
+/** 호스트가 나에게 알려 준 일을 처리한다. */
+function handleHostReply(reply: HostReply): void {
+  switch (reply.act) {
+    case "hurt": {
+      const kinds = ["melee", "explosion", "fire", "arrow"] as const;
+      takeHit(reply.damage, reply.x, reply.z, kinds.find((k) => k === reply.kind) ?? "melee");
+      return;
+    }
+    case "killed":
+      if (reply.kind in MOB_SPECS) handleMobKill(reply.kind as MobKind, reply.x, reply.y, reply.z, reply.baby);
+      return;
+    case "give": {
+      const added = inventory.add(reply.item, reply.count);
+      if (added < reply.count) spawnDrop(reply.item, reply.count - added, player.x, player.y + 1, player.z);
+      audio.playPickup();
+      refreshHotbar();
+      refreshOpenPanels();
+      scheduleSave();
+      return;
+    }
+    case "feedResult": {
+      const pending = pendingFeeds.get(reply.id);
+      pendingFeeds.delete(reply.id);
+      if (pending) finishFeed(pending.kind, pending.item, reply.result);
+      return;
+    }
+  }
+}
+
+// ---- 상자·화로를 같은 방 사람들이 함께 쓴다 (마지막에 바꾼 쪽이 이긴다).
+const containerKey = (kind: "chest" | "furnace", x: number, y: number, z: number): string => kind + ":" + x + "," + y + "," + z;
+
+function syncChest(x: number, y: number, z: number): void {
+  if (net.connected) net.sendContainer(containerKey("chest", x, y, z), chests.rawAt(x, y, z));
+}
+
+function syncFurnace(x: number, y: number, z: number): void {
+  if (net.connected) net.sendContainer(containerKey("furnace", x, y, z), furnaces.rawAt(x, y, z));
+}
+
+/** 서버가 알려 준 상자·화로 내용을 적용한다 (화면은 건드리지 않는다). */
+function applyContainerData(key: string, data: string | null): void {
+  const match = /^(chest|furnace):(-?\d+),(-?\d+),(-?\d+)$/.exec(key);
+  if (!match) return;
+  const [x, y, z] = [Number(match[2]), Number(match[3]), Number(match[4])];
+  if (match[1] === "chest") chests.setRaw(x, y, z, data);
+  else furnaces.setRaw(x, y, z, data);
+}
+
+function applyRemoteContainer(key: string, data: string | null): void {
+  applyContainerData(key, data);
+  refreshOpenPanels();
+}
+
+// ---- 채팅
+const chatButton = document.getElementById("chat-button") as HTMLElement;
+const chatPanel = document.getElementById("chat-panel") as HTMLElement;
+const chatLog = document.getElementById("chat-log") as HTMLElement;
+const chatFeed = document.getElementById("chat-feed") as HTMLElement;
+const chatInput = document.getElementById("chat-input") as HTMLInputElement;
+const MAX_CHAT_LINES = 40;
+const chatLines: { name: string; text: string; mine: boolean }[] = [];
+
+/** 채팅 한 줄을 로그에 넣고, 화면 왼쪽에 잠깐 보여 준다. */
+function addChatLine(name: string, text: string, mine: boolean): void {
+  chatLines.push({ name, text, mine });
+  if (chatLines.length > MAX_CHAT_LINES) chatLines.shift();
+  chatLog.replaceChildren();
+  for (const line of chatLines) {
+    const row = document.createElement("div");
+    if (line.mine) row.className = "mine";
+    row.textContent = line.name + ": " + line.text;
+    chatLog.append(row);
+  }
+  chatLog.scrollTop = chatLog.scrollHeight;
+  const feed = document.createElement("div");
+  feed.textContent = name + ": " + text;
+  chatFeed.append(feed);
+  while (chatFeed.childElementCount > 5) chatFeed.firstElementChild?.remove();
+  window.setTimeout(() => feed.remove(), 9000);
+  if (!mine) audio.playPickup();
+}
+
+function sendChat(): void {
+  const text = sanitizeChat(chatInput.value);
+  if (!text || !net.connected) return;
+  net.sendChat(text);
+  addChatLine("나", text, true);
+  chatInput.value = "";
+}
+
+onPress(chatButton, () => {
+  const open = chatPanel.classList.toggle("open");
+  if (open) chatInput.focus();
+  else chatInput.blur();
+});
+onPress(document.getElementById("chat-send") as HTMLElement, sendChat);
+chatInput.addEventListener("keydown", (e) => {
+  e.stopPropagation();
+  if (e.key === "Enter") sendChat();
+});
+chatInput.addEventListener("pointerdown", (e) => e.stopPropagation());
+
 // ---- 낚시: 낚싯대를 손에 들고 물을 향해 놓기를 누르면 던지고, 물었을 때 다시 누르면 잡는다.
 const fishing = new Fishing();
 const bobber = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.16), new THREE.MeshBasicMaterial({ color: 0xe03030 }));
@@ -1680,7 +1950,7 @@ function reelIn(): void {
   }
   const { item, count, xp } = result.loot;
   const added = inventory.add(item, count);
-  if (added < count) drops.spawn(item, count - added, player.x, player.y + 1, player.z, Math.random);
+  if (added < count) spawnDrop(item, count - added, player.x, player.y + 1, player.z);
   audio.playPickup();
   showToast("🎣 " + itemLabel(item) + (count > 1 ? " ×" + count : "") + "을(를) 낚았어요!", 2200);
   gainXp(xp);
@@ -1739,6 +2009,11 @@ function updateFishing(dt: number, seconds: number): void {
 function tryBreed(): boolean {
   const mob = mobInSight(currentTarget());
   if (!mob || !BREEDABLE.has(mob.kind) || mode !== "survival" || inventory.count(Item.Grain) === 0) return false;
+  if (isGuest()) {
+    pendingFeeds.set(mob.id, { item: Item.Grain, kind: mob.kind });
+    net.sendToHost({ act: "feed", id: mob.id, item: Item.Grain });
+    return true;
+  }
   if (!mobSim.feed(mob)) {
     showToast("지금은 먹이를 줄 수 없어요 (새끼이거나 방금 새끼를 낳았어요)");
     return true;
@@ -1758,6 +2033,11 @@ function tryTame(): boolean {
   if (!mob || mob.tamed || mode !== "survival") return false;
   const food = TAME_FOODS[mob.kind];
   if (!food || mob.baby || inventory.count(food.item) === 0) return false;
+  if (isGuest()) {
+    pendingFeeds.set(mob.id, { item: food.item, kind: mob.kind });
+    net.sendToHost({ act: "feed", id: mob.id, item: food.item });
+    return true;
+  }
   const result = mobSim.feedTame(mob, food.item);
   if (result === "no") return false;
   inventory.remove(food.item, 1);
@@ -1797,7 +2077,8 @@ function tryUseEgg(): boolean {
   if (mode === "survival") inventory.remove(egg.item, 1);
   const x = px + 0.5;
   const z = pz + 0.5;
-  if (egg.kind === "dragon") mobSim.summonDragon(x, py, z, Math.random);
+  if (isGuest()) net.sendToHost({ act: "spawnMob", kind: egg.kind, x, y: py, z });
+  else if (egg.kind === "dragon") mobSim.summonDragon(x, py, z, Math.random);
   else mobSim.spawn(egg.kind, x, py, z, Math.random, true);
   audio.playMob(egg.kind, 1);
   swingHeldItem();
@@ -1816,7 +2097,8 @@ function tryUseDragonHorn(): boolean {
   const { px, py, pz } = hit;
   if (!world.inBounds(px, py, pz)) return false;
   inventory.remove(Item.DragonHorn, 1);
-  mobSim.summonDragon(px + 0.5, py, pz + 0.5, Math.random);
+  if (isGuest()) net.sendToHost({ act: "spawnMob", kind: "dragon", x: px + 0.5, y: py, z: pz + 0.5 });
+  else mobSim.summonDragon(px + 0.5, py, pz + 0.5, Math.random);
   audio.playMob("dragon", 1);
   showToast("🐉 드래곤이 나타났어요! 조심하세요", 3000);
   unlockAchievement("summon");
@@ -1902,13 +2184,13 @@ function saveNow(): void {
     crops: crops.toArray(),
     furnaces: furnaces.toArray(),
     chests: chests.toArray(),
-    drops: drops.toArray(),
+    drops: isGuest() ? (saved?.drops ?? []) : drops.toArray(),
     achievements: achievements.toArray(),
     hunger: hunger.value,
     xp: experience.toArray(),
     enchants: inventory.enchantEntries(),
     effects: effects.entries(),
-    pets: mobSim.mobs.filter((m) => m.tamed).map((m): [string, number, number, number, number] => [m.kind, m.x, m.y, m.z, m.baby ? 1 : 0]),
+    pets: isGuest() ? (saved?.pets ?? []) : mobSim.mobs.filter((m) => m.tamed).map((m): [string, number, number, number, number] => [m.kind, m.x, m.y, m.z, m.baby ? 1 : 0]),
   };
   writeStorage(saveKey(seed), encodeSave(data));
 }
@@ -1948,6 +2230,7 @@ if (net.connected) {
   net.sendMove(player.x, player.y, player.z, player.yaw, player.pitch);
   for (const p of remotePlayers.values()) avatarRenderer.upsert(p.id, p);
   document.getElementById("multiplayer-button")?.classList.add("connected");
+  chatButton.classList.add("show");
 }
 
 const heartsElement = document.getElementById("hearts") as HTMLElement;
@@ -2035,10 +2318,12 @@ function respawn(): void {
   refreshHunger();
   showToast("쓰러졌어요... 처음 자리에서 다시 일어났어요", 3000);
 }
-mobSim.populate(world, player.x, player.z, 10, Math.random);
-mobSim.maintainVillagers(world.villages, player.x, player.z, Math.random);
+if (amHost()) {
+  mobSim.populate(world, player.x, player.z, 10, Math.random);
+  mobSim.maintainVillagers(world.villages, player.x, player.z, Math.random);
+}
 // 저장해 둔 길들인 동물을 되살린다 (이어하기).
-if (saved && saved.seed === seed && saved.pets) for (const [kind, x, y, z, baby] of saved.pets) mobSim.restorePet(kind, x, y, z, baby === 1, Math.random);
+if (amHost() && saved && saved.seed === seed && saved.pets) for (const [kind, x, y, z, baby] of saved.pets) mobSim.restorePet(kind, x, y, z, baby === 1, Math.random);
 let villagerTimer = 0;
 document.getElementById("loading")?.remove();
 
@@ -2188,6 +2473,9 @@ async function hostRoom(): Promise<void> {
       remotePlayers.set(p.id, p);
       avatarRenderer.upsert(p.id, p);
     }
+    // 지금까지 만든 상자·화로도 방에 올려서 함께 쓰게 한다.
+    for (const [cx, cy, cz] of chests.toArray()) syncChest(cx, cy, cz);
+    for (const [fx, fy, fz] of furnaces.toArray()) syncFurnace(fx, fy, fz);
     myRoomCode = code;
     showToast("방을 만들었어요! 친구에게 방 코드나 주소를 알려주세요", 3500);
   } catch {
@@ -2198,6 +2486,8 @@ async function hostRoom(): Promise<void> {
 
 function refreshMultiplayerPanel(): void {
   multiplayerButton.classList.toggle("connected", net.connected);
+  chatButton.classList.toggle("show", net.connected);
+  if (!net.connected) chatPanel.classList.remove("open");
   multiplayerBody.replaceChildren();
   if (net.connected && myRoomCode) {
     const codeRow = document.createElement("div");
@@ -2378,7 +2668,7 @@ function frame(now: number): void {
   villagerTimer += dt;
   if (villagerTimer >= 2) {
     villagerTimer = 0;
-    mobSim.maintainVillagers(world.villages, player.x, player.z, Math.random);
+    if (amHost()) for (const p of everyonePositions()) mobSim.maintainVillagers(world.villages, p.x, p.z, Math.random);
   }
   if (cropTimer >= 1) {
     cropTimer = 0;
@@ -2442,7 +2732,11 @@ function frame(now: number): void {
     }
   }
   if (mode !== "survival" || !hunger.empty) health.update(dt);
-  const mobResult = mobSim.update(dt, world, Math.random, { x: player.x, y: player.y, z: player.z }, dayFactor < 0.3, mode !== "creative");
+  // 호스트(혼자일 때 포함)가 동물을 움직인다. 호스트가 아닌 사람은 받은 모습으로 부드럽게 따라가기만 한다.
+  const everyone = everyonePositions();
+  let mobResult: MobUpdateResult = { hits: [], births: [], sounds: [], damage: 0, shots: [], explosions: [], kills: [] };
+  if (isGuest()) mobSim.smoothProxies(dt);
+  else mobResult = mobSim.update(dt, world, Math.random, everyone, dayFactor < 0.3, mode !== "creative");
   for (const baby of mobResult.births) {
     gainXp(3);
     audio.playMob(baby.kind, 1 - Math.hypot(baby.x - player.x, baby.z - player.z) / 28);
@@ -2452,31 +2746,37 @@ function frame(now: number): void {
   for (const call of mobResult.sounds) {
     audio.playMob(call.kind, 1 - Math.hypot(call.x - player.x, call.z - player.z) / 28);
   }
-  for (const hit of mobResult.hits) takeHit(hit.damage, hit.x, hit.z, hit.kind);
+  for (const hit of mobResult.hits) {
+    // 다른 사람이 맞은 피해는 그 사람에게 알려서(방패·갑옷은 그 사람 게임이 계산한다) 대신 입게 한다.
+    if (hit.target === "" || hit.target === net.myId) takeHit(hit.damage, hit.x, hit.z, hit.kind);
+    else net.sendToPlayer(hit.target, { act: "hurt", damage: hit.damage, x: hit.x, z: hit.z, kind: hit.kind });
+  }
   for (const shot of mobResult.shots) {
     if (shot.fire) {
       audio.playDragonFire();
       spawnArrow(shot.fromX, shot.fromY, shot.fromZ, shot.toX, shot.toY, shot.toZ);
     } else {
       // 해골 화살은 실제로 날아간다. 정확히 겨냥한 화살은 거의 곧게, 빗나가게 쏜 화살은 크게 벗어난다.
-      const [vx, vy, vz] = aimVelocity(shot.fromX, shot.fromY, shot.fromZ, player.x, player.y + 1, player.z, 22, shot.hit ? 0.1 : 1.1, Math.random);
+      const [vx, vy, vz] = aimVelocity(shot.fromX, shot.fromY, shot.fromZ, shot.toX, shot.toY - 0.2, shot.toZ, 22, shot.hit ? 0.1 : 1.1, Math.random);
       projectiles.shoot(shot.fromX, shot.fromY, shot.fromZ, vx, vy, vz, "enemy", SKELETON_DAMAGE, 3);
       audio.playArrow();
     }
   }
   // 날아가는 화살: 동물에 맞으면 피해를 주고, 괴물의 화살이 플레이어에 맞으면 방패로 막을 수 있다.
-  for (const event of projectiles.update(dt, world, mobSim.mobs, mode === "creative" ? null : { x: player.x, y: player.y, z: player.z })) {
+  const arrowTargets = isGuest() ? null : mode === "creative" ? everyone.slice(1) : everyone;
+  for (const event of projectiles.update(dt, world, mobSim.mobs, arrowTargets)) {
     const arrow = event.projectile;
     if (event.type === "mob") {
       const length = Math.hypot(arrow.vx, arrow.vz) || 1;
       audio.playMobHit();
-      if (mobSim.hit(event.mob, event.mob.x - (arrow.vx / length) * 2, event.mob.z - (arrow.vz / length) * 2, arrow.damage, arrow.knock)) {
-        handleMobKill(event.mob.kind, event.mob.x, event.mob.y, event.mob.z, event.mob.baby);
-      }
+      damageMob(event.mob, arrow.damage, arrow.knock, event.mob.x - (arrow.vx / length) * 2, event.mob.z - (arrow.vz / length) * 2);
       unlockAchievement("bow");
     } else if (event.type === "player") {
       const length = Math.hypot(arrow.vx, arrow.vz) || 1;
-      takeHit(arrow.damage, player.x - (arrow.vx / length) * 2, player.z - (arrow.vz / length) * 2, "arrow");
+      const fromX = arrow.x - (arrow.vx / length) * 2;
+      const fromZ = arrow.z - (arrow.vz / length) * 2;
+      if (event.playerId === "" || event.playerId === net.myId) takeHit(arrow.damage, fromX, fromZ, "arrow");
+      else net.sendToPlayer(event.playerId, { act: "hurt", damage: arrow.damage, x: fromX, z: fromZ, kind: "arrow" });
     } else {
       audio.playPlace(Block.Wood);
     }
@@ -2485,6 +2785,15 @@ function frame(now: number): void {
   for (const explosion of mobResult.explosions) {
     audio.playExplosion();
     spawnExplosion(explosion.x, explosion.y, explosion.z);
+    if (net.connected) net.sendFx("explosion", explosion.x, explosion.y, explosion.z);
+  }
+  // (호스트) 1초에 다섯 번 동물·아이템·화살의 모습과 시각을 모두에게 알린다.
+  if (net.connected && amHost()) {
+    snapshotTimer -= dt;
+    if (snapshotTimer <= 0) {
+      snapshotTimer = SNAPSHOT_INTERVAL;
+      sendHostSnapshot();
+    }
   }
   // 길들인 늑대가 대신 잡아 준 동물도 전리품과 도전 과제를 챙긴다.
   for (const kill of mobResult.kills) handleMobKill(kill.kind, kill.x, kill.y, kill.z);
@@ -2509,18 +2818,25 @@ function frame(now: number): void {
     refreshHunger();
   }
   mobRenderer.update(mobSim.mobs, solidMaterial.color, worldSeconds);
-  if (mode === "survival") {
-    const result = drops.update(dt, world, player.x, player.y, player.z, (item) => inventory.freeSpace(item));
-    if (result.picked.length > 0) {
-      for (const [item, amount] of result.picked) inventory.add(item, amount);
-      audio.playPickup();
-      refreshHotbar();
-      refreshOpenPanels();
-      scheduleSave();
-    }
-    if (result.blocked && worldSeconds - lastFullBagToast > 5) {
-      lastFullBagToast = worldSeconds;
-      showToast("가방이 가득 찼어요", 2000);
+  if (isGuest()) {
+    // 호스트가 아닌 사람: 아이템은 호스트가 움직이니 따라가기만 하고, 가까이 가면 줍겠다고 알린다.
+    drops.smoothProxies(dt);
+    if (mode === "survival") requestPickups();
+  } else if (mode === "survival" || net.connected) {
+    // 같이 하는 사람이 있으면 내가 창작 모드여도 아이템은 계속 떨어지고 굴러야 한다.
+    const result = drops.update(dt, world, player.x, player.y, player.z, (item) => (mode === "survival" ? inventory.freeSpace(item) : 0));
+    if (mode === "survival") {
+      if (result.picked.length > 0) {
+        for (const [item, amount] of result.picked) inventory.add(item, amount);
+        audio.playPickup();
+        refreshHotbar();
+        refreshOpenPanels();
+        scheduleSave();
+      }
+      if (result.blocked && worldSeconds - lastFullBagToast > 5) {
+        lastFullBagToast = worldSeconds;
+        showToast("가방이 가득 찼어요", 2000);
+      }
     }
   }
   dropRenderer.update(drops.drops, worldSeconds, solidMaterial.color);

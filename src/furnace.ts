@@ -222,6 +222,27 @@ export class FurnaceField {
     return this.furnaces.size;
   }
 
+  /** 다른 사람에게 알릴 때 쓰는 글자 (화로가 없으면 null). */
+  rawAt(x: number, y: number, z: number): string | null {
+    const furnace = this.furnaces.get(this.key(x, y, z));
+    return furnace ? JSON.stringify(furnace.toData()) : null;
+  }
+
+  /** 다른 사람이 알려 준 글자로 화로 상태를 바꾼다 (null이면 치운다). 이상한 글자는 무시한다. */
+  setRaw(x: number, y: number, z: number, data: string | null): void {
+    if (data === null) {
+      this.furnaces.delete(this.key(x, y, z));
+      return;
+    }
+    try {
+      const parsed = JSON.parse(data) as FurnaceData;
+      if (typeof parsed !== "object" || parsed === null || !Number.isFinite(parsed.lastTime)) return;
+      this.furnaces.set(this.key(x, y, z), Furnace.fromData(parsed));
+    } catch {
+      // 모양이 이상한 글자는 무시한다.
+    }
+  }
+
   toArray(): [number, number, number, FurnaceData][] {
     return [...this.furnaces.entries()].map(([key, furnace]) => {
       const [x, y, z] = key.split(",").map(Number);

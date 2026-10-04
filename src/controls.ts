@@ -102,6 +102,8 @@ export class Controls {
     this.bindActionButton("use-button", () => this.onUse?.(), false);
 
     window.addEventListener("keydown", (e) => {
+      // 채팅 입력칸에 글자를 칠 때는 걷기·점프 같은 게임 키로 쓰지 않는다.
+      if ((e.target as HTMLElement | null)?.tagName === "INPUT") return;
       this.keys.add(e.code);
       if (e.code === "Space" && !e.repeat) this.onJumpPress?.();
       if (e.code === "KeyQ") this.breakLatch = true;

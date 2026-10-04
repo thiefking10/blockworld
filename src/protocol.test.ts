@@ -44,7 +44,7 @@ describe("parseServerMessage", () => {
     const welcome = parseServerMessage(
       JSON.stringify({ type: "welcome", id: "me", seed: 7, edits: [[1, 2, 3, 4]], players: [player] }),
     );
-    expect(welcome).toEqual({ type: "welcome", id: "me", seed: 7, edits: [[1, 2, 3, 4]], players: [player] });
+    expect(welcome).toEqual({ type: "welcome", id: "me", seed: 7, edits: [[1, 2, 3, 4]], players: [player], hostId: "", containers: [] });
 
     expect(parseServerMessage(JSON.stringify({ type: "join", player }))).toEqual({ type: "join", player });
     expect(parseServerMessage(JSON.stringify({ type: "move", id: "abc", x: 1, y: 2, z: 3, yaw: 0.1, pitch: 0.2 }))).toEqual({
