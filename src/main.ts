@@ -25,12 +25,15 @@ import { refreshFences } from "./fences";
 import { settleFrom } from "./falling";
 import { HeldHandRenderer } from "./heldHand";
 import { EGG_BY_ITEM } from "./eggs";
-import { BREEDABLE, MOB_SPECS, MobSimulation, raycastMobs, TAME_FOODS, type Mob, type MobKind } from "./mobs";
+import { BREEDABLE, MOB_SPECS, MobSimulation, raycastMobs, SKELETON_DAMAGE, TAME_FOODS, type Mob, type MobKind } from "./mobs";
+import { arrowDamage, arrowSpeed, attackStrength, BOW_MIN_POWER, bowPower, meleeResult, SHIELD_EXPLOSION_TAKEN, SHIELD_WALK_FACTOR, shieldBlocks, shieldWear, weaponStats } from "./combat";
+import { aimVelocity, ProjectileField } from "./projectiles";
+import { ArrowRenderer } from "./projectileRender";
 import { connectAndWait, NetClient, randomRoomCode } from "./net";
 import { PlayerAvatarRenderer } from "./playerRender";
 import { RemotePlayer, sanitizeName } from "./protocol";
 import { canTrade, doTrade, isProfession, PROFESSION_INFO } from "./trades";
-import { breakSeconds, canHarvest, SWORD_DAMAGE, TOOL_BY_ID, toolDurability, type ToolDef } from "./tools";
+import { breakSeconds, canHarvest, maxDurability, TOOL_BY_ID, toolDurability, type ToolDef } from "./tools";
 import { AdaptiveQuality, fogFar, QUALITY_LEVELS } from "./quality";
 import { EYE_HEIGHT, Player } from "./player";
 import { lookDirection, raycast, RayHit } from "./raycast";
@@ -606,7 +609,7 @@ const GIVEABLE_ITEMS = Object.keys(ITEM_NAMES).map(Number);
 
 /** 창작 모드에서 아이템을 만들거나 캐지 않고 바로 받는다 (도구·방어구·활은 하나, 나머지는 한 칸 가득). */
 function giveItem(item: number): void {
-  const amount = TOOL_BY_ID.has(item) || ARMOR_BY_ID.has(item) || item === Item.Bow || item === Item.FishingRod || item === Item.Saddle ? 1 : EGG_BY_ITEM.has(item) ? 16 : STACK_MAX;
+  const amount = TOOL_BY_ID.has(item) || ARMOR_BY_ID.has(item) || item === Item.Bow || item === Item.FishingRod || item === Item.Saddle || item === Item.Shield ? 1 : EGG_BY_ITEM.has(item) ? 16 : STACK_MAX;
   const added = inventory.add(item, amount);
   if (added === 0) {
     showToast(itemLabel(item) + "은(는) 이미 있거나 가방이 가득 찼어요");
@@ -1207,6 +1210,9 @@ function refreshInventoryPanel(): void {
       } else if (item === Item.Bow) {
         chip.textContent = "🏹 " + itemLabel(item) + " (손에 들면, 화살이 있을 때 먼 동물·괴물을 쏴요)" + enchantSuffix(item);
         onPress(chip, () => holdItem(item));
+      } else if (item === Item.Shield) {
+        chip.textContent = "🛡 " + itemLabel(item) + " (내구도 " + inventory.toolLeft(item) + "/" + maxDurability(item) + ", 손에 들고 막기를 누르고 있으면 앞쪽 공격을 막아요)" + enchantSuffix(item);
+        onPress(chip, () => holdItem(item));
       } else if (EGG_BY_ITEM.has(item)) {
         chip.textContent = "🥚 " + itemLabel(item) + " ×" + amount + " (손에 들고 땅을 향해 놓기를 누르면 나타나요)";
         onPress(chip, () => holdItem(item));
@@ -1287,12 +1293,6 @@ function mobInSight(blockHit: RayHit | null, range = REACH): Mob | null {
   return found.distance > blockDistance ? null : found.mob;
 }
 
-/** 활 사정거리 안의 블록까지 (멀리 있는 벽에 가려지면 쏘지 못하게 확인할 때 쓴다). */
-function farTarget(): RayHit | null {
-  const [dx, dy, dz] = lookDirection(player.yaw, player.pitch);
-  return raycast(world, player.x, eyeY(), player.z, dx, dy, dz, BOW_RANGE);
-}
-
 function toolBroke(tool: ToolDef): void {
   showToast("🔧 " + itemLabel(tool.id) + ": 부러졌어요!");
   refreshHotbar();
@@ -1315,36 +1315,131 @@ function handleMobKill(kind: MobKind, x: number, y: number, z: number, baby = fa
   if (loot.length > 0) scheduleSave();
 }
 
-/** 동물을 한 번 때린다. 서바이벌에서는 손에 든 게 검이어야 검 공격력이 나오고, 검이 닳는다. */
-function attackMob(mob: Mob): void {
-  audio.playMobHit();
-  swingHeldItem();
+// ---- 근접 전투: 휘두른 뒤 다시 충전돼야 제 힘이 나온다. 떨어지는 중에 다 충전해서 치면 치명타.
+/** 마지막으로 휘두른 뒤 지난 시간(초) */
+let sinceAttack = 10;
+const attackMeter = document.getElementById("attack-meter") as HTMLElement;
+const attackMeterFill = attackMeter.firstElementChild as HTMLElement;
+const hitMarker = document.getElementById("hit-marker") as HTMLElement;
+let hitMarkerTimer: number | undefined;
+
+/** 지금 손에 든 무기 (서바이벌에서는 가방에 실제로 있어야 한다). 없으면 0(맨손). */
+function weaponInHand(): number {
   const held = heldItem();
-  const heldTool = TOOL_BY_ID.get(held);
-  const sword = mode === "survival" && heldTool?.type === "sword" && inventory.count(held) > 0 ? heldTool : null;
-  const damage =
-    mode === "creative"
-      ? 4
-      : (sword ? SWORD_DAMAGE[sword.tier] + sharpnessBonus(inventory.enchantLevel(sword.id, "sharpness")) : 1) + effects.attackBonus();
-  if (sword && inventory.useTool(sword.id)) toolBroke(sword);
-  if (mobSim.hit(mob, player.x, player.z, damage)) handleMobKill(mob.kind, mob.x, mob.y, mob.z, mob.baby);
+  if (held === 0) return 0;
+  return mode === "creative" || inventory.count(held) > 0 ? held : 0;
 }
 
-/** 검이 닿지 않는 먼 동물을 활로 쏜다 (화살 하나를 쓰고, 맞으면 즉시 명중한다 — 날아가는 시간은 생략). */
-const BOW_RANGE = 20;
-const BOW_DAMAGE = 4;
+function showCritMarker(): void {
+  hitMarker.classList.add("on");
+  window.clearTimeout(hitMarkerTimer);
+  hitMarkerTimer = window.setTimeout(() => hitMarker.classList.remove("on"), 350);
+}
 
-function shootBow(mob: Mob): void {
-  inventory.remove(Item.Arrow, 1);
-  audio.playArrow();
+/** 동물을 한 번 때린다. 충전 정도에 따라 세기가 달라지고, 떨어지는 중이면 치명타다. */
+function attackMob(mob: Mob): void {
+  const item = weaponInHand();
+  const weapon = weaponStats(item);
+  const strength = attackStrength(sinceAttack, weapon.cooldown);
+  sinceAttack = 0;
+  const falling = !player.onGround && player.vy < -0.5 && !player.flying && !player.onLadder && !player.isInWater();
+  const survival = mode === "survival";
+  const bonus = survival ? sharpnessBonus(inventory.enchantLevel(item, "sharpness")) + effects.attackBonus() : 0;
+  const result = meleeResult(item, strength, falling, bonus, survival ? undefined : 4);
   swingHeldItem();
-  const spec = MOB_SPECS[mob.kind];
-  spawnArrow(player.x, eyeY(), player.z, mob.x, mob.y + spec.height * 0.6, mob.z);
-  if (mobSim.hit(mob, player.x, player.z, BOW_DAMAGE * powerMultiplier(inventory.enchantLevel(Item.Bow, "power")))) handleMobKill(mob.kind, mob.x, mob.y, mob.z, mob.baby);
-  unlockAchievement("bow");
-  refreshHotbar();
-  refreshOpenPanels();
+  if (result.crit) {
+    audio.playCrit();
+    showCritMarker();
+  }
+  audio.playMobHit();
+  // 무기로 휘두른 도구는 닳는다 (검뿐 아니라 도끼·곡괭이·삽도).
+  const tool = TOOL_BY_ID.get(item);
+  if (survival && tool && inventory.useTool(item)) toolBroke(tool);
+  if (mobSim.hit(mob, player.x, player.z, result.damage, result.knock)) handleMobKill(mob.kind, mob.x, mob.y, mob.z, mob.baby);
+}
+
+// ---- 활: 부수기를 꾹 눌러 당겼다가 떼면 화살이 날아간다. 화살은 중력으로 휘어서 날아간다.
+const projectiles = new ProjectileField();
+const arrowRenderer = new ArrowRenderer(scene);
+let bowCharge = 0;
+let bowDrawing = false;
+
+function bowInHand(): boolean {
+  return heldItem() === Item.Bow && (mode === "creative" || inventory.count(Item.Bow) > 0);
+}
+
+/** 시위를 놓아 화살을 쏜다. 너무 짧게 당겼으면 쏘지 않는다. */
+function releaseBow(): void {
+  const power = bowPower(bowCharge);
+  if (power < BOW_MIN_POWER) return;
+  if (mode === "survival") {
+    if (!inventory.remove(Item.Arrow, 1)) return;
+    refreshHotbar();
+    refreshOpenPanels();
+  }
+  const [dx, dy, dz] = lookDirection(player.yaw, player.pitch);
+  const speed = arrowSpeed(power);
+  const damage = arrowDamage(power, powerMultiplier(inventory.enchantLevel(Item.Bow, "power")));
+  projectiles.shoot(player.x + dx * 0.6, eyeY() - 0.1 + dy * 0.6, player.z + dz * 0.6, dx * speed, dy * speed, dz * speed, "player", damage, 5 + power * 3);
+  audio.playBowShot();
+  swingHeldItem();
   scheduleSave();
+}
+
+/** 활을 들고 있을 때의 당기기 처리. 활을 들고 있으면 true (이때는 캐기·때리기를 하지 않는다). */
+function updateBow(dt: number, held: boolean, newPress: boolean): boolean {
+  if (!bowInHand()) {
+    bowDrawing = false;
+    bowCharge = 0;
+    return false;
+  }
+  if (held) {
+    if (!bowDrawing) {
+      if (mode === "survival" && inventory.count(Item.Arrow) === 0) {
+        if (newPress) showToast("화살이 없어요");
+        return true;
+      }
+      bowDrawing = true;
+      bowCharge = 0;
+    }
+    bowCharge += dt;
+    return true;
+  }
+  if (bowDrawing) {
+    releaseBow();
+    bowDrawing = false;
+    bowCharge = 0;
+  }
+  return false;
+}
+
+// ---- 방패: 손에 들고 막기를 누르고 있으면 앞쪽 공격을 막는다.
+function isGuarding(): boolean {
+  return heldItem() === Item.Shield && (mode === "creative" || inventory.count(Item.Shield) > 0) && controls.guarding();
+}
+
+/**
+ * 플레이어가 공격을 한 번 맞는다 (sx, sz는 공격한 쪽 위치).
+ * 방패로 막았으면 피해가 없고(폭발은 일부만 막는다) 방패가 닳는다. 맞으면 반대쪽으로 밀려난다.
+ */
+function takeHit(damage: number, sx: number, sz: number, kind: "melee" | "explosion" | "fire" | "arrow"): void {
+  if (mode === "creative") return;
+  let amount = damage;
+  if (isGuarding() && shieldBlocks(player.yaw, player.x, player.z, sx, sz)) {
+    audio.playShieldBlock();
+    player.knock(sx, sz, 2.5);
+    if (inventory.useTool(Item.Shield, Math.random, shieldWear(damage))) {
+      showToast("🛡 방패가 부러졌어요!");
+      refreshHotbar();
+    }
+    refreshOpenPanels();
+    scheduleSave();
+    if (kind !== "explosion") return;
+    amount = damage * SHIELD_EXPLOSION_TAKEN;
+  }
+  // 낙하 피해와 달리, 동물·괴물의 공격은 걸친 방어구만큼 줄어든다.
+  if (!hurt(reduceDamage(amount, (id) => inventory.count(id) > 0, wornProtection()))) return;
+  player.knock(sx, sz, kind === "explosion" ? 9 : kind === "fire" ? 5 : kind === "arrow" ? 3 : 5.5);
 }
 
 /** 빛(횃불)이 바뀌었으면 15칸 너머까지, 아니면 그 자리만 다시 그린다. */
@@ -1435,8 +1530,8 @@ function breakAt(hit: RayHit, tool: ToolDef | null): void {
 // ---- 캐기: 부수기를 누르고 있는 동안 조금씩 진행된다 (창작 모드는 바로바로).
 let mining: { x: number; y: number; z: number } | null = null;
 let miningProgress = 0;
-let attackCooldown = 0;
 let breakCooldown = 0;
+let breakWasHeld = false;
 let mineSoundTimer = 0;
 
 function resetMining(): void {
@@ -1446,9 +1541,17 @@ function resetMining(): void {
 }
 
 function updateMining(dt: number): void {
-  attackCooldown = Math.max(0, attackCooldown - dt);
+  sinceAttack += dt;
   breakCooldown = Math.max(0, breakCooldown - dt);
-  if (!controls.consumeBreak()) {
+  const pressed = controls.consumeBreak();
+  const newPress = pressed && !breakWasHeld;
+  breakWasHeld = pressed;
+  // 활을 들고 있으면 부수기는 시위를 당기는 동작이다.
+  if (updateBow(dt, pressed, newPress)) {
+    resetMining();
+    return;
+  }
+  if (!pressed || isGuarding()) {
     resetMining();
     return;
   }
@@ -1457,24 +1560,9 @@ function updateMining(dt: number): void {
   const mob = mobInSight(hit);
   if (mob) {
     resetMining();
-    if (attackCooldown <= 0) {
-      attackCooldown = 0.45;
-      attackMob(mob);
-    }
+    // 새로 누르면 바로 휘두르고(덜 충전돼 있으면 약하다), 꾹 누르고 있으면 다 충전됐을 때 알아서 다시 휘두른다.
+    if (newPress || sinceAttack >= weaponStats(weaponInHand()).cooldown) attackMob(mob);
     return;
-  }
-
-  // 검이 닿지 않는 곳의 동물·괴물은, 활과 화살이 있으면 대신 쏜다.
-  if (mode === "survival" && heldItem() === Item.Bow && inventory.count(Item.Bow) > 0 && inventory.count(Item.Arrow) > 0) {
-    const farMob = mobInSight(farTarget(), BOW_RANGE);
-    if (farMob) {
-      resetMining();
-      if (attackCooldown <= 0) {
-        attackCooldown = 0.6;
-        shootBow(farMob);
-      }
-      return;
-    }
   }
 
   if (!hit || hit.y === 0) {
@@ -1870,15 +1958,16 @@ function refreshArmor(): void {
 refreshArmor();
 
 /** 플레이어가 피해를 입는다. 쓰러지면 처음 자리에서 다시 시작한다. */
-function hurt(amount: number): void {
+function hurt(amount: number): boolean {
   // 창작 모드에서는 다치지 않는다 (낙하, 좀비 모두).
-  if (mode === "creative") return;
-  if (!health.damage(amount)) return;
+  if (mode === "creative") return false;
+  if (!health.damage(amount)) return false;
   audio.playHurt();
   damageFlash.classList.add("on");
   window.setTimeout(() => damageFlash.classList.remove("on"), 60);
   refreshHearts();
   if (health.dead) respawn();
+  return true;
 }
 
 /** 걸친 방어구에 붙은 보호 인챈트를 다 합친 점수 (방어 점수처럼 피해를 줄인다). */
@@ -1889,6 +1978,9 @@ function wornProtection(): number {
 }
 
 function respawn(): void {
+  projectiles.clear();
+  bowDrawing = false;
+  bowCharge = 0;
   if (mount) {
     mount.ridden = false;
     mount = null;
@@ -1918,6 +2010,7 @@ document.getElementById("loading")?.remove();
 const controls = new Controls(canvas);
 const descendButton = document.getElementById("descend-button") as HTMLElement;
 const useButton = document.getElementById("use-button") as HTMLElement;
+const guardButton = document.getElementById("guard-button") as HTMLElement;
 
 /** 창작 방식에서 점프를 0.35초 안에 두 번 누르면 비행을 켜거나 끈다. */
 let lastJumpPress = -1;
@@ -2231,7 +2324,8 @@ let frames = 0;
 let fpsTimer = 0;
 
 function frame(now: number): void {
-  const dt = Math.min((now - last) / 1000, 0.05);
+  // 첫 프레임은 시각이 거꾸로 올 수 있어서(음수) 0 아래로 내려가지 않게 막는다.
+  const dt = Math.max(0, Math.min((now - last) / 1000, 0.05));
   last = now;
 
   const look = controls.consumeLook();
@@ -2267,7 +2361,16 @@ function frame(now: number): void {
     health.heal(regenHeal);
     refreshHearts();
   }
-  player.speedFactor = effects.speedMultiplier() * (mount ? HORSE_SPEED_FACTOR : 1);
+  const guarding = isGuarding();
+  heldHand.setGuard(guarding);
+  heldHand.setDraw(bowDrawing ? bowPower(bowCharge) : 0);
+  guardButton.classList.toggle("show", heldItem() === Item.Shield);
+  // 충전 막대: 활을 당기는 중이면 당긴 정도, 아니면 근접 무기의 충전 정도 (다 차면 숨긴다).
+  const meterValue = bowDrawing ? bowPower(bowCharge) : attackStrength(sinceAttack, weaponStats(weaponInHand()).cooldown);
+  attackMeter.classList.toggle("show", bowDrawing || meterValue < 1);
+  attackMeter.classList.toggle("bow", bowDrawing);
+  attackMeterFill.style.width = Math.round(meterValue * 100) + "%";
+  player.speedFactor = effects.speedMultiplier() * (mount ? HORSE_SPEED_FACTOR : 1) * (guarding ? SHIELD_WALK_FACTOR : 1);
   player.jumpFactor = mount ? HORSE_JUMP_FACTOR : 1;
   if (mount) {
     if (!mobSim.mobs.includes(mount)) {
@@ -2314,13 +2417,36 @@ function frame(now: number): void {
   for (const call of mobResult.sounds) {
     audio.playMob(call.kind, 1 - Math.hypot(call.x - player.x, call.z - player.z) / 28);
   }
-  // 낙하 피해와 달리, 동물·괴물의 공격은 걸친 방어구만큼 줄어든다.
-  if (mobResult.damage > 0) hurt(reduceDamage(mobResult.damage, (id) => inventory.count(id) > 0, wornProtection()));
+  for (const hit of mobResult.hits) takeHit(hit.damage, hit.x, hit.z, hit.kind);
   for (const shot of mobResult.shots) {
-    if (shot.fire) audio.playDragonFire();
-    else audio.playArrow();
-    spawnArrow(shot.fromX, shot.fromY, shot.fromZ, shot.toX, shot.toY, shot.toZ);
+    if (shot.fire) {
+      audio.playDragonFire();
+      spawnArrow(shot.fromX, shot.fromY, shot.fromZ, shot.toX, shot.toY, shot.toZ);
+    } else {
+      // 해골 화살은 실제로 날아간다. 정확히 겨냥한 화살은 거의 곧게, 빗나가게 쏜 화살은 크게 벗어난다.
+      const [vx, vy, vz] = aimVelocity(shot.fromX, shot.fromY, shot.fromZ, player.x, player.y + 1, player.z, 22, shot.hit ? 0.1 : 1.1, Math.random);
+      projectiles.shoot(shot.fromX, shot.fromY, shot.fromZ, vx, vy, vz, "enemy", SKELETON_DAMAGE, 3);
+      audio.playArrow();
+    }
   }
+  // 날아가는 화살: 동물에 맞으면 피해를 주고, 괴물의 화살이 플레이어에 맞으면 방패로 막을 수 있다.
+  for (const event of projectiles.update(dt, world, mobSim.mobs, mode === "creative" ? null : { x: player.x, y: player.y, z: player.z })) {
+    const arrow = event.projectile;
+    if (event.type === "mob") {
+      const length = Math.hypot(arrow.vx, arrow.vz) || 1;
+      audio.playMobHit();
+      if (mobSim.hit(event.mob, event.mob.x - (arrow.vx / length) * 2, event.mob.z - (arrow.vz / length) * 2, arrow.damage, arrow.knock)) {
+        handleMobKill(event.mob.kind, event.mob.x, event.mob.y, event.mob.z, event.mob.baby);
+      }
+      unlockAchievement("bow");
+    } else if (event.type === "player") {
+      const length = Math.hypot(arrow.vx, arrow.vz) || 1;
+      takeHit(arrow.damage, player.x - (arrow.vx / length) * 2, player.z - (arrow.vz / length) * 2, "arrow");
+    } else {
+      audio.playPlace(Block.Wood);
+    }
+  }
+  arrowRenderer.update(projectiles.arrows);
   for (const explosion of mobResult.explosions) {
     audio.playExplosion();
     spawnExplosion(explosion.x, explosion.y, explosion.z);

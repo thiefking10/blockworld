@@ -143,6 +143,69 @@
       #jump-button.active {
         background: rgba(255, 255, 255, 0.45);
       }
+      #guard-button {
+        position: absolute;
+        right: 300px;
+        bottom: 78px;
+        width: 68px;
+        height: 68px;
+        border-radius: 50%;
+        border: 2px solid rgba(255, 255, 255, 0.55);
+        background: rgba(90, 130, 200, 0.55);
+        color: #fff;
+        font-size: 15px;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        pointer-events: auto;
+      }
+      #guard-button.show {
+        display: flex;
+      }
+      #guard-button.active {
+        filter: brightness(1.6);
+      }
+      #attack-meter {
+        position: absolute;
+        left: 50%;
+        top: calc(50% + 18px);
+        transform: translateX(-50%);
+        width: 46px;
+        height: 5px;
+        border-radius: 3px;
+        background: rgba(0, 0, 0, 0.45);
+        overflow: hidden;
+        display: none;
+        pointer-events: none;
+      }
+      #attack-meter.show {
+        display: block;
+      }
+      #attack-meter > div {
+        height: 100%;
+        width: 0;
+        background: #ffffff;
+      }
+      #attack-meter.bow > div {
+        background: #8dff5a;
+      }
+      #hit-marker {
+        position: absolute;
+        left: 50%;
+        top: calc(50% - 44px);
+        transform: translateX(-50%);
+        color: #ffe14a;
+        font-size: 16px;
+        font-weight: bold;
+        text-shadow: 0 1px 3px #000;
+        opacity: 0;
+        transition: opacity 0.25s;
+        pointer-events: none;
+      }
+      #hit-marker.on {
+        opacity: 1;
+        transition: none;
+      }
       #use-button {
         position: absolute;
         right: 222px;
@@ -785,6 +848,9 @@
       <div id="break-button">부수기</div>
       <div id="place-button">놓기</div>
       <div id="use-button">사용</div>
+      <div id="guard-button">막기</div>
+      <div id="attack-meter"><div></div></div>
+      <div id="hit-marker">✦ 치명타!</div>
       <div id="hotbar"></div>
       <div id="inventory-button">가방</div>
       <div id="help-panel">
@@ -801,6 +867,7 @@
           <b>길들이기</b> 동물을 보고 먹이를 가진 채 놓기를 누르면 먹여요: 늑대는 뼈 1개(대신 싸워줘요), 돼지는 빵 1개, 양은 밀 씨앗 1개, 말은 밀 3개. 길들인 동물은 따라다니고, 아침이 와도 멀어져도 사라지지 않고, 저장돼요.<br />
           <b>스폰 알</b> 동물·괴물마다 알이 있어요. 제작대에서 그 동물이 떨구는 재료로 만들고(예: 돼지 알 = 고기 2·밀 3), 손에 들고 땅을 향해 놓기를 누르면 그 자리에 나타나요. 알로 만든 괴물은 아침이 와도 사라지지 않아요. 창작 모드는 가방의 아이템 목록에서 바로 받아요(드래곤 알 포함).<br />
           <b>말</b> 풀밭에 이따금 있어요. 밀 3개로 길들인 뒤, 안장(제작대: 양털 3·철 주괴 1)이 있으면 말을 가리키고 <b>사용</b>으로 올라타요. 사람보다 두 배쯤 빠르고 훨씬 높이 뛰어서 울타리도 넘어요. 다시 <b>사용</b>을 누르면 내려요.<br />
+          <b>전투</b> 검·도끼는 휘두른 뒤 다시 충전돼야 제 힘이 나와요(십자 아래 작은 막대). 충전을 기다렸다가, <b>점프해서 떨어지는 중에</b> 때리면 치명타예요(1.5배). 도끼는 세지만 느려요. 활은 <b>부수기를 꾹 눌러 당겼다가 떼면</b> 화살이 날아가요(끝까지 당기면 빠르고 세요). 화살은 중력으로 휘어서 날아가고, 해골 화살도 마찬가지라 움직이면 피할 수 있어요. <b>방패</b>(판자 6·철 주괴 1)를 손에 들고 <b>막기</b> 버튼(컴퓨터는 R)을 누르고 있으면 앞쪽에서 오는 공격과 화살을 막아요(느리게 걸어요). 맞으면 뒤로 밀려나요.<br />
           <b>울타리·모래·자갈</b> 울타리는 이웃 울타리나 벽 쪽으로 저절로 이어지고, 키가 1.5칸이라 점프로 못 넘어요. 모래와 자갈은 밑이 비면 떨어져요(밑을 파면 쏟아져 내려요).<br />
           <b>석탄</b> 땅속 돌 사이의 검은 점 박힌 돌(석탄 광석)을 곡괭이로 캐요. 막대와 함께 횃불 4개가 되고, 화로 연료로도 좋아요.<br />
           <b>가방</b> 모은 블록으로 판자, 막대, 곡괭이, 검, 침대, 빵 같은 것을 만들어요. 만든 도구·검·활은 가방에서 눌러야 손(아이템 바)에 들려요 — 들고 있어야 제 몫을 해요, 쓸수록 닳고요. 고기와 빵은 눌러서 먹어요.<br />

@@ -17,6 +17,8 @@ export class Controls {
   /** 부수기 버튼(또는 Q)을 누르고 있는지. 짧게 톡 눌러도 한 프레임은 눌린 것으로 친다. */
   breakHeld = false;
   private breakLatch = false;
+  /** 방패 막기 버튼(또는 R)을 누르고 있는지 */
+  guardHeld = false;
   onPlace?: () => void;
   /** 제작대·화로를 가리키고 있을 때 나타나는 "사용" 버튼 (또는 F키) */
   onUse?: () => void;
@@ -83,6 +85,19 @@ export class Controls {
     breakButton.addEventListener("pointerup", releaseBreak);
     breakButton.addEventListener("pointercancel", releaseBreak);
     breakButton.addEventListener("pointerleave", releaseBreak);
+    const guardButton = document.getElementById("guard-button") as HTMLElement;
+    guardButton.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      guardButton.classList.add("active");
+      this.guardHeld = true;
+    });
+    const releaseGuard = () => {
+      guardButton.classList.remove("active");
+      this.guardHeld = false;
+    };
+    guardButton.addEventListener("pointerup", releaseGuard);
+    guardButton.addEventListener("pointercancel", releaseGuard);
+    guardButton.addEventListener("pointerleave", releaseGuard);
     this.bindActionButton("place-button", () => this.onPlace?.());
     this.bindActionButton("use-button", () => this.onUse?.(), false);
 
@@ -175,6 +190,11 @@ export class Controls {
   private placeKnob(x: number, y: number): void {
     this.knob.style.left = `${x - 26}px`;
     this.knob.style.top = `${y - 26}px`;
+  }
+
+  /** 지금 방패를 들어 막는 중인지 (버튼이나 R키를 누르고 있는 동안). */
+  guarding(): boolean {
+    return this.guardHeld || this.keys.has("KeyR");
   }
 
   /** 이번 프레임에 부수기를 누르고 있는지 (짧게 누른 것도 놓치지 않는다). */

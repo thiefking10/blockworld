@@ -36,6 +36,13 @@ export function toolDurability(tool: ToolDef): number {
   return TIER_DURABILITY[tool.tier];
 }
 
+/** 닳는 아이템의 최대 내구도: 도구는 재질별, 방패는 336. 닳지 않는 아이템은 0. */
+export function maxDurability(item: number): number {
+  const tool = TOOL_BY_ID.get(item);
+  if (tool) return toolDurability(tool);
+  return item === Item.Shield ? 336 : 0;
+}
+
 /** 손으로 캘 때 걸리는 기본 시간(초). 0이면 바로 캐진다. 마인크래프트의 손 채굴 시간과 비슷하게 맞췄다. */
 export const HARDNESS: Record<number, number> = {
   [Block.Grass]: 0.6,

@@ -233,7 +233,7 @@ describe("해골", () => {
     expect(shots).toBeGreaterThan(0);
   });
 
-  it("화살이 맞으면 피해를 입히고, 사거리 밖이면 쏘지 않는다", () => {
+  it("사거리 안에서 화살을 쏘고(화살은 날아가서 맞으므로 바로 피해는 없다), 사거리 밖이면 쏘지 않는다", () => {
     const world = flatWorld();
     const sim = new MobSimulation();
     sim.mobs.push(new Mob("skeleton", 20.5, 1, 25.5, fixed(0.5)));
@@ -245,7 +245,7 @@ describe("해골", () => {
       shots += result.shots.length;
     }
     expect(shots).toBeGreaterThan(0);
-    expect(damage).toBeGreaterThan(0);
+    expect(damage).toBe(0);
 
     const farSim = new MobSimulation();
     farSim.mobs.push(new Mob("skeleton", 20.5, 1, 60.5, fixed(0.5)));

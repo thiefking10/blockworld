@@ -40,6 +40,10 @@ export class Player {
   autoJump = true;
   /** 하늘을 나는 중 (창작 모드). 중력이 없고, 땅에 닿으면 저절로 끝난다. */
   flying = false;
+  /** 맞아서 밀리는 속도(칸/초). 시간이 지나면 줄어든다. */
+  private knockX = 0;
+  private knockZ = 0;
+
   /** 걷는 속도 배율 (속도 물약 같은 효과) */
   speedFactor = 1;
   /** 점프 힘 배율 (말을 타면 더 높이 뛴다) */
@@ -101,6 +105,15 @@ export class Player {
     );
   }
 
+  /** 맞았을 때 (fromX, fromZ) 반대쪽으로 strength만큼의 속도로 밀려난다. */
+  knock(fromX: number, fromZ: number, strength: number): void {
+    const dx = this.x - fromX;
+    const dz = this.z - fromZ;
+    const length = Math.hypot(dx, dz) || 1;
+    this.knockX += (dx / length) * strength;
+    this.knockZ += (dz / length) * strength;
+  }
+
   update(dt: number, input: PlayerInput): void {
     const sin = Math.sin(this.yaw);
     const cos = Math.cos(this.yaw);
@@ -111,8 +124,11 @@ export class Player {
 
     const inWater = this.isInWater();
     const speed = (this.flying ? MOVE_SPEED * FLY_MOVE_FACTOR : inWater ? MOVE_SPEED * WATER_SPEED_FACTOR : MOVE_SPEED) * this.speedFactor;
-    const dx = (forwardX * input.moveZ + rightX * input.moveX) * speed * dt;
-    const dz = (forwardZ * input.moveZ + rightZ * input.moveX) * speed * dt;
+    const dx = (forwardX * input.moveZ + rightX * input.moveX) * speed * dt + this.knockX * dt;
+    const dz = (forwardZ * input.moveZ + rightZ * input.moveX) * speed * dt + this.knockZ * dt;
+    const decay = Math.exp(-7 * dt);
+    this.knockX *= decay;
+    this.knockZ *= decay;
 
     const blockedX = this.collides(this.x + dx, this.y, this.z);
     const blockedZ = this.collides(this.x, this.y, this.z + dz);

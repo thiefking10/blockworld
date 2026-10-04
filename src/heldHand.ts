@@ -137,6 +137,26 @@ function buildEggItem(color: number): THREE.Group {
   return group;
 }
 
+/** 방패: 나무판에 쇠 테두리와 가운데 쇠 장식 */
+function buildShieldItem(): THREE.Group {
+  const group = new THREE.Group();
+  const plate = box([0.36, 0.46, 0.05], 0x9a7040);
+  group.add(plate);
+  for (const [w, h, x, y] of [
+    [0.38, 0.04, 0, 0.24],
+    [0.38, 0.04, 0, -0.24],
+    [0.04, 0.46, -0.19, 0],
+    [0.04, 0.46, 0.19, 0],
+  ] as [number, number, number, number][]) {
+    const rim = box([w, h, 0.07], 0x8a8f98);
+    rim.position.set(x, y, 0);
+    group.add(rim);
+  }
+  const boss = box([0.12, 0.12, 0.09], 0xb8bcc4);
+  group.add(boss);
+  return group;
+}
+
 /** 도구·활도 아닌 다른 아이템(재료·방어구·음식 등)은 작은 상자로 뭉뚱그려 보여준다. */
 function buildGenericItem(): THREE.Mesh {
   return box([0.22, 0.22, 0.22], 0xc9b27a);
@@ -148,6 +168,7 @@ function buildItemModel(id: number): THREE.Object3D | null {
   if (isPlaceableBlock(id)) return buildBlockItem(id);
   if (id === Item.Bow) return buildBowItem();
   if (id === Item.FishingRod) return buildRodItem();
+  if (id === Item.Shield) return buildShieldItem();
   const egg = EGG_BY_ITEM.get(id);
   if (egg) return buildEggItem(egg.color);
   const tool = TOOL_BY_ID.get(id);
@@ -166,6 +187,10 @@ export class HeldHandRenderer {
   private currentId: number | null = null;
   private swingT = 0;
   private bobPhase = 0;
+  /** 방패를 들어 올린 정도(0~1)와 활을 당긴 정도(0~1) */
+  private guardT = 0;
+  private guardTarget = 0;
+  private drawT = 0;
 
   constructor(camera: THREE.Camera) {
     this.arm = box([0.16, 0.16, 0.5], SKIN_COLOR);
@@ -197,6 +222,16 @@ export class HeldHandRenderer {
     this.swingT = 1;
   }
 
+  /** 방패를 들어 막는 중인지 (들면 앞으로 올라온다). */
+  setGuard(on: boolean): void {
+    this.guardTarget = on ? 1 : 0;
+  }
+
+  /** 활을 당긴 정도 (0~1). 당길수록 손이 뒤로 물러난다. */
+  setDraw(ratio: number): void {
+    this.drawT = Math.max(0, Math.min(1, ratio));
+  }
+
   /** 매 프레임: 걸을 때 살짝 흔들리고, 휘두른 직후에는 앞으로 내밀었다 돌아온다. */
   update(dt: number, moving: boolean): void {
     this.swingT = Math.max(0, this.swingT - dt * 6);
@@ -204,7 +239,10 @@ export class HeldHandRenderer {
     const bobY = moving ? Math.sin(this.bobPhase) * 0.015 : 0;
     const bobX = moving ? Math.sin(this.bobPhase * 0.5) * 0.01 : 0;
     const swing = Math.sin(Math.min(1, this.swingT) * Math.PI);
-    this.root.position.set(0.42 + bobX, -0.4 + bobY + swing * 0.05, -0.55 + swing * 0.12);
-    this.root.rotation.set(-0.1 - swing * 0.5, 0.35, -0.2 - swing * 0.35);
+    this.guardT += (this.guardTarget - this.guardT) * Math.min(1, dt * 14);
+    const g = this.guardT;
+    const d = this.drawT;
+    this.root.position.set(0.42 * (1 - g) + 0.05 * g - d * 0.1 + bobX, -0.4 * (1 - g) - 0.22 * g + bobY + swing * 0.05, -0.55 + swing * 0.12 + d * 0.1 - g * 0.05);
+    this.root.rotation.set((-0.1 - swing * 0.5) * (1 - g), 0.35 * (1 - g) - d * 0.2, (-0.2 - swing * 0.35) * (1 - g));
   }
 }

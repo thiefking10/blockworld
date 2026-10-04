@@ -252,15 +252,15 @@ export class Mob {
   }
 
   /** 맞았을 때 뒤로 밀려나고 잠깐 멈춘다. 죽었으면 true. */
-  hit(fromX: number, fromZ: number, damage = 1): boolean {
+  hit(fromX: number, fromZ: number, damage = 1, knock = 6): boolean {
     this.hp -= damage;
     this.hurtTimer = HURT_SECONDS;
     this.moving = false;
     const dx = this.x - fromX;
     const dz = this.z - fromZ;
     const length = Math.hypot(dx, dz) || 1;
-    this.knockX = (dx / length) * 6;
-    this.knockZ = (dz / length) * 6;
+    this.knockX = (dx / length) * knock;
+    this.knockZ = (dz / length) * knock;
     this.vy = 5;
     return this.hp <= 0;
   }
@@ -270,6 +270,7 @@ export class Mob {
    * hoverY는 날아다니는 동물(드래곤)이 쫓아갈 때 맞추려는 높이다.
    */
   update(dt: number, world: World, rng: Rng, chase: { x: number; z: number } | null = null, stand = false, hoverY?: number): void {
+    if (!(dt > 0)) return; // 시간이 멈췄거나 거꾸로 가면 아무것도 하지 않는다
     this.hurtTimer = Math.max(0, this.hurtTimer - dt);
     this.attackCooldown = Math.max(0, this.attackCooldown - dt);
     this.fireCooldown = Math.max(0, this.fireCooldown - dt);
@@ -458,7 +459,18 @@ export interface WolfKill {
   z: number;
 }
 
+/** 플레이어가 입은 피해 한 번. 어디서 맞았는지 알아야 방패로 막고 반대쪽으로 밀려난다. */
+export interface DamageHit {
+  damage: number;
+  /** 공격한 쪽의 위치 */
+  x: number;
+  z: number;
+  kind: "melee" | "explosion" | "fire";
+}
+
 export interface MobUpdateResult {
+  /** 이번에 입은 피해들 (해골 화살은 날아가는 화살이라 여기 없다 — projectiles.ts) */
+  hits: DamageHit[];
   /** 이번에 태어난 새끼들 */
   births: Mob[];
   sounds: MobSound[];
@@ -612,6 +624,7 @@ export class MobSimulation {
     const explosions: Explosion[] = [];
     const kills: WolfKill[] = [];
     const births: Mob[] = [];
+    const hits: DamageHit[] = [];
     let damage = 0;
     const exploded: Mob[] = [];
     const wolfKilled: Mob[] = [];
@@ -630,6 +643,7 @@ export class MobSimulation {
         if (engaged && distance < DRAGON_BITE_RANGE && mob.attackCooldown <= 0) {
           mob.attackCooldown = DRAGON_BITE_COOLDOWN;
           damage += DRAGON_BITE_DAMAGE;
+          hits.push({ damage: DRAGON_BITE_DAMAGE, x: mob.x, z: mob.z, kind: "melee" });
         }
         if (engaged && distance < DRAGON_FIRE_RANGE && mob.fireCooldown <= 0) {
           mob.fireCooldown = DRAGON_FIRE_COOLDOWN;
@@ -644,6 +658,7 @@ export class MobSimulation {
             fire: true,
           });
           damage += DRAGON_FIRE_DAMAGE;
+          hits.push({ damage: DRAGON_FIRE_DAMAGE, x: mob.x, z: mob.z, kind: "fire" });
         }
       } else if (mob.kind === "wolf" && mob.tamed) {
         // 근처(WOLF_GUARD_RANGE 안)에 적대적인 동물이 있으면 대신 쫓아가 물고, 없으면 플레이어를 따라간다.
@@ -669,6 +684,7 @@ export class MobSimulation {
             explosions.push({ x: mob.x, y: mob.y, z: mob.z });
             const falloff = Math.max(0, 1 - distance / CREEPER_EXPLOSION_RADIUS);
             damage += CREEPER_MAX_DAMAGE * falloff;
+            if (falloff > 0) hits.push({ damage: CREEPER_MAX_DAMAGE * falloff, x: mob.x, z: mob.z, kind: "explosion" });
             exploded.push(mob);
             continue;
           }
@@ -682,8 +698,8 @@ export class MobSimulation {
         mob.update(dt, world, rng, chase, stand);
         if (engaged && distance <= SKELETON_RANGE && mob.attackCooldown <= 0) {
           mob.attackCooldown = SKELETON_COOLDOWN;
+          // 화살은 실제로 날아가므로(projectiles.ts) 여기서는 피해를 주지 않는다. 겨냥이 정확한지만 정해 둔다.
           const hit = rng() < SKELETON_HIT_CHANCE;
-          if (hit) damage += SKELETON_DAMAGE;
           shots.push({
             fromX: mob.x,
             fromY: mob.y + spec.height * 0.6,
@@ -712,6 +728,7 @@ export class MobSimulation {
         if (spec.hostile && targetable && distance < ATTACK_RANGE && Math.abs(mob.y - player.y) < 1.5 && mob.attackCooldown <= 0) {
           mob.attackCooldown = ATTACK_COOLDOWN;
           damage += ATTACK_DAMAGE;
+          hits.push({ damage: ATTACK_DAMAGE, x: mob.x, z: mob.z, kind: "melee" });
         }
       }
 
@@ -764,7 +781,7 @@ export class MobSimulation {
       if (this.mobs.length - hostileCount - villagerCount < TARGET_MOB_COUNT) this.trySpawn(world, player.x, player.z, rng);
       if (fishCount < TARGET_FISH_COUNT) this.trySpawnWater(world, player.x, player.z, rng);
     }
-    return { births, sounds, damage, shots, explosions, kills };
+    return { hits, births, sounds, damage, shots, explosions, kills };
   }
 
   /** 적대적인 동물을 전부 없앤다 (플레이어가 쓰러져서 다시 시작할 때). */
@@ -775,8 +792,8 @@ export class MobSimulation {
   }
 
   /** 때린다. 죽으면 목록에서 지우고 true. */
-  hit(mob: Mob, fromX: number, fromZ: number, damage = 1): boolean {
-    const died = mob.hit(fromX, fromZ, damage);
+  hit(mob: Mob, fromX: number, fromZ: number, damage = 1, knock = 6): boolean {
+    const died = mob.hit(fromX, fromZ, damage, knock);
     if (died) {
       const index = this.mobs.indexOf(mob);
       if (index >= 0) this.mobs.splice(index, 1);

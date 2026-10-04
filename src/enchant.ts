@@ -30,9 +30,15 @@ export function isEnchantId(value: string): value is EnchantId {
 /** 이 아이템에 붙일 수 있는 인챈트들 (붙일 수 없으면 빈 목록). */
 export function enchantsFor(item: number): EnchantId[] {
   const tool = TOOL_BY_ID.get(item);
-  if (tool) return tool.type === "sword" ? ["sharpness", "unbreaking"] : ["efficiency", "unbreaking"];
+  if (tool) {
+    if (tool.type === "sword") return ["sharpness", "unbreaking"];
+    // 도끼는 무기로도 쓰이므로 날카로움도 붙는다.
+    if (tool.type === "axe") return ["efficiency", "sharpness", "unbreaking"];
+    return ["efficiency", "unbreaking"];
+  }
   if (ARMOR_BY_ID.has(item)) return ["protection", "unbreaking"];
   if (item === Item.Bow) return ["power", "unbreaking"];
+  if (item === Item.Shield) return ["unbreaking"];
   return [];
 }
 

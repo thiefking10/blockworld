@@ -436,6 +436,23 @@ class GameAudio {
     for (let i = 0; i < 3; i++) window.setTimeout(() => this.burst({ duration: 0.07, type: "bandpass", freq: 900, q: 1, gain: 0.4 }), i * 110);
   }
 
+  /** 방패로 공격을 막았을 때 (금속 땡) */
+  playShieldBlock(): void {
+    this.burst({ duration: 0.08, type: "highpass", freq: 2200, q: 1, gain: 0.35 });
+    this.tone(1250, 900, 0.14, 0.2, "square");
+  }
+
+  /** 치명타를 넣었을 때 (짧게 오르는 소리) */
+  playCrit(): void {
+    this.tone(500, 1100, 0.1, 0.22, "sawtooth");
+  }
+
+  /** 활을 쏠 때 (시위 튕김) */
+  playBowShot(): void {
+    this.tone(260, 140, 0.12, 0.25, "triangle");
+    this.burst({ duration: 0.1, type: "highpass", freq: 1800, q: 1, gain: 0.2 });
+  }
+
   /** 레벨이 오를 때 (맑게 오르는 두 음) */
   playLevelUp(): void {
     this.tone(660, 990, 0.12, 0.2, "sine");

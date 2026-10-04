@@ -2,7 +2,7 @@ import { ARMOR_BY_ID } from "./armor";
 import { Item, ITEM_NAMES } from "./items";
 import { enchantsFor, ENCHANTS, wearChance, type EnchantId } from "./enchant";
 import { baseBlock } from "./shapes";
-import { bestSword, SWORD_DAMAGE, TOOL_BY_ID, toolDurability } from "./tools";
+import { bestSword, maxDurability, SWORD_DAMAGE, TOOL_BY_ID } from "./tools";
 import { Block } from "./world";
 
 export { Item, ITEM_NAMES };
@@ -96,6 +96,7 @@ export const RECIPES: Recipe[] = [
   { name: "크리퍼 알", station: "table", inputs: [[Item.Gunpowder, 4], [Item.Coal, 1]], output: [Item.CreeperEgg, 1] },
   { name: "거미 알", station: "table", inputs: [[Item.String, 4], [Item.Bone, 1]], output: [Item.SpiderEgg, 1] },
   { name: "물고기 알", station: "table", inputs: [[Item.RawFish, 3]], output: [Item.FishEgg, 1] },
+  { name: "방패", station: "table", inputs: [[Block.Planks, 6], [Item.IronIngot, 1]], output: [Item.Shield, 1] },
   { name: "화살", station: "table", inputs: [[Item.Stick, 1]], output: [Item.Arrow, 4] },
   { name: "활", station: "table", inputs: [[Item.Stick, 3]], output: [Item.Bow, 1] },
   { name: "침대", station: "table", inputs: [[Block.Wool, 3], [Block.Planks, 3]], output: [Item.Bed, 1] },
@@ -177,7 +178,7 @@ export class Inventory {
   private maxStack(item: number): number {
     if (item === Item.Bow || item === Item.FishingRod || item === Item.Saddle) return 1;
     if (item >= Item.HealPotion && item <= Item.RegenPotion) return 16;
-    return TOOL_BY_ID.has(item) || ARMOR_BY_ID.has(item) ? 1 : STACK_MAX;
+    return TOOL_BY_ID.has(item) || ARMOR_BY_ID.has(item) || item === Item.Shield ? 1 : STACK_MAX;
   }
 
   count(item: number): number {
@@ -265,9 +266,9 @@ export class Inventory {
 
   /** 지금 가진 도구 하나의 남은 내구도 (없는 도구면 0). */
   toolLeft(item: number): number {
-    const tool = TOOL_BY_ID.get(item);
-    if (!tool || this.count(item) === 0) return 0;
-    return this.wear.get(item) ?? toolDurability(tool);
+    const max = maxDurability(item);
+    if (max === 0 || this.count(item) === 0) return 0;
+    return this.wear.get(item) ?? max;
   }
 
   /** 이 아이템에 붙은 어떤 인챈트의 단계 (없으면 0). */
@@ -301,17 +302,17 @@ export class Inventory {
 
   /** 도구의 남은 내구도를 정한다 (상자로 옮겼다 꺼낼 때 닳은 정도를 이어 주려고). 도구가 없거나 값이 이상하면 무시한다. */
   setWear(item: number, left: number): void {
-    const tool = TOOL_BY_ID.get(item);
-    if (tool && this.count(item) > 0 && left > 0 && left <= toolDurability(tool)) this.wear.set(item, left);
+    const max = maxDurability(item);
+    if (max > 0 && this.count(item) > 0 && left > 0 && left <= max) this.wear.set(item, left);
   }
 
   /** 도구를 한 번 쓴다. 다 닳아서 부러졌으면 true. */
-  useTool(item: number, rng: () => number = Math.random): boolean {
-    if (!TOOL_BY_ID.has(item) || this.count(item) === 0) return false;
+  useTool(item: number, rng: () => number = Math.random, amount = 1): boolean {
+    if (maxDurability(item) === 0 || this.count(item) === 0) return false;
     // 내구성 인챈트: 쓸 때마다 일정 확률로만 닳는다.
     const unbreaking = this.enchantLevel(item, "unbreaking");
     if (unbreaking > 0 && rng() >= wearChance(unbreaking)) return false;
-    const left = this.toolLeft(item) - 1;
+    const left = this.toolLeft(item) - amount;
     if (left <= 0) {
       this.remove(item, 1);
       this.wear.delete(item);
@@ -358,8 +359,8 @@ export class Inventory {
     this.enchants.clear();
     for (const [item, amount] of entries) this.add(item, amount);
     for (const [item, left] of wear) {
-      const tool = TOOL_BY_ID.get(item);
-      if (tool && this.count(item) > 0 && left > 0 && left <= toolDurability(tool)) this.wear.set(item, left);
+      const max = maxDurability(item);
+      if (max > 0 && this.count(item) > 0 && left > 0 && left <= max) this.wear.set(item, left);
     }
     for (const [item, list] of enchants) {
       if (!Array.isArray(list)) continue;

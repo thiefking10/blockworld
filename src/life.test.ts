@@ -337,3 +337,15 @@ describe("길들이기", () => {
     expect(decodeSave(JSON.stringify({ ...sample, pets: [[5, 1, 2, 3, 0]] }))).toBeNull();
   });
 });
+
+describe("시간이 멈추거나 거꾸로 갈 때", () => {
+  it("동물은 음수 시간에 아무 변화도 없다 (사랑·쿨타임이 생기지 않는다)", () => {
+    const world = flatWorld();
+    const pig = new Mob("pig", 10, 1, 10, fixed(0.5));
+    pig.update(-0.3, world, fixed(0.9));
+    pig.update(0, world, fixed(0.9));
+    expect(pig.love).toBe(0);
+    expect(pig.breedCooldown).toBe(0);
+    expect(pig.age).toBe(0);
+  });
+});
