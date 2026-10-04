@@ -1,6 +1,6 @@
 // 한 번 접속하면 게임 파일을 폰에 저장해 두어, 인터넷이 없어도 열리게 한다.
 // 접속할 때마다 먼저 새 파일을 받아 보고, 실패할 때만 저장해 둔 것을 쓴다 (그래서 업데이트가 바로 반영된다).
-const CACHE = "blockworld-v1";
+const CACHE = "blockworld-v2";
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
