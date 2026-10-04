@@ -1,15 +1,20 @@
 import type { MobKind } from "./mobs";
 import { BAR_SECONDS, composeBar } from "./music";
+import { baseBlock } from "./shapes";
 import { Block } from "./world";
 
 export type Material = "stone" | "dirt" | "sand" | "wood" | "leaves" | "water" | "glass" | "snow";
 
 /** 블록이 어떤 재질로 들리는지. 소리를 고를 때 쓴다. */
 export function materialOf(block: number): Material {
-  switch (block) {
+  switch (baseBlock(block)) {
     case Block.Stone:
     case Block.Brick:
     case Block.IronOre:
+    case Block.DiamondOre:
+    case Block.CoalOre:
+    case Block.StoneSlab:
+    case Block.StoneStairs:
     case Block.Furnace:
       return "stone";
     case Block.Glass:
@@ -22,6 +27,11 @@ export function materialOf(block: number): Material {
     case Block.Wood:
     case Block.Planks:
     case Block.CraftingTable:
+    case Block.PlankSlab:
+    case Block.PlankStairs:
+    case Block.Chest:
+    case Block.Ladder:
+    case Block.Door:
       return "wood";
     case Block.Leaves:
     case Block.Cactus:

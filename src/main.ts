@@ -4,6 +4,7 @@ import { iconTile, tileIconDataUrl } from "./atlas";
 import { audio } from "./audio";
 import { Achievements, ACHIEVEMENTS } from "./achievements";
 import { blockName, canPlaceAt, isPlaceableBlock, PLACEABLE_BLOCKS, sanitizeHotbar } from "./blocks";
+import { ChestField, moveStack } from "./chest";
 import { CropField } from "./crops";
 import { FallTracker, Health, MAX_HEALTH } from "./health";
 import { Hunger, MAX_HUNGER } from "./hunger";
@@ -26,7 +27,8 @@ import { AdaptiveQuality, fogFar, QUALITY_LEVELS } from "./quality";
 import { EYE_HEIGHT, Player } from "./player";
 import { lookDirection, raycast, RayHit } from "./raycast";
 import { decodeSave, EditLog, encodeSave, SaveData } from "./save";
-import { Block, BlockId, SIZE_X, SIZE_Z, WORLD_VERSION, World, isPassable, isPlant } from "./world";
+import { isDoorTop, placementFor, toggledDoor } from "./shapes";
+import { Block, BlockId, SIZE_X, SIZE_Z, WORLD_VERSION, World, isChest, isDoor, isOpenDoor, isPassable, isPlant } from "./world";
 
 const REACH = 5;
 
@@ -168,7 +170,7 @@ const loadedSave = decodeSave(readStorage(saveKey(seed)));
 /** 예전(낮은) 월드에서 저장한 것이면, 지형이 달라져서 블록 수정·작물·화로·떨어진 물건·위치는 버리고 가방·모드·배고픔 등만 이어간다. */
 const oldWorldSave = loadedSave !== null && (loadedSave.worldVersion ?? 1) !== WORLD_VERSION;
 const saved: SaveData | null =
-  loadedSave && oldWorldSave ? { ...loadedSave, edits: [], crops: [], furnaces: [], drops: [] } : loadedSave;
+  loadedSave && oldWorldSave ? { ...loadedSave, edits: [], crops: [], furnaces: [], chests: [], drops: [] } : loadedSave;
 /** 이제 블록뿐 아니라 도구·검·활도 들어갈 수 있다 (0은 빈손). */
 const hotbarBlocks: number[] = sanitizeHotbar(saved?.hotbar);
 
@@ -185,6 +187,8 @@ const crops = new CropField();
 if (saved && saved.seed === seed && saved.crops) crops.load(saved.crops);
 const furnaces = new FurnaceField();
 if (saved && saved.seed === seed && saved.furnaces) furnaces.load(saved.furnaces);
+const chests = new ChestField();
+if (saved && saved.seed === seed && saved.chests) chests.load(saved.chests);
 const drops = new DropField();
 if (saved && saved.seed === seed && saved.drops) drops.load(saved.drops);
 
@@ -230,6 +234,7 @@ function itemEmoji(item: number): string {
   if (item === Item.Arrow) return "➹";
   if (item === Item.DragonHorn) return "📯";
   if (item === Item.DragonScale) return "🐲";
+  if (item === Item.Coal) return "⚫";
   const tool = TOOL_BY_ID.get(item);
   if (tool) return TOOL_EMOJI[tool.type];
   return "🪵";
@@ -584,6 +589,9 @@ const stationPanel = document.getElementById("station-panel") as HTMLElement;
 const stationList = document.getElementById("station-list") as HTMLElement;
 const furnacePanel = document.getElementById("furnace-panel") as HTMLElement;
 const furnaceBody = document.getElementById("furnace-body") as HTMLElement;
+const chestPanel = document.getElementById("chest-panel") as HTMLElement;
+const chestBody = document.getElementById("chest-body") as HTMLElement;
+let openChest: { x: number; y: number; z: number } | null = null;
 let openFurnace: { x: number; y: number; z: number } | null = null;
 let furnaceTimer: number | undefined;
 
@@ -609,6 +617,8 @@ function renderRecipeRows(container: HTMLElement, filter: (recipe: Recipe) => bo
 function closeStations(): void {
   stationPanel.classList.remove("open");
   furnacePanel.classList.remove("open");
+  chestPanel.classList.remove("open");
+  openChest = null;
   openFurnace = null;
   window.clearInterval(furnaceTimer);
 }
@@ -617,6 +627,7 @@ function refreshOpenPanels(): void {
   if (inventoryPanel.classList.contains("open")) refreshInventoryPanel();
   if (stationPanel.classList.contains("open")) renderRecipeRows(stationList, () => true);
   if (furnacePanel.classList.contains("open")) refreshFurnacePanel();
+  if (chestPanel.classList.contains("open")) refreshChestPanel();
 }
 
 function furnaceButton(text: string, action: () => void): HTMLElement {
@@ -737,11 +748,86 @@ function refreshFurnacePanel(): void {
   line("결과", furnace.output, outputButtons);
 }
 
+/** 상자 화면: 위쪽은 상자 안, 아래쪽은 내 가방. 아이템을 누르면 한 묶음이 반대편으로 옮겨진다. */
+function refreshChestPanel(): void {
+  if (!openChest) return;
+  if (!isChest(world.get(openChest.x, openChest.y, openChest.z))) {
+    closeStations();
+    return;
+  }
+  const chest = chests.at(openChest.x, openChest.y, openChest.z);
+  chestBody.replaceChildren();
+  const section = (title: string, source: Inventory, target: Inventory): void => {
+    const heading = document.createElement("div");
+    heading.className = "section-title";
+    heading.textContent = title;
+    const row = document.createElement("div");
+    row.className = "items-row";
+    const entries = source.entries();
+    if (entries.length === 0) row.append("비었어요");
+    for (const [item, amount] of entries) {
+      row.append(
+        chipButton(itemLabel(item) + " ×" + amount, () => {
+          if (moveStack(source, target, item) === 0) {
+            showToast("자리가 없어요", 1500);
+            return;
+          }
+          audio.playPlace(Block.Planks);
+          refreshHotbar();
+          scheduleSave();
+          refreshChestPanel();
+        }),
+      );
+    }
+    chestBody.append(heading, row);
+  };
+  section("상자 안 " + chest.slotsUsed + "/" + chest.slotCount + "칸 (눌러서 가방으로)", chest, inventory);
+  section("내 가방 " + inventory.slotsUsed + "/" + inventory.slotCount + "칸 (눌러서 상자로)", inventory, chest);
+}
+
+/** 문을 열거나 닫는다 (아랫부분·윗부분을 함께 바꾼다). */
+function toggleDoorAt(x: number, y: number, z: number): void {
+  const bottomY = isDoorTop(world.get(x, y, z)) ? y - 1 : y;
+  const lower = world.get(x, bottomY, z);
+  const upper = world.get(x, bottomY + 1, z);
+  if (!isDoor(lower) || !isDoor(upper)) return;
+  const closing = isOpenDoor(lower);
+  if (closing) {
+    for (const cy of [bottomY, bottomY + 1]) {
+      if (player.intersectsBlock(x, cy, z) || mobSim.intersectsBlock(x, cy, z)) {
+        showToast("누가 서 있어서 문을 닫을 수 없어요", 1800);
+        return;
+      }
+    }
+  }
+  audio.playPlace(Block.Planks);
+  let lightChanged = false;
+  for (const [cy, id] of [[bottomY, toggledDoor(lower)], [bottomY + 1, toggledDoor(upper)]]) {
+    lightChanged = world.set(x, cy, z, id as BlockId) || lightChanged;
+    editLog.record(x, cy, z, id);
+    net.sendEdit(x, cy, z, id);
+  }
+  refreshMesh(x, z, lightChanged);
+  scheduleSave();
+}
+
 /** 가리키고 있는 제작대·화로를 연다. (마인크래프트에서 블록을 우클릭하는 것과 같다.) */
 function useBlock(): void {
   const hit = currentTarget();
   if (!hit) return;
   const block = world.get(hit.x, hit.y, hit.z);
+  if (isDoor(block)) {
+    toggleDoorAt(hit.x, hit.y, hit.z);
+    return;
+  }
+  if (isChest(block)) {
+    toggleInventory(false);
+    closeStations();
+    openChest = { x: hit.x, y: hit.y, z: hit.z };
+    chestPanel.classList.add("open");
+    refreshChestPanel();
+    return;
+  }
   if (block !== Block.CraftingTable && block !== Block.Furnace) return;
   if (mode === "creative") {
     showToast("창작 모드에서는 제작이 필요 없어요");
@@ -880,6 +966,7 @@ function refreshInventoryPanel(): void {
 
 onPress(document.getElementById("station-close") as HTMLElement, closeStations);
 onPress(document.getElementById("furnace-close") as HTMLElement, closeStations);
+onPress(document.getElementById("chest-close") as HTMLElement, closeStations);
 
 onPress(document.getElementById("mode-toggle") as HTMLElement, () => {
   mode = mode === "survival" ? "creative" : "survival";
@@ -986,6 +1073,11 @@ function removeBlock(x: number, y: number, z: number, harvest = true): boolean {
     if (mode === "survival") for (const slot of contents) drops.spawn(slot.item, slot.count, x + 0.5, y + 0.3, z + 0.5, Math.random);
     if (openFurnace && openFurnace.x === x && openFurnace.y === y && openFurnace.z === z) closeStations();
   }
+  if (isChest(broken)) {
+    const contents = chests.remove(x, y, z);
+    if (mode === "survival") for (const [item, amount] of contents) drops.spawn(item, amount, x + 0.5, y + 0.3, z + 0.5, Math.random);
+    if (openChest && openChest.x === x && openChest.y === y && openChest.z === z) closeStations();
+  }
   if (mode === "survival") {
     if (harvest) {
       const gained = dropsFor(broken, Math.random);
@@ -998,6 +1090,11 @@ function removeBlock(x: number, y: number, z: number, harvest = true): boolean {
   editLog.record(x, y, z, Block.Air);
   net.sendEdit(x, y, z, Block.Air);
   crops.remove(x, y, z);
+  // 문은 두 칸짜리라, 한쪽을 부수면 나머지 반쪽도 같이 사라진다 (문은 아랫부분이 하나만 준다).
+  if (isDoor(broken)) {
+    const otherY = isDoorTop(broken) ? y - 1 : y + 1;
+    if (isDoor(world.get(x, otherY, z))) return removeBlock(x, otherY, z, harvest) || lightChanged;
+  }
   return lightChanged;
 }
 
@@ -1142,6 +1239,20 @@ function placeBlock(): void {
   if (!world.inBounds(px, py, pz) || !isPassable(world.get(px, py, pz))) return;
   if (player.intersectsBlock(px, py, pz) || mobSim.intersectsBlock(px, py, pz)) return;
   const block = hotbarBlocks[selectedSlot];
+  const placement = isPlaceableBlock(block) ? placementFor(block, [px - hit.x, py - hit.y, pz - hit.z], player.yaw) : null;
+  if (isPlaceableBlock(block) && !placement) {
+    showToast(blockName(block) + "은(는) 벽의 옆면을 눌러서 붙일 수 있어요");
+    return;
+  }
+  // 문처럼 위로 한 칸 더 차지하는 블록은, 그 칸들이 모두 비어 있어야 한다.
+  for (const [dy] of placement?.cells ?? []) {
+    if (dy === 0) continue;
+    const cy = py + dy;
+    if (!world.inBounds(px, cy, pz) || !isPassable(world.get(px, cy, pz)) || player.intersectsBlock(px, cy, pz) || mobSim.intersectsBlock(px, cy, pz)) {
+      showToast(blockName(block) + "을(를) 놓을 공간이 모자라요");
+      return;
+    }
+  }
   if (!isPlaceableBlock(block)) {
     showToast(block === 0 ? "빈손이에요 — 놓을 블록을 골라 주세요" : itemLabel(block) + "은(는) 놓을 수 없어요");
     return;
@@ -1158,9 +1269,12 @@ function placeBlock(): void {
     refreshHotbar();
   }
   audio.playPlace(block);
-  const lightChanged = world.set(px, py, pz, block as BlockId);
-  editLog.record(px, py, pz, block);
-  net.sendEdit(px, py, pz, block);
+  let lightChanged = false;
+  for (const [dy, id] of placement?.cells ?? []) {
+    lightChanged = world.set(px, py + dy, pz, id as BlockId) || lightChanged;
+    editLog.record(px, py + dy, pz, id);
+    net.sendEdit(px, py + dy, pz, id);
+  }
   if (block === Block.Sprout) crops.plant(px, py, pz, worldSeconds);
   refreshMesh(px, pz, lightChanged);
   scheduleSave();
@@ -1182,6 +1296,7 @@ function saveNow(): void {
     durability: inventory.wearEntries(),
     crops: crops.toArray(),
     furnaces: furnaces.toArray(),
+    chests: chests.toArray(),
     drops: drops.toArray(),
     achievements: achievements.toArray(),
     hunger: hunger.value,
@@ -1640,7 +1755,7 @@ function frame(now: number): void {
   if (mode !== "creative") player.flying = false;
   heartsElement.style.display = mode === "creative" ? "none" : "";
   descendButton.classList.toggle("show", player.flying);
-  if (player.flying) fallTracker.reset();
+  if (player.flying || player.onLadder) fallTracker.reset();
   const fallDamage = fallTracker.update(player.y, player.onGround, player.isInWater());
   if (fallDamage > 0) hurt(fallDamage);
   if (mode === "survival") {
@@ -1722,7 +1837,7 @@ function frame(now: number): void {
   const target = currentTarget();
   outline.visible = target !== null;
   const aimed = target ? world.get(target.x, target.y, target.z) : Block.Air;
-  useButton.classList.toggle("show", aimed === Block.CraftingTable || aimed === Block.Furnace);
+  useButton.classList.toggle("show", aimed === Block.CraftingTable || aimed === Block.Furnace || isDoor(aimed) || isChest(aimed));
   if (target) outline.position.set(target.x + 0.5, target.y + 0.5, target.z + 0.5);
 
   if (!freezeTime) worldSeconds += dt;

@@ -196,3 +196,61 @@ describe("player", () => {
     expect(player.y).toBeGreaterThan(2.5);
   });
 });
+
+describe("모양 블록", () => {
+  function standOn(world: World, block: number): Player {
+    world.set(8, 1, 8, block as never);
+    const player = new Player(world);
+    player.x = 8.5;
+    player.z = 8.5;
+    player.y = 4;
+    for (let i = 0; i < 120; i++) player.update(1 / 60, idle);
+    return player;
+  }
+
+  it("반블록 위에는 반 칸 높이에 서고, 일반 블록 위보다 낮다", () => {
+    const slab = standOn(flatWorld(), Block.PlankSlab);
+    const full = standOn(flatWorld(), Block.Stone);
+    expect(slab.onGround).toBe(true);
+    expect(slab.y).toBeGreaterThan(1.4);
+    expect(slab.y).toBeLessThan(1.7);
+    expect(full.y).toBeGreaterThan(1.9);
+  });
+
+  it("닫힌 문은 막고, 열린 문 쪽으로는 지나갈 수 있다", () => {
+    const run = (door: number): number => {
+      const world = flatWorld();
+      // 방향 0 문: 칸의 +z 가장자리에 판이 있다
+      world.set(8, 1, 8, door as never);
+      world.set(8, 2, 8, (door + 8) as never);
+      const player = new Player(world);
+      player.autoJump = false;
+      player.x = 8.5;
+      player.z = 7.2;
+      player.y = 1;
+      player.yaw = Math.PI; // +z 쪽을 본다
+      for (let i = 0; i < 90; i++) player.update(1 / 60, { moveX: 0, moveZ: 1, jump: false });
+      return player.z;
+    };
+    expect(run(Block.Door)).toBeLessThan(8.8); // 닫힘: 판에 막힘
+    expect(run(Block.Door + 4)).toBeGreaterThan(9.5); // 열림: 통과
+  });
+
+  it("사다리를 타고 위로 오르고, 가만히 있으면 천천히 미끄러진다", () => {
+    const world = flatWorld();
+    for (let y = 1; y <= 6; y++) world.set(8, y, 9, Block.Stone);
+    for (let y = 1; y <= 6; y++) world.set(8, y, 8, (Block.Ladder + 0) as never);
+    const player = new Player(world);
+    player.x = 8.5;
+    player.z = 8.5;
+    player.y = 1;
+    player.yaw = Math.PI; // 벽(+z) 쪽을 보고 민다
+    for (let i = 0; i < 60; i++) player.update(1 / 60, { moveX: 0, moveZ: 1, jump: false });
+    expect(player.onLadder).toBe(true);
+    expect(player.y).toBeGreaterThan(3);
+    const high = player.y;
+    for (let i = 0; i < 30; i++) player.update(1 / 60, idle);
+    expect(player.y).toBeLessThan(high);
+    expect(player.y).toBeGreaterThan(high - 3);
+  });
+});

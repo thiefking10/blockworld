@@ -1,7 +1,8 @@
 import * as THREE from "three";
 import { createAtlasTexture, tileForFace, tileUV } from "./atlas";
 import { CHUNK_SIZE } from "./chunkMath";
-import { Block, BlockId, MAX_LIGHT, World, isPlant, occludes } from "./world";
+import { Box, renderBoxes } from "./shapes";
+import { Block, BlockId, MAX_LIGHT, World, isPlant, isShaped, occludes } from "./world";
 
 /** 하늘이 안 보이는 곳(동굴 안, 지붕 밑)의 밝기 */
 const DARK_LIGHT = 0.45;
@@ -81,6 +82,33 @@ class MeshData {
     this.indices.push(start, start + 1, start + 2, start, start + 2, start + 3);
   }
 
+  /** 칸 안의 상자 하나(box)의 한 면을 그린다. 무늬는 칸 안 위치 그대로 붙여서, 반블록 옆면은 무늬의 아랫반쪽이 보인다. */
+  addBoxFace(
+    face: { dir: [number, number, number]; corners: number[][] },
+    box: Box,
+    offsetX: number,
+    offsetY: number,
+    offsetZ: number,
+    brightness: number,
+    tile: number,
+  ): void {
+    const start = this.positions.length / 3;
+    const flat = face.dir[1] !== 0;
+    const uvCorners = flat ? FLAT_UV : SIDE_UV;
+    const axisA = face.dir[0] !== 0 ? 2 : 0;
+    const axisB = flat ? 2 : 1;
+    face.corners.forEach((corner, i) => {
+      const real = corner.map((c, axis) => (c === 1 ? box[axis + 3] : box[axis]));
+      this.positions.push(offsetX + real[0], offsetY + real[1], offsetZ + real[2]);
+      this.colors.push(brightness, brightness, brightness);
+      const [u, v] = uvCorners[i];
+      const uNew = u === corner[axisA] ? real[axisA] : 1 - real[axisA];
+      const vNew = v === corner[axisB] ? real[axisB] : 1 - real[axisB];
+      this.uvs.push(...tileUV(tile, uNew, vNew));
+    });
+    this.indices.push(start, start + 1, start + 2, start, start + 2, start + 3);
+  }
+
   toMesh(material: THREE.Material): THREE.Mesh | null {
     if (this.indices.length === 0) return null;
     const geometry = new THREE.BufferGeometry();
@@ -139,6 +167,23 @@ export function buildChunkMesh(world: World, chunkX: number, chunkZ: number): Ch
           const brightness = (0.95 + noise) * faceBrightness(world, x, y, z);
           const target = torchLevel > 0 ? lit : solid;
           for (const corners of PLANT_QUADS) target.addQuad(corners, x, y, z, brightness, tileForFace(block, 0), false);
+          continue;
+        }
+
+        if (isShaped(block)) {
+          const boxes = renderBoxes(block) ?? [];
+          for (const box of boxes) {
+            for (const face of FACES) {
+              const [dx, dy, dz] = face.dir;
+              // 칸 가장자리에 닿은 면은 이웃이 가리면 안 그려도 된다.
+              const edge = dx === 1 ? box[3] === 1 : dx === -1 ? box[0] === 0 : dy === 1 ? box[4] === 1 : dy === -1 ? box[1] === 0 : dz === 1 ? box[5] === 1 : box[2] === 0;
+              const neighbor = world.get(x + dx, y + dy, z + dz);
+              if (edge && occludes(neighbor)) continue;
+              const brightness = (face.shade + noise) * faceBrightness(world, x + dx, y + dy, z + dz);
+              const target = world.lightAt(x + dx, y + dy, z + dz) > 0 ? lit : solid;
+              target.addBoxFace(face, box, x, y, z, brightness, tileForFace(block, dy, dx, dz));
+            }
+          }
           continue;
         }
 

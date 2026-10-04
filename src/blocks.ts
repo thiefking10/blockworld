@@ -1,3 +1,4 @@
+import { baseBlock } from "./shapes";
 import { Block, BlockId, isOpaque, isPlant } from "./world";
 
 export interface PlaceableBlock {
@@ -21,12 +22,20 @@ export const PLACEABLE_BLOCKS: PlaceableBlock[] = [
   { block: Block.Wool, name: "양털" },
   { block: Block.IronOre, name: "철광석" },
   { block: Block.DiamondOre, name: "다이아몬드 광석" },
+  { block: Block.CoalOre, name: "석탄 광석" },
   { block: Block.Flower, name: "붉은 꽃" },
   { block: Block.YellowFlower, name: "노란 꽃" },
   { block: Block.Sprout, name: "밀 씨앗" },
   { block: Block.CraftingTable, name: "제작대" },
   { block: Block.Furnace, name: "화로" },
   { block: Block.Torch, name: "횃불" },
+  { block: Block.PlankSlab, name: "판자 반블록" },
+  { block: Block.StoneSlab, name: "돌 반블록" },
+  { block: Block.PlankStairs, name: "판자 계단" },
+  { block: Block.StoneStairs, name: "돌 계단" },
+  { block: Block.Door, name: "문" },
+  { block: Block.Chest, name: "상자" },
+  { block: Block.Ladder, name: "사다리" },
 ];
 
 /** 이 블록을 놓으려는 칸 바로 아래 블록이 (below) 받쳐 줄 수 있는지. 꽃과 씨앗은 풀이나 흙 위에, 횃불은 어떤 단단한 블록 위에도 세울 수 있다. */
@@ -41,7 +50,7 @@ export const HOTBAR_SIZE = 6;
 export const DEFAULT_HOTBAR: number[] = [Block.Grass, Block.Dirt, Block.Stone, Block.Wood, Block.Planks, Block.Glass];
 
 export function blockName(block: number): string {
-  return PLACEABLE_BLOCKS.find((b) => b.block === block)?.name ?? "블록";
+  return PLACEABLE_BLOCKS.find((b) => b.block === baseBlock(block))?.name ?? "블록";
 }
 
 /** 이 번호가 (블록 고르기에서 고를 수 있는) 놓을 수 있는 블록인지. 도구·검 같은 아이템은 아니다. */

@@ -68,6 +68,14 @@ describe("save", () => {
     expect(decodeSave(JSON.stringify({ ...sample, hunger: "많이" }))).toBeNull();
   });
 
+  it("상자 내용도 저장되고, 모양이 이상하면 거부한다", () => {
+    const full: SaveData = { ...sample, chests: [[1, 2, 3, [[3, 5]], []]] };
+    expect(decodeSave(encodeSave(full))).toEqual(full);
+    expect(decodeSave(encodeSave(sample))?.chests).toBeUndefined();
+    expect(decodeSave(JSON.stringify({ ...sample, chests: [[1, 2, 3, [[3]], []]] }))).toBeNull();
+    expect(decodeSave(JSON.stringify({ ...sample, chests: [[1, 2]] }))).toBeNull();
+  });
+
   it("월드 규격 번호도 저장되고, 없는 예전 저장도 읽힌다", () => {
     const full: SaveData = { ...sample, worldVersion: 2 };
     expect(decodeSave(encodeSave(full))?.worldVersion).toBe(2);

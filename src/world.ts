@@ -22,6 +22,20 @@ export const Block = {
   Furnace: 20,
   Torch: 21,
   DiamondOre: 22,
+  CoalOre: 23,
+  /** 아래부터는 모양이 네모가 아닌 블록이다. 방향이 있는 것은 방향마다 번호가 하나씩 있다 (shapes.ts). */
+  PlankSlab: 24,
+  StoneSlab: 25,
+  /** 계단: 26~29(판자) / 30~33(돌), 방향 0~3 */
+  PlankStairs: 26,
+  StoneStairs: 30,
+  /** 상자: 34~37 */
+  Chest: 34,
+  /** 사다리: 38~41 */
+  Ladder: 38,
+  /** 문 아랫부분: 42~49 (닫힘 42~45, 열림 46~49), 윗부분: 50~57 */
+  Door: 42,
+  DoorTop: 50,
 } as const;
 export type BlockId = (typeof Block)[keyof typeof Block];
 
@@ -51,6 +65,28 @@ export function isPlant(block: number): boolean {
   );
 }
 
+/** 반블록·계단·상자·사다리·문처럼 한 칸을 다 채우지 않는 모양의 블록인지. */
+export function isShaped(block: number): boolean {
+  return block >= Block.PlankSlab && block <= 57;
+}
+
+export function isChest(block: number): boolean {
+  return block >= Block.Chest && block < Block.Ladder;
+}
+
+export function isLadder(block: number): boolean {
+  return block >= Block.Ladder && block < Block.Door;
+}
+
+export function isDoor(block: number): boolean {
+  return block >= Block.Door && block < 58;
+}
+
+/** 열려 있는 문인지 (아랫부분 46~49, 윗부분 54~57). */
+export function isOpenDoor(block: number): boolean {
+  return isDoor(block) && (block - Block.Door) % 8 >= 4;
+}
+
 /** 빛을 막고 몸이 부딪히는 블록인지 (공기, 물, 식물은 아니다). */
 export function isOpaque(block: number): boolean {
   return block !== Block.Air && block !== Block.Water && !isPlant(block);
@@ -58,12 +94,12 @@ export function isOpaque(block: number): boolean {
 
 /** 하늘빛을 막는 블록인지. 유리는 몸은 막아도 빛은 통과시킨다. */
 export function blocksLight(block: number): boolean {
-  return isOpaque(block) && block !== Block.Glass;
+  return isOpaque(block) && block !== Block.Glass && !isLadder(block) && !isOpenDoor(block);
 }
 
 /** 옆 블록의 면을 가려 그리지 않아도 되게 하는 블록인지 (투명한 유리는 가리지 못한다). */
 export function occludes(block: number): boolean {
-  return isOpaque(block) && block !== Block.Glass;
+  return isOpaque(block) && block !== Block.Glass && !isShaped(block);
 }
 
 /** 지나갈 수 있고 조준이 통과하는 블록인지 (공기, 물). */
@@ -143,6 +179,7 @@ export function terrainHeight(x: number, z: number, seed: number): number {
 /** 동굴은 이 높이까지만 파고, 철광석·다이아몬드는 각각 이 높이 아래에서만 나온다. */
 const CAVE_TOP = 90;
 const IRON_TOP = 72;
+const COAL_TOP = 100;
 const DIAMOND_TOP = 14;
 
 /** 두 개의 3차원 노이즈가 동시에 "중간값 근처"인 자리가 구불구불한 터널이 된다. */
@@ -320,7 +357,9 @@ export class World {
   /** 걸어다닐 때 막히는 블록인지. 월드 옆면과 바닥은 벽으로 친다. 물은 막지 않는다. */
   isSolid(x: number, y: number, z: number): boolean {
     if (x < 0 || x >= SIZE_X || z < 0 || z >= SIZE_Z || y < 0) return true;
-    return isOpaque(this.get(x, y, z));
+    const block = this.get(x, y, z);
+    if (isShaped(block)) return !isLadder(block) && !isOpenDoor(block);
+    return isOpaque(block);
   }
 
   /** 이 칸 위로 하늘이 뚫려 있는지 (위에 빛을 막는 블록이 없는지). */
@@ -374,6 +413,20 @@ export class World {
           const chance = y <= SEA_LEVEL ? 0.02 : 0.008;
           if (hash3(x >> 1, y >> 1, z >> 1, seed + 31337) > chance) continue;
           if (hash3(x, y, z, seed + 11) < 0.85) this.set(x, y, z, Block.IronOre);
+        }
+      }
+    }
+  }
+
+  /** 석탄은 철보다 흔하다. 땅속 어디서나 덩어리로 나오고, 산 높은 곳에도 있다. */
+  private scatterCoal(seed: number): void {
+    for (let x = 0; x < SIZE_X; x++) {
+      for (let z = 0; z < SIZE_Z; z++) {
+        const surface = this.top[x + SIZE_X * z];
+        for (let y = 5; y <= Math.min(surface - 2, COAL_TOP); y++) {
+          if (this.get(x, y, z) !== Block.Stone) continue;
+          if (hash3(x >> 1, y >> 1, z >> 1, seed + 24601) > 0.022) continue;
+          if (hash3(x, y, z, seed + 91) < 0.85) this.set(x, y, z, Block.CoalOre);
         }
       }
     }
@@ -462,6 +515,7 @@ export class World {
     }
     this.carveCaves(seed);
     this.scatterOre(seed);
+    this.scatterCoal(seed);
     this.scatterDiamond(seed);
     this.plantTrees(seed);
     this.scatterFlowers(seed);

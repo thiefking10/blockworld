@@ -1,5 +1,6 @@
 import { ARMOR_BY_ID } from "./armor";
 import { Item, ITEM_NAMES } from "./items";
+import { baseBlock } from "./shapes";
 import { bestSword, SWORD_DAMAGE, TOOL_BY_ID, toolDurability } from "./tools";
 import { Block } from "./world";
 
@@ -42,10 +43,18 @@ export interface Recipe {
 export const RECIPES: Recipe[] = [
   { name: "판자", inputs: [[Block.Wood, 1]], output: [Block.Planks, 4] },
   { name: "막대", inputs: [[Block.Planks, 2]], output: [Item.Stick, 4] },
-  // 원래는 석탄이 있어야 하지만, 아직 석탄이 없어 나무로 불을 붙이는 것으로 단순화했다.
-  { name: "횃불", inputs: [[Item.Stick, 1], [Block.Wood, 1]], output: [Block.Torch, 4] },
+  { name: "횃불", inputs: [[Item.Stick, 1], [Item.Coal, 1]], output: [Block.Torch, 4] },
+  // 석탄을 아직 못 구했을 때를 위해, 통나무를 태운 숯 대신 쓰는 예전 방식도 남겨 두었다.
+  { name: "횃불 (통나무로)", inputs: [[Item.Stick, 1], [Block.Wood, 1]], output: [Block.Torch, 2] },
   { name: "제작대", inputs: [[Block.Planks, 4]], output: [Block.CraftingTable, 1] },
   { name: "화로", station: "table", inputs: [[Block.Stone, 8]], output: [Block.Furnace, 1] },
+  { name: "판자 반블록", station: "table", inputs: [[Block.Planks, 3]], output: [Block.PlankSlab, 6] },
+  { name: "돌 반블록", station: "table", inputs: [[Block.Stone, 3]], output: [Block.StoneSlab, 6] },
+  { name: "판자 계단", station: "table", inputs: [[Block.Planks, 6]], output: [Block.PlankStairs, 4] },
+  { name: "돌 계단", station: "table", inputs: [[Block.Stone, 6]], output: [Block.StoneStairs, 4] },
+  { name: "문", station: "table", inputs: [[Block.Planks, 6]], output: [Block.Door, 3] },
+  { name: "상자", station: "table", inputs: [[Block.Planks, 8]], output: [Block.Chest, 1] },
+  { name: "사다리", station: "table", inputs: [[Item.Stick, 7]], output: [Block.Ladder, 3] },
   { name: "벽돌", station: "table", inputs: [[Block.Stone, 2]], output: [Block.Brick, 2] },
   { name: "나무 곡괭이", station: "table", inputs: [[Block.Planks, 3], [Item.Stick, 2]], output: [Item.WoodPickaxe, 1] },
   { name: "나무 도끼", station: "table", inputs: [[Block.Planks, 3], [Item.Stick, 2]], output: [Item.WoodAxe, 1] },
@@ -86,7 +95,12 @@ export const RECIPES: Recipe[] = [
  */
 export function dropsFor(block: number, rng: () => number): [number, number][] {
   if (block === Block.Air || block === Block.Water) return [];
+  // 문의 윗부분은 아무것도 주지 않는다 (아랫부분이 문 하나를 준다). 방향·열림이 다른 번호는 모두 같은 물건이다.
+  if (block >= Block.DoorTop && block < 58) return [];
+  block = baseBlock(block);
   switch (block) {
+    case Block.CoalOre:
+      return [[Item.Coal, 1]];
     case Block.Grass:
       return rng() < 0.25 ? [[Block.Dirt, 1], [Block.Sprout, 1]] : [[Block.Dirt, 1]];
     case Block.Wheat:
@@ -226,6 +240,12 @@ export class Inventory {
     const tool = TOOL_BY_ID.get(item);
     if (!tool || this.count(item) === 0) return 0;
     return this.wear.get(item) ?? toolDurability(tool);
+  }
+
+  /** 도구의 남은 내구도를 정한다 (상자로 옮겼다 꺼낼 때 닳은 정도를 이어 주려고). 도구가 없거나 값이 이상하면 무시한다. */
+  setWear(item: number, left: number): void {
+    const tool = TOOL_BY_ID.get(item);
+    if (tool && this.count(item) > 0 && left > 0 && left <= toolDurability(tool)) this.wear.set(item, left);
   }
 
   /** 도구를 한 번 쓴다. 다 닳아서 부러졌으면 true. */

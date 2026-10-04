@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import { Block } from "./world";
+import { doorPlateFacing, FACING_DIRS, facingOf } from "./shapes";
+import { Block, isDoor, isLadder } from "./world";
 
 export const TILE = {
   GrassTop: 0,
@@ -29,6 +30,13 @@ export const TILE = {
   FurnaceTop: 24,
   Torch: 25,
   DiamondOre: 26,
+  CoalOre: 27,
+  ChestFront: 28,
+  ChestSide: 29,
+  ChestTop: 30,
+  Ladder: 31,
+  DoorLower: 32,
+  DoorUpper: 33,
 } as const;
 
 export const ATLAS_COLS = 6;
@@ -37,7 +45,24 @@ const TILE_PIXELS = 16;
 const EDGE = 0.002;
 
 /** 블록과 면 방향(dirY: 위 1, 아래 -1, 옆 0)에 맞는 무늬 타일 번호. */
-export function tileForFace(block: number, dirY: number): number {
+export function tileForFace(block: number, dirY: number, dirX = 0, dirZ = 0): number {
+  if (block >= Block.PlankSlab) {
+    if (block === Block.PlankSlab || (block >= Block.PlankStairs && block < Block.StoneStairs)) return TILE.Planks;
+    if (block === Block.StoneSlab || (block >= Block.StoneStairs && block < Block.Chest)) return TILE.Stone;
+    if (block >= Block.Chest && block < Block.Ladder) {
+      if (dirY !== 0) return TILE.ChestTop;
+      const [fx, fz] = FACING_DIRS[facingOf(block)];
+      return fx === dirX && fz === dirZ ? TILE.ChestFront : TILE.ChestSide;
+    }
+    if (isLadder(block)) return TILE.Ladder;
+    if (isDoor(block)) {
+      // 문판의 넓은 면(판이 놓인 방향과 수직인 면)에만 문 무늬를 붙이고, 얇은 옆면은 나무 무늬를 쓴다.
+      const [fx] = FACING_DIRS[doorPlateFacing(block)];
+      const wide = fx === 0 ? dirZ !== 0 : dirX !== 0;
+      if (!wide || dirY !== 0) return TILE.Planks;
+      return block >= Block.DoorTop ? TILE.DoorUpper : TILE.DoorLower;
+    }
+  }
   switch (block) {
     case Block.Grass:
       return dirY === 1 ? TILE.GrassTop : dirY === -1 ? TILE.Dirt : TILE.GrassSide;
@@ -83,6 +108,8 @@ export function tileForFace(block: number, dirY: number): number {
       return TILE.Torch;
     case Block.DiamondOre:
       return TILE.DiamondOre;
+    case Block.CoalOre:
+      return TILE.CoalOre;
     default:
       return TILE.Stone;
   }
@@ -92,6 +119,8 @@ export function tileForFace(block: number, dirY: number): number {
 export function iconTile(block: number): number {
   if (block === Block.Grass) return TILE.GrassSide;
   if (block === Block.Wood) return TILE.WoodSide;
+  if (block === Block.Chest) return TILE.ChestFront;
+  if (block === Block.Door) return TILE.DoorLower;
   return tileForFace(block, 1);
 }
 
@@ -264,6 +293,69 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: number): void {
       }
       break;
     }
+    case TILE.CoalOre: {
+      noiseFill(ctx, ox, oy, [128, 128, 132], 26, random);
+      for (let i = 0; i < 26; i++) px(Math.floor(random() * 16), Math.floor(random() * 16), shade([128, 128, 132], -38));
+      for (let cluster = 0; cluster < 6; cluster++) {
+        const cx = 2 + Math.floor(random() * 11);
+        const cy = 2 + Math.floor(random() * 11);
+        for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+          if (random() < 0.85) px(cx + dx, cy + dy, shade([32, 32, 36], (random() - 0.5) * 24));
+        }
+      }
+      break;
+    }
+    case TILE.ChestSide:
+    case TILE.ChestFront:
+    case TILE.ChestTop: {
+      for (let y = 0; y < TILE_PIXELS; y++) {
+        for (let x = 0; x < TILE_PIXELS; x++) {
+          const board = tile === TILE.ChestTop ? 0 : y % 5 === 4 ? -26 : 0;
+          px(x, y, shade([164, 118, 56], board + (random() - 0.5) * 16));
+        }
+      }
+      // 테두리(어두운 나무띠)
+      for (let i = 0; i < TILE_PIXELS; i++) {
+        px(i, 0, shade([90, 60, 28], 4));
+        px(i, TILE_PIXELS - 1, shade([90, 60, 28], 4));
+        px(0, i, shade([90, 60, 28], 4));
+        px(TILE_PIXELS - 1, i, shade([90, 60, 28], 4));
+      }
+      if (tile === TILE.ChestFront) {
+        for (let x = 1; x < 15; x++) px(x, 5, shade([90, 60, 28], 4));
+        // 자물쇠
+        for (const [x, y] of [[7, 5], [8, 5], [7, 6], [8, 6], [7, 7]]) px(x, y, shade([214, 200, 150], (random() - 0.5) * 10));
+        px(7, 7, "rgb(60,60,64)");
+      }
+      break;
+    }
+    case TILE.Ladder: {
+      // 투명한 바탕에 양쪽 기둥과 가로대만 그린다.
+      for (let y = 0; y < TILE_PIXELS; y++) {
+        for (const x of [2, 3, 12, 13]) px(x, y, shade([120, 84, 44], (random() - 0.5) * 20));
+      }
+      for (const y of [2, 6, 10, 14]) {
+        for (let x = 4; x < 12; x++) px(x, y, shade([150, 108, 58], (random() - 0.5) * 20));
+      }
+      break;
+    }
+    case TILE.DoorLower:
+    case TILE.DoorUpper: {
+      for (let y = 0; y < TILE_PIXELS; y++) {
+        for (let x = 0; x < TILE_PIXELS; x++) {
+          const edge = x === 0 || x === 15 || y === 0 || y === 15;
+          const grain = x % 4 === 1 ? -10 : 0;
+          px(x, y, shade(edge ? [100, 66, 30] : [170, 124, 66], grain + (random() - 0.5) * 14));
+        }
+      }
+      if (tile === TILE.DoorUpper) {
+        for (let y = 3; y < 8; y++) for (let x = 3; x < 13; x++) px(x, y, x === 7 || x === 8 ? shade([100, 66, 30], 0) : shade([186, 220, 236], (random() - 0.5) * 16));
+      } else {
+        for (let y = 3; y < 13; y++) for (let x = 3; x < 13; x++) if (x === 3 || x === 12 || y === 3 || y === 12) px(x, y, shade([130, 90, 44], 0));
+        for (const [x, y] of [[11, 7], [11, 8]]) px(x, y, "rgb(230,210,120)");
+      }
+      break;
+    }
     case TILE.Flower:
     case TILE.YellowFlower: {
       const petal = tile === TILE.Flower ? [214, 52, 60] : ([240, 208, 50] as RGB);
@@ -392,7 +484,7 @@ export function createAtlasTexture(): THREE.Texture {
   const canvas = document.createElement("canvas");
   atlasCanvas = canvas;
   canvas.width = ATLAS_COLS * TILE_PIXELS;
-  canvas.height = ATLAS_COLS * TILE_PIXELS;
+  canvas.height = ATLAS_COLS * TILE_PIXELS; // 6×6 = 36칸 (지금 34칸 사용)
   const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
 
   for (const tile of Object.values(TILE)) drawTile(ctx, tile);

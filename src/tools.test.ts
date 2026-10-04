@@ -82,3 +82,17 @@ describe("쓸 도구 고르기", () => {
     expect(bestSword((id) => id === Item.WoodClub || id === Item.StoneClub)?.id).toBe(Item.StoneClub);
   });
 });
+
+describe("건축 블록과 석탄", () => {
+  it("방향이 달라도 같은 블록처럼 캐진다", () => {
+    expect(breakSeconds(Block.StoneStairs + 2, null)).toBe(breakSeconds(Block.StoneStairs, null));
+    expect(breakSeconds(Block.Door + 5, null)).toBe(breakSeconds(Block.Door, null));
+    expect(breakSeconds(Block.DoorTop + 1, null)).toBe(breakSeconds(Block.Door, null));
+  });
+
+  it("석탄 광석은 나무 곡괭이부터 캘 수 있다", () => {
+    expect(canHarvest(Block.CoalOre, null)).toBe(false);
+    expect(canHarvest(Block.CoalOre, TOOL_BY_ID.get(Item.WoodPickaxe) ?? null)).toBe(true);
+    expect(canHarvest(Block.StoneStairs + 1, null)).toBe(false);
+  });
+});

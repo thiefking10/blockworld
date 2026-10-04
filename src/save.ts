@@ -1,3 +1,4 @@
+import type { ChestEntry } from "./chest";
 import type { FurnaceData } from "./furnace";
 
 export type EditTuple = [number, number, number, number];
@@ -22,6 +23,8 @@ export interface SaveData {
   crops?: [number, number, number, number][];
   /** 화로들의 [x, y, z, 안에 든 것과 진행 상태]. */
   furnaces?: [number, number, number, FurnaceData][];
+  /** 상자들의 [x, y, z, 든 것 [번호, 개수][], 도구 닳은 정도 [번호, 남은 내구도][]]. */
+  chests?: ChestEntry[];
   /** 바닥에 떨어진 아이템 [아이템, 개수, x, y, z, 지난 시간]. */
   drops?: [number, number, number, number, number, number][];
   /** 달성한 도전 과제 번호. */
@@ -89,6 +92,20 @@ export function decodeSave(text: string | null): SaveData | null {
     if (
       data.drops !== undefined &&
       !(Array.isArray(data.drops) && data.drops.every((e: unknown) => Array.isArray(e) && e.length === 6 && isFiniteNumbers(e)))
+    )
+      return null;
+    if (
+      data.chests !== undefined &&
+      !(
+        Array.isArray(data.chests) &&
+        data.chests.every(
+          (e: unknown) =>
+            Array.isArray(e) &&
+            e.length === 5 &&
+            isFiniteNumbers(e.slice(0, 3)) &&
+            [e[3], e[4]].every((list: unknown) => Array.isArray(list) && list.every((p: unknown) => Array.isArray(p) && p.length === 2 && isFiniteNumbers(p))),
+        )
+      )
     )
       return null;
     if (data.crops !== undefined && !(Array.isArray(data.crops) && data.crops.every((e: unknown) => Array.isArray(e) && e.length === 4 && isFiniteNumbers(e)))) return null;

@@ -1,4 +1,5 @@
-import { Block, World } from "./world";
+import { overlapsCollision } from "./shapes";
+import { Block, isLadder, isShaped, World } from "./world";
 
 const HALF_WIDTH = 0.3;
 const HEIGHT = 1.8;
@@ -11,6 +12,9 @@ const WATER_GRAVITY = 6;
 const WATER_SWIM_UP = 30;
 const WATER_MAX_RISE = 3.4;
 const WATER_MAX_SINK = 3;
+/** 사다리를 오르는 속도와, 매달려 있을 때 천천히 미끄러지는 속도 */
+const LADDER_CLIMB = 3.2;
+const LADDER_SLIDE = 1.6;
 /** 비행 중 위아래 속도와 걷기 대비 이동 속도 배율 */
 export const FLY_SPEED = 7;
 export const FLY_MOVE_FACTOR = 2;
@@ -36,6 +40,8 @@ export class Player {
   autoJump = true;
   /** 하늘을 나는 중 (창작 모드). 중력이 없고, 땅에 닿으면 저절로 끝난다. */
   flying = false;
+  /** 사다리에 매달려 있는 중 (떨어지는 높이를 세지 않는다). */
+  onLadder = false;
 
   constructor(private readonly world: World) {}
 
@@ -50,7 +56,15 @@ export class Player {
     for (let x = x0; x <= x1; x++) {
       for (let y = y0; y <= y1; y++) {
         for (let z = z0; z <= z1; z++) {
-          if (this.world.isSolid(x, y, z)) return true;
+          const block = this.world.get(x, y, z);
+          if (isShaped(block)) {
+            // 계단·반블록·문 같은 모양 블록은 칸 전체가 아니라 실제 모양과만 부딪힌다.
+            const min: [number, number, number] = [px - HALF_WIDTH - x, py - y, pz - HALF_WIDTH - z];
+            const max: [number, number, number] = [px + HALF_WIDTH - x, py + HEIGHT - y, pz + HALF_WIDTH - z];
+            if (overlapsCollision(block, min, max)) return true;
+          } else if (this.world.isSolid(x, y, z)) {
+            return true;
+          }
         }
       }
     }
@@ -60,6 +74,13 @@ export class Player {
   /** 몸 한가운데가 물속인지. */
   isInWater(): boolean {
     return this.world.get(Math.floor(this.x), Math.floor(this.y + 0.9), Math.floor(this.z)) === Block.Water;
+  }
+
+  /** 몸이 사다리 칸에 걸쳐 있는지 (발 높이나 가슴 높이). */
+  private touchesLadder(): boolean {
+    const x = Math.floor(this.x);
+    const z = Math.floor(this.z);
+    return isLadder(this.world.get(x, Math.floor(this.y + 0.1), z)) || isLadder(this.world.get(x, Math.floor(this.y + 1), z));
   }
 
   /** 이 블록 칸이 플레이어 몸과 겹치는지. 블록을 놓을 때 자기 몸에 놓지 않도록 쓴다. */
@@ -101,8 +122,13 @@ export class Player {
       (blockedX || blockedZ) &&
       !this.collides(this.x + (blockedX ? dx : 0), this.y + 1.05, this.z + (blockedZ ? dz : 0));
 
+    this.onLadder = !this.flying && !inWater && this.touchesLadder();
+
     if (this.flying) {
       this.vy = input.jump ? FLY_SPEED : input.descend ? -FLY_SPEED : 0;
+    } else if (this.onLadder) {
+      // 점프나 앞으로 밀면 오르고, 아무것도 안 누르면 천천히 미끄러진다. 내려가기를 누르면 빨리 내려간다.
+      this.vy = input.jump || input.moveZ > 0 ? LADDER_CLIMB : input.descend ? -LADDER_CLIMB : -LADDER_SLIDE;
     } else if (inWater) {
       if (input.jump) this.vy = Math.min(this.vy + WATER_SWIM_UP * dt, WATER_MAX_RISE);
       else this.vy = Math.max(this.vy - WATER_GRAVITY * dt, -WATER_MAX_SINK);

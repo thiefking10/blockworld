@@ -1,4 +1,5 @@
 import { Item } from "./items";
+import { baseBlock } from "./shapes";
 import { Block } from "./world";
 
 export type ToolType = "pickaxe" | "axe" | "shovel" | "sword";
@@ -53,6 +54,14 @@ export const HARDNESS: Record<number, number> = {
   [Block.DiamondOre]: 3.5,
   [Block.CraftingTable]: 2.5,
   [Block.Furnace]: 3.5,
+  [Block.CoalOre]: 3,
+  [Block.PlankSlab]: 2,
+  [Block.StoneSlab]: 1.5,
+  [Block.PlankStairs]: 2,
+  [Block.StoneStairs]: 1.5,
+  [Block.Chest]: 2.5,
+  [Block.Ladder]: 0.4,
+  [Block.Door]: 3,
   [Block.Flower]: 0,
   [Block.YellowFlower]: 0,
   [Block.Sprout]: 0,
@@ -70,6 +79,14 @@ export const EFFECTIVE_TOOL: Record<number, ToolType | undefined> = {
   [Block.Brick]: "pickaxe",
   [Block.IronOre]: "pickaxe",
   [Block.DiamondOre]: "pickaxe",
+  [Block.CoalOre]: "pickaxe",
+  [Block.StoneSlab]: "pickaxe",
+  [Block.StoneStairs]: "pickaxe",
+  [Block.PlankSlab]: "axe",
+  [Block.PlankStairs]: "axe",
+  [Block.Chest]: "axe",
+  [Block.Ladder]: "axe",
+  [Block.Door]: "axe",
   [Block.Wood]: "axe",
   [Block.Planks]: "axe",
   [Block.CraftingTable]: "axe",
@@ -80,6 +97,9 @@ export const EFFECTIVE_TOOL: Record<number, ToolType | undefined> = {
 export const MIN_PICKAXE_TIER: Record<number, number | undefined> = {
   [Block.Stone]: 0,
   [Block.Brick]: 0,
+  [Block.CoalOre]: 0,
+  [Block.StoneSlab]: 0,
+  [Block.StoneStairs]: 0,
   [Block.IronOre]: 1,
   [Block.DiamondOre]: 2,
   [Block.Furnace]: 0,
@@ -87,24 +107,24 @@ export const MIN_PICKAXE_TIER: Record<number, number | undefined> = {
 
 /** 이 도구로 캐면 아이템이 나오는가 (돌은 곡괭이가 없으면 부숴도 아무것도 안 나온다) */
 export function canHarvest(block: number, tool: ToolDef | null): boolean {
-  const need = MIN_PICKAXE_TIER[block];
+  const need = MIN_PICKAXE_TIER[baseBlock(block)];
   if (need === undefined) return true;
   return tool !== null && tool.type === "pickaxe" && tool.tier >= need;
 }
 
 /** 블록을 캐는 데 걸리는 시간(초). 맞는 도구로 아이템을 얻을 수 있으면 x1.5, 아니면 x5, 맞는 도구면 재질 속도로 나눈다. */
 export function breakSeconds(block: number, tool: ToolDef | null): number {
-  const hardness = HARDNESS[block];
+  const hardness = HARDNESS[baseBlock(block)];
   if (hardness === undefined) return 0;
   if (hardness === 0) return 0;
-  const effective = tool !== null && tool.type === EFFECTIVE_TOOL[block];
+  const effective = tool !== null && tool.type === EFFECTIVE_TOOL[baseBlock(block)];
   const base = canHarvest(block, tool) ? 1.5 : 5;
   return (hardness * base) / (effective && tool ? TIER_SPEED[tool.tier] : 1);
 }
 
 /** 이 블록을 캘 때 쓸 도구 (가진 것 중 맞는 종류에서 가장 좋은 것). 없으면 null. */
 export function bestTool(block: number, has: (id: number) => boolean): ToolDef | null {
-  const type = EFFECTIVE_TOOL[block];
+  const type = EFFECTIVE_TOOL[baseBlock(block)];
   if (!type) return null;
   const candidates = TOOLS.filter((t) => t.type === type && has(t.id));
   return candidates.reduce<ToolDef | null>((best, t) => (best === null || t.tier > best.tier ? t : best), null);

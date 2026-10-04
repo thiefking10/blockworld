@@ -368,3 +368,40 @@ describe("횃불 빛", () => {
     expect(world.set(16, 5, 16, Block.Air)).toBe(true);
   });
 });
+
+describe("석탄과 모양 블록", () => {
+  it("석탄 광석이 돌 속에 나오고, 철광석보다 흔하다", () => {
+    const world = new World();
+    world.generate(7);
+    let coal = 0;
+    let iron = 0;
+    let highestCoal = 0;
+    for (let x = 0; x < SIZE_X; x++) {
+      for (let z = 0; z < SIZE_Z; z++) {
+        for (let y = 0; y < SIZE_Y; y++) {
+          const b = world.get(x, y, z);
+          if (b === Block.CoalOre) {
+            coal++;
+            highestCoal = Math.max(highestCoal, y);
+          }
+          if (b === Block.IronOre) iron++;
+        }
+      }
+    }
+    expect(coal).toBeGreaterThan(iron);
+    expect(coal).toBeGreaterThan(500);
+    expect(highestCoal).toBeLessThanOrEqual(100);
+  });
+
+  it("모양 블록은 걸어다닐 때 칸 전체로 막지만(몬스터·아이템용), 사다리와 열린 문은 막지 않는다", () => {
+    const world = new World();
+    world.set(1, 1, 1, Block.PlankSlab);
+    world.set(2, 1, 1, Block.Ladder);
+    world.set(3, 1, 1, (Block.Door + 4) as never);
+    world.set(4, 1, 1, Block.Door);
+    expect(world.isSolid(1, 1, 1)).toBe(true);
+    expect(world.isSolid(2, 1, 1)).toBe(false);
+    expect(world.isSolid(3, 1, 1)).toBe(false);
+    expect(world.isSolid(4, 1, 1)).toBe(true);
+  });
+});

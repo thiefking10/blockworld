@@ -174,19 +174,44 @@ describe("drops", () => {
   });
 
   it("가방에서 바로 만드는 것은 판자·막대·횃불·제작대뿐이고, 나머지는 제작대가 필요하다", () => {
-    expect(RECIPES.filter((r) => !r.station).map((r) => r.name)).toEqual(["판자", "막대", "횃불", "제작대"]);
+    expect(RECIPES.filter((r) => !r.station).map((r) => r.name)).toEqual(["판자", "막대", "횃불", "횃불 (통나무로)", "제작대"]);
     expect(RECIPES.find((r) => r.name === "화로")?.station).toBe("table");
     expect(RECIPES.find((r) => r.name === "철 곡괭이")?.inputs[0][0]).toBe(Item.IronIngot);
   });
 
-  it("횃불은 막대와 나무로 네 개가 만들어진다", () => {
+  it("횃불은 막대와 석탄으로 네 개가 만들어지고, 석탄이 없으면 통나무로 두 개를 만든다", () => {
     const inv = new Inventory();
-    inv.add(Item.Stick, 1);
+    inv.add(Item.Stick, 2);
+    inv.add(Item.Coal, 1);
     inv.add(Block.Wood, 1);
     const torch = RECIPES.find((r) => r.name === "횃불");
-    if (!torch) throw new Error("recipe");
+    const woodTorch = RECIPES.find((r) => r.name === "횃불 (통나무로)");
+    if (!torch || !woodTorch) throw new Error("recipe");
     expect(inv.craft(torch)).toBe(true);
     expect(inv.count(Block.Torch)).toBe(4);
+    expect(inv.craft(torch)).toBe(false);
+    expect(inv.craft(woodTorch)).toBe(true);
+    expect(inv.count(Block.Torch)).toBe(6);
+  });
+
+  it("석탄 광석은 석탄을 주고, 문 윗부분은 아무것도 안 주고, 방향이 달라도 같은 물건이 나온다", () => {
+    expect(dropsFor(Block.CoalOre, () => 0.5)).toEqual([[Item.Coal, 1]]);
+    expect(dropsFor(Block.DoorTop + 2, () => 0.5)).toEqual([]);
+    expect(dropsFor(Block.Door + 5, () => 0.5)).toEqual([[Block.Door, 1]]);
+    expect(dropsFor(Block.StoneStairs + 3, () => 0.5)).toEqual([[Block.StoneStairs, 1]]);
+    expect(dropsFor(Block.Chest + 2, () => 0.5)).toEqual([[Block.Chest, 1]]);
+    expect(dropsFor(Block.Ladder + 1, () => 0.5)).toEqual([[Block.Ladder, 1]]);
+  });
+
+  it("건축 블록 제작법: 반블록 6개, 계단 4개, 문 3개, 상자, 사다리 3개", () => {
+    const out = (name: string) => RECIPES.find((r) => r.name === name)?.output;
+    expect(out("판자 반블록")).toEqual([Block.PlankSlab, 6]);
+    expect(out("돌 반블록")).toEqual([Block.StoneSlab, 6]);
+    expect(out("판자 계단")).toEqual([Block.PlankStairs, 4]);
+    expect(out("돌 계단")).toEqual([Block.StoneStairs, 4]);
+    expect(out("문")).toEqual([Block.Door, 3]);
+    expect(out("상자")).toEqual([Block.Chest, 1]);
+    expect(out("사다리")).toEqual([Block.Ladder, 3]);
   });
 
   it("다이아몬드 광석은 철과 달리 화로 없이 원석 그대로 나온다", () => {
