@@ -424,6 +424,22 @@ class GameAudio {
     for (let i = 0; i < 3; i++) window.setTimeout(() => this.burst({ duration: 0.07, type: "bandpass", freq: 900, q: 1, gain: 0.4 }), i * 110);
   }
 
+  /** 레벨이 오를 때 (맑게 오르는 두 음) */
+  playLevelUp(): void {
+    this.tone(660, 990, 0.12, 0.2, "sine");
+    window.setTimeout(() => this.tone(880, 1320, 0.2, 0.2, "sine"), 130);
+  }
+
+  /** 인챈트가 붙을 때 (반짝이는 음) */
+  playEnchant(): void {
+    for (let i = 0; i < 4; i++) window.setTimeout(() => this.tone(900 + i * 220, 1200 + i * 220, 0.08, 0.12, "triangle"), i * 70);
+  }
+
+  /** 물약을 마실 때 (꿀꺽) */
+  playDrink(): void {
+    for (let i = 0; i < 2; i++) window.setTimeout(() => this.tone(300, 180, 0.1, 0.2, "sine"), i * 150);
+  }
+
   /** 아이템을 주울 때 (짧게 오르는 "띵") */
   playPickup(): void {
     this.tone(660, 880, 0.09, 0.16, "sine");

@@ -1,5 +1,6 @@
 import { ARMOR_BY_ID } from "./armor";
 import { Item, ITEM_NAMES } from "./items";
+import { enchantsFor, ENCHANTS, wearChance, type EnchantId } from "./enchant";
 import { baseBlock } from "./shapes";
 import { bestSword, SWORD_DAMAGE, TOOL_BY_ID, toolDurability } from "./tools";
 import { Block } from "./world";
@@ -29,8 +30,8 @@ export const FOOD_HUNGER: Record<number, number> = {
 
 export interface Recipe {
   name: string;
-  /** 이 작업대가 있어야 만들 수 있다. 없으면 가방에서 바로 만든다. */
-  station?: "table";
+  /** 이 작업대(제작대 또는 양조대)가 있어야 만들 수 있다. 없으면 가방에서 바로 만든다. */
+  station?: "table" | "brewing";
   inputs: [number, number][];
   output: [number, number];
 }
@@ -87,6 +88,14 @@ export const RECIPES: Recipe[] = [
   { name: "침대", station: "table", inputs: [[Block.Wool, 3], [Block.Planks, 3]], output: [Item.Bed, 1] },
   { name: "빵", station: "table", inputs: [[Item.Grain, 3]], output: [Item.Bread, 1] },
   // 드래곤을 불러내는 뿔. 비싸게 만들어서 함부로 못 부르게 했다.
+  { name: "유리병", station: "table", inputs: [[Block.Glass, 3]], output: [Item.GlassBottle, 3] },
+  { name: "인챈트 테이블", station: "table", inputs: [[Item.Diamond, 2], [Block.Stone, 4], [Block.Wool, 1]], output: [Block.EnchantTable, 1] },
+  { name: "양조대", station: "table", inputs: [[Block.Stone, 3], [Item.Stick, 1], [Item.Coal, 1]], output: [Block.BrewingStand, 1] },
+  // 물약은 양조대에서 유리병에 재료를 넣어 만든다.
+  { name: "치유 물약", station: "brewing", inputs: [[Item.GlassBottle, 1], [Block.Flower, 1]], output: [Item.HealPotion, 1] },
+  { name: "속도 물약", station: "brewing", inputs: [[Item.GlassBottle, 1], [Block.YellowFlower, 1]], output: [Item.SpeedPotion, 1] },
+  { name: "힘 물약", station: "brewing", inputs: [[Item.GlassBottle, 1], [Item.Gunpowder, 1]], output: [Item.StrengthPotion, 1] },
+  { name: "재생 물약", station: "brewing", inputs: [[Item.GlassBottle, 1], [Item.Grain, 2]], output: [Item.RegenPotion, 1] },
   { name: "용의 뿔", station: "table", inputs: [[Item.Diamond, 4], [Item.IronIngot, 2], [Item.Stick, 1]], output: [Item.DragonHorn, 1] },
 ];
 
@@ -148,9 +157,12 @@ export class Inventory {
   private slots: (Slot | null)[] = new Array(SLOT_COUNT).fill(null);
   /** 도구 번호 → 지금 가진 그 도구의 남은 내구도 */
   private readonly wear = new Map<number, number>();
+  /** 도구·방어구·활 번호 → 붙은 인챈트들 */
+  private readonly enchants = new Map<number, Map<EnchantId, number>>();
 
   private maxStack(item: number): number {
     if (item === Item.Bow) return 1;
+    if (item >= Item.HealPotion && item <= Item.RegenPotion) return 16;
     return TOOL_BY_ID.has(item) || ARMOR_BY_ID.has(item) ? 1 : STACK_MAX;
   }
 
@@ -217,6 +229,7 @@ export class Inventory {
       if (slot.count === 0) {
         this.slots[i] = null;
         this.wear.delete(item);
+        this.enchants.delete(item);
       }
     }
     return true;
@@ -243,6 +256,35 @@ export class Inventory {
     return this.wear.get(item) ?? toolDurability(tool);
   }
 
+  /** 이 아이템에 붙은 어떤 인챈트의 단계 (없으면 0). */
+  enchantLevel(item: number, id: EnchantId): number {
+    if (this.count(item) === 0) return 0;
+    return this.enchants.get(item)?.get(id) ?? 0;
+  }
+
+  /** 이 아이템에 붙은 인챈트들 [종류, 단계]. */
+  enchantsOf(item: number): [EnchantId, number][] {
+    if (this.count(item) === 0) return [];
+    return [...(this.enchants.get(item)?.entries() ?? [])];
+  }
+
+  /** 인챈트를 붙인다. 이미 같은 인챈트가 있으면 더 높은 단계만 남긴다. 붙일 수 없는 아이템·인챈트면 false. */
+  addEnchant(item: number, id: EnchantId, level: number): boolean {
+    if (this.count(item) === 0 || !enchantsFor(item).includes(id)) return false;
+    const clamped = Math.max(1, Math.min(ENCHANTS[id].max, Math.floor(level)));
+    const list = this.enchants.get(item) ?? new Map<EnchantId, number>();
+    list.set(id, Math.max(list.get(id) ?? 0, clamped));
+    this.enchants.set(item, list);
+    return true;
+  }
+
+  /** 저장용: 인챈트가 붙은 아이템들 [번호, [[종류, 단계]]] */
+  enchantEntries(): [number, [EnchantId, number][]][] {
+    return [...this.enchants.entries()]
+      .filter(([item, list]) => this.count(item) > 0 && list.size > 0)
+      .map(([item, list]) => [item, [...list.entries()]]);
+  }
+
   /** 도구의 남은 내구도를 정한다 (상자로 옮겼다 꺼낼 때 닳은 정도를 이어 주려고). 도구가 없거나 값이 이상하면 무시한다. */
   setWear(item: number, left: number): void {
     const tool = TOOL_BY_ID.get(item);
@@ -250,8 +292,11 @@ export class Inventory {
   }
 
   /** 도구를 한 번 쓴다. 다 닳아서 부러졌으면 true. */
-  useTool(item: number): boolean {
+  useTool(item: number, rng: () => number = Math.random): boolean {
     if (!TOOL_BY_ID.has(item) || this.count(item) === 0) return false;
+    // 내구성 인챈트: 쓸 때마다 일정 확률로만 닳는다.
+    const unbreaking = this.enchantLevel(item, "unbreaking");
+    if (unbreaking > 0 && rng() >= wearChance(unbreaking)) return false;
     const left = this.toolLeft(item) - 1;
     if (left <= 0) {
       this.remove(item, 1);
@@ -293,13 +338,18 @@ export class Inventory {
    * 저장된 목록을 불러온다. 예전(칸 제한이 없던) 저장에 지금 칸 수보다 많은 아이템이 있었다면,
    * 넘치는 만큼은 어쩔 수 없이 사라진다.
    */
-  load(entries: [number, number][], wear: [number, number][] = []): void {
+  load(entries: [number, number][], wear: [number, number][] = [], enchants: [number, [string, number][]][] = []): void {
     this.slots = new Array(SLOT_COUNT).fill(null);
     this.wear.clear();
+    this.enchants.clear();
     for (const [item, amount] of entries) this.add(item, amount);
     for (const [item, left] of wear) {
       const tool = TOOL_BY_ID.get(item);
       if (tool && this.count(item) > 0 && left > 0 && left <= toolDurability(tool)) this.wear.set(item, left);
+    }
+    for (const [item, list] of enchants) {
+      if (!Array.isArray(list)) continue;
+      for (const [id, level] of list) if (id in ENCHANTS) this.addEnchant(item, id as EnchantId, level);
     }
   }
 }

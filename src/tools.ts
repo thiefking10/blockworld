@@ -64,6 +64,8 @@ export const HARDNESS: Record<number, number> = {
   [Block.Door]: 3,
   [Block.Fence]: 2,
   [Block.Gravel]: 0.6,
+  [Block.EnchantTable]: 5,
+  [Block.BrewingStand]: 2.5,
   [Block.Flower]: 0,
   [Block.YellowFlower]: 0,
   [Block.Sprout]: 0,
@@ -91,6 +93,8 @@ export const EFFECTIVE_TOOL: Record<number, ToolType | undefined> = {
   [Block.Door]: "axe",
   [Block.Fence]: "axe",
   [Block.Gravel]: "shovel",
+  [Block.EnchantTable]: "pickaxe",
+  [Block.BrewingStand]: "pickaxe",
   [Block.Wood]: "axe",
   [Block.Planks]: "axe",
   [Block.CraftingTable]: "axe",
@@ -102,6 +106,8 @@ export const MIN_PICKAXE_TIER: Record<number, number | undefined> = {
   [Block.Stone]: 0,
   [Block.Brick]: 0,
   [Block.CoalOre]: 0,
+  [Block.EnchantTable]: 2,
+  [Block.BrewingStand]: 0,
   [Block.StoneSlab]: 0,
   [Block.StoneStairs]: 0,
   [Block.IronOre]: 1,
@@ -116,14 +122,14 @@ export function canHarvest(block: number, tool: ToolDef | null): boolean {
   return tool !== null && tool.type === "pickaxe" && tool.tier >= need;
 }
 
-/** 블록을 캐는 데 걸리는 시간(초). 맞는 도구로 아이템을 얻을 수 있으면 x1.5, 아니면 x5, 맞는 도구면 재질 속도로 나눈다. */
-export function breakSeconds(block: number, tool: ToolDef | null): number {
+/** 블록을 캐는 데 걸리는 시간(초). speedBoost는 효율 인챈트처럼 맞는 도구일 때만 붙는 속도 배율이다. 맞는 도구로 아이템을 얻을 수 있으면 x1.5, 아니면 x5, 맞는 도구면 재질 속도로 나눈다. */
+export function breakSeconds(block: number, tool: ToolDef | null, speedBoost = 1): number {
   const hardness = HARDNESS[baseBlock(block)];
   if (hardness === undefined) return 0;
   if (hardness === 0) return 0;
   const effective = tool !== null && tool.type === EFFECTIVE_TOOL[baseBlock(block)];
   const base = canHarvest(block, tool) ? 1.5 : 5;
-  return (hardness * base) / (effective && tool ? TIER_SPEED[tool.tier] : 1);
+  return (hardness * base) / (effective && tool ? TIER_SPEED[tool.tier] * speedBoost : 1);
 }
 
 /** 이 블록을 캘 때 쓸 도구 (가진 것 중 맞는 종류에서 가장 좋은 것). 없으면 null. */

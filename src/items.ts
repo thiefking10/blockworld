@@ -42,6 +42,11 @@ export const Item = {
   DragonHorn: 139,
   DragonScale: 140,
   Coal: 141,
+  GlassBottle: 142,
+  HealPotion: 143,
+  SpeedPotion: 144,
+  StrengthPotion: 145,
+  RegenPotion: 146,
 } as const;
 
 export const ITEM_NAMES: Record<number, string> = {
@@ -86,4 +91,9 @@ export const ITEM_NAMES: Record<number, string> = {
   [Item.DragonHorn]: "용의 뿔",
   [Item.DragonScale]: "용의 비늘",
   [Item.Coal]: "석탄",
+  [Item.GlassBottle]: "유리병",
+  [Item.HealPotion]: "치유 물약",
+  [Item.SpeedPotion]: "속도 물약",
+  [Item.StrengthPotion]: "힘 물약",
+  [Item.RegenPotion]: "재생 물약",
 };

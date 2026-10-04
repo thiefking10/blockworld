@@ -38,6 +38,8 @@ export const PLACEABLE_BLOCKS: PlaceableBlock[] = [
   { block: Block.Ladder, name: "사다리" },
   { block: Block.Fence, name: "울타리" },
   { block: Block.Gravel, name: "자갈" },
+  { block: Block.EnchantTable, name: "인챈트 테이블" },
+  { block: Block.BrewingStand, name: "양조대" },
 ];
 
 /** 이 블록을 놓으려는 칸 바로 아래 블록이 (below) 받쳐 줄 수 있는지. 꽃과 씨앗은 풀이나 흙 위에, 횃불은 어떤 단단한 블록 위에도 세울 수 있다. */

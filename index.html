@@ -300,6 +300,7 @@
       #station-panel,
       #furnace-panel,
       #chest-panel,
+      #enchant-panel,
       #multiplayer-panel {
         position: absolute;
         left: 50%;
@@ -325,6 +326,7 @@
       #station-panel.open,
       #furnace-panel.open,
       #chest-panel.open,
+      #enchant-panel.open,
       #multiplayer-panel.open {
         display: flex;
       }
@@ -589,6 +591,48 @@
       .slot.empty img {
         opacity: 0.3;
       }
+      #xp {
+        position: absolute;
+        left: 50%;
+        bottom: 76px;
+        transform: translateX(-50%);
+        width: 220px;
+        text-align: center;
+        pointer-events: none;
+        line-height: 1;
+      }
+      #xp-level {
+        display: block;
+        margin-bottom: 2px;
+        font-size: 13px;
+        font-weight: bold;
+        color: #8dff5a;
+        text-shadow: 0 1px 2px #000, 0 0 3px #000;
+      }
+      #xp-bar {
+        height: 7px;
+        border: 1px solid rgba(0, 0, 0, 0.7);
+        background: rgba(0, 0, 0, 0.5);
+        border-radius: 3px;
+        overflow: hidden;
+      }
+      #xp-fill {
+        height: 100%;
+        width: 0;
+        background: #8dff5a;
+      }
+      #effects {
+        position: absolute;
+        left: 50%;
+        top: 54px;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 8px;
+        font-size: 12px;
+        color: #fff;
+        text-shadow: 0 1px 2px #000;
+        pointer-events: none;
+      }
       #hearts {
         position: absolute;
         left: 50%;
@@ -723,6 +767,8 @@
       <div id="hearts"></div>
       <div id="hunger"></div>
       <div id="armor-label"></div>
+      <div id="effects"></div>
+      <div id="xp"><span id="xp-level">0</span><div id="xp-bar"><div id="xp-fill"></div></div></div>
       <div id="damage-flash"></div>
       <div id="toast"></div>
       <div id="help-button">?</div>
@@ -746,6 +792,8 @@
           <b>비행</b> 창작 방식에서 점프를 두 번 빠르게 누르면 날아요. 점프는 위로, 내려가기는 아래로, 땅에 닿으면 끝나요. 컴퓨터는 Shift로 내려가요. 가방 화면 아래쪽 "아이템 바로 받기"에서 도구·방어구·재료도 눌러서 바로 받을 수 있어요.<br />
           <b>제작대 / 화로</b> 통나무 → 판자 → 제작대를 만들어 놓고, 가리킨 채 <b>사용</b> 버튼(컴퓨터는 F)을 누르면 도구를 만들 수 있어요. 화로에 철광석·모래·고기와 연료(석탄, 통나무, 판자, 막대)를 넣으면 구워요.<br />
           <b>건축 블록</b> 제작대에서 반블록·계단·문·상자·사다리를 만들 수 있어요. 계단은 바라보는 쪽이 높아지고, <b>문</b>과 <b>상자</b>는 가리킨 채 <b>사용</b> 버튼을 눌러 열어요(상자는 안에 물건을 보관해요). 사다리는 벽의 옆면에 붙이고, 앞으로 밀거나 점프로 올라가요.<br />
+          <b>경험치와 인챈트</b> 괴물·동물을 잡고, 석탄·철·다이아몬드 광석을 캐고, 화로에서 구운 것을 꺼내면 경험치가 쌓여 레벨이 올라요(화면 아래 초록 막대). 제작대에서 인챈트 테이블(다이아몬드 2·돌 4·양털 1)을 만들어 <b>사용</b>을 누르고, 도구·방어구·활을 골라 레벨을 내면 무작위 인챈트(효율·날카로움·힘·보호·내구성)가 붙어요.<br />
+          <b>물약</b> 유리 3개로 유리병 3개(제작대), 돌 3·막대 1·석탄 1로 양조대를 만들어요. 양조대에서 유리병에 붉은 꽃(치유), 노란 꽃(속도), 화약(힘), 밀 2개(재생)를 넣으면 물약이 되고, 가방에서 눌러 마셔요.<br />
           <b>울타리·모래·자갈</b> 울타리는 이웃 울타리나 벽 쪽으로 저절로 이어지고, 키가 1.5칸이라 점프로 못 넘어요. 모래와 자갈은 밑이 비면 떨어져요(밑을 파면 쏟아져 내려요).<br />
           <b>석탄</b> 땅속 돌 사이의 검은 점 박힌 돌(석탄 광석)을 곡괭이로 캐요. 막대와 함께 횃불 4개가 되고, 화로 연료로도 좋아요.<br />
           <b>가방</b> 모은 블록으로 판자, 막대, 곡괭이, 검, 침대, 빵 같은 것을 만들어요. 만든 도구·검·활은 가방에서 눌러야 손(아이템 바)에 들려요 — 들고 있어야 제 몫을 해요, 쓸수록 닳고요. 고기와 빵은 눌러서 먹어요.<br />
@@ -762,7 +810,7 @@
         <div id="help-close" class="close-button">알겠어요</div>
       </div>
       <div id="station-panel">
-        <div class="section-title">제작대 (초록 테두리는 만들 수 있어요)</div>
+        <div id="station-title" class="section-title">제작대 (초록 테두리는 만들 수 있어요)</div>
         <div id="station-list"></div>
         <div id="station-close" class="close-button">닫기</div>
       </div>
@@ -770,6 +818,11 @@
         <div class="section-title">화로 (재료와 연료를 넣으면 알아서 구워요)</div>
         <div id="furnace-body"></div>
         <div id="furnace-close" class="close-button">닫기</div>
+      </div>
+      <div id="enchant-panel">
+        <div class="section-title">인챈트 테이블 (경험치 레벨을 내고 무작위 인챈트를 붙여요)</div>
+        <div id="enchant-body"></div>
+        <div id="enchant-close" class="close-button">닫기</div>
       </div>
       <div id="chest-panel">
         <div class="section-title">상자 (아이템을 누르면 반대편으로 옮겨요)</div>

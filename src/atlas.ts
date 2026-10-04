@@ -38,9 +38,13 @@ export const TILE = {
   DoorLower: 32,
   DoorUpper: 33,
   Gravel: 34,
+  EnchantTop: 35,
+  EnchantSide: 36,
+  BrewTop: 37,
+  BrewSide: 38,
 } as const;
 
-export const ATLAS_COLS = 6;
+export const ATLAS_COLS = 7;
 const TILE_PIXELS = 16;
 /** 타일 가장자리 색이 옆 타일에서 번지지 않게 살짝 안쪽만 쓴다. */
 const EDGE = 0.002;
@@ -114,6 +118,10 @@ export function tileForFace(block: number, dirY: number, dirX = 0, dirZ = 0): nu
       return TILE.CoalOre;
     case Block.Gravel:
       return TILE.Gravel;
+    case Block.EnchantTable:
+      return dirY === 1 ? TILE.EnchantTop : TILE.EnchantSide;
+    case Block.BrewingStand:
+      return dirY === 1 ? TILE.BrewTop : TILE.BrewSide;
     default:
       return TILE.Stone;
   }
@@ -125,6 +133,8 @@ export function iconTile(block: number): number {
   if (block === Block.Wood) return TILE.WoodSide;
   if (block === Block.Chest) return TILE.ChestFront;
   if (block === Block.Door) return TILE.DoorLower;
+  if (block === Block.EnchantTable) return TILE.EnchantSide;
+  if (block === Block.BrewingStand) return TILE.BrewSide;
   return tileForFace(block, 1);
 }
 
@@ -319,6 +329,37 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: number): void {
       }
       break;
     }
+    case TILE.EnchantTop:
+    case TILE.EnchantSide: {
+      noiseFill(ctx, ox, oy, [34, 24, 52], 20, random);
+      if (tile === TILE.EnchantTop) {
+        for (let y = 2; y < 14; y++) for (let x = 2; x < 14; x++) px(x, y, shade([150, 28, 40], (random() - 0.5) * 24));
+        for (let i = 2; i < 14; i++) {
+          px(i, 2, shade([220, 190, 90], 0));
+          px(i, 13, shade([220, 190, 90], 0));
+          px(2, i, shade([220, 190, 90], 0));
+          px(13, i, shade([220, 190, 90], 0));
+        }
+        for (const [x, y] of [[7, 7], [8, 7], [7, 8], [8, 8]]) px(x, y, "rgb(120,230,240)");
+      } else {
+        for (let x = 0; x < 16; x++) for (let y = 0; y < 4; y++) px(x, y, shade([150, 28, 40], (random() - 0.5) * 20));
+        for (const [x, y] of [[3, 9], [4, 9], [10, 11], [11, 11], [7, 13]]) px(x, y, "rgb(120,230,240)");
+      }
+      break;
+    }
+    case TILE.BrewTop:
+    case TILE.BrewSide: {
+      noiseFill(ctx, ox, oy, [120, 120, 126], 24, random);
+      if (tile === TILE.BrewTop) {
+        for (let y = 5; y < 11; y++) for (let x = 5; x < 11; x++) px(x, y, shade([50, 50, 56], (random() - 0.5) * 10));
+        for (const [x, y] of [[3, 3], [12, 3], [3, 12], [12, 12]]) px(x, y, "rgb(186,220,236)");
+      } else {
+        for (let y = 2; y < 15; y++) px(7, y, shade([150, 108, 58], (random() - 0.5) * 16));
+        for (let y = 2; y < 15; y++) px(8, y, shade([128, 90, 46], (random() - 0.5) * 16));
+        for (const x of [2, 3, 12, 13]) for (let y = 8; y < 13; y++) px(x, y, "rgb(186,220,236)");
+      }
+      break;
+    }
     case TILE.ChestSide:
     case TILE.ChestFront:
     case TILE.ChestTop: {
@@ -498,7 +539,7 @@ export function createAtlasTexture(): THREE.Texture {
   const canvas = document.createElement("canvas");
   atlasCanvas = canvas;
   canvas.width = ATLAS_COLS * TILE_PIXELS;
-  canvas.height = ATLAS_COLS * TILE_PIXELS; // 6×6 = 36칸 (지금 35칸 사용)
+  canvas.height = ATLAS_COLS * TILE_PIXELS; // 7×7 = 49칸 (지금 39칸 사용)
   const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
 
   for (const tile of Object.values(TILE)) drawTile(ctx, tile);

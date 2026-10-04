@@ -1,6 +1,6 @@
 import { Inventory } from "./inventory";
 
-export type ChestEntry = [number, number, number, [number, number][], [number, number][]];
+export type ChestEntry = [number, number, number, [number, number][], [number, number][], [number, [string, number][]][]?];
 
 /** 월드에 놓인 상자들. 상자마다 가방과 같은 27칸 보관함이 하나씩 있다. 화면 없이 계산만 한다. */
 export class ChestField {
@@ -36,14 +36,14 @@ export class ChestField {
       const entries = chest.entries();
       if (entries.length === 0) continue;
       const [x, y, z] = key.split(",").map(Number);
-      out.push([x, y, z, entries, chest.wearEntries()]);
+      out.push([x, y, z, entries, chest.wearEntries(), chest.enchantEntries()]);
     }
     return out;
   }
 
   load(list: ChestEntry[]): void {
     this.chests.clear();
-    for (const [x, y, z, entries, wear] of list) this.at(x, y, z).load(entries, wear);
+    for (const [x, y, z, entries, wear, enchants] of list) this.at(x, y, z).load(entries, wear, enchants ?? []);
   }
 }
 
@@ -52,8 +52,10 @@ export function moveStack(from: Inventory, to: Inventory, item: number): number 
   const amount = Math.min(from.count(item), to.freeSpace(item));
   if (amount <= 0) return 0;
   const left = from.toolLeft(item);
+  const enchants = from.enchantsOf(item);
   from.remove(item, amount);
   const added = to.add(item, amount);
   if (left > 0) to.setWear(item, left);
+  for (const [id, level] of enchants) to.addEnchant(item, id, level);
   return added;
 }

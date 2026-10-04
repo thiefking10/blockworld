@@ -40,6 +40,8 @@ export class Player {
   autoJump = true;
   /** 하늘을 나는 중 (창작 모드). 중력이 없고, 땅에 닿으면 저절로 끝난다. */
   flying = false;
+  /** 걷는 속도 배율 (속도 물약 같은 효과) */
+  speedFactor = 1;
   /** 사다리에 매달려 있는 중 (떨어지는 높이를 세지 않는다). */
   onLadder = false;
 
@@ -106,7 +108,7 @@ export class Player {
     const rightZ = -sin;
 
     const inWater = this.isInWater();
-    const speed = this.flying ? MOVE_SPEED * FLY_MOVE_FACTOR : inWater ? MOVE_SPEED * WATER_SPEED_FACTOR : MOVE_SPEED;
+    const speed = (this.flying ? MOVE_SPEED * FLY_MOVE_FACTOR : inWater ? MOVE_SPEED * WATER_SPEED_FACTOR : MOVE_SPEED) * this.speedFactor;
     const dx = (forwardX * input.moveZ + rightX * input.moveX) * speed * dt;
     const dz = (forwardZ * input.moveZ + rightZ * input.moveX) * speed * dt;
 

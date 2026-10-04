@@ -1,5 +1,8 @@
 import * as THREE from "three";
 import { ARMOR, ARMOR_BY_ID, bestArmor, reduceDamage, totalArmorPoints, type ArmorSlot } from "./armor";
+import { Effects, EFFECTS, POTION_BY_ID } from "./effects";
+import { efficiencyMultiplier, enchantLabel, isEnchantable, powerMultiplier, protectionPoints, rollEnchant, sharpnessBonus, ENCHANT_TIERS } from "./enchant";
+import { BLOCK_XP, Experience, MOB_XP, SMELT_XP } from "./xp";
 import { iconTile, tileIconDataUrl } from "./atlas";
 import { audio } from "./audio";
 import { Achievements, ACHIEVEMENTS } from "./achievements";
@@ -179,7 +182,11 @@ const hotbarBlocks: number[] = sanitizeHotbar(saved?.hotbar);
 /** survival: 블록을 모아서 쓴다 / creative: 블록이 무한이다. 예전 저장(모드 없음)은 무한 그대로 이어간다. */
 let mode: "survival" | "creative" = saved && saved.seed === seed ? (saved.mode ?? "creative") : "survival";
 const inventory = new Inventory();
-if (saved && saved.seed === seed && saved.inventory) inventory.load(saved.inventory, saved.durability ?? []);
+if (saved && saved.seed === seed && saved.inventory) inventory.load(saved.inventory, saved.durability ?? [], saved.enchants ?? []);
+const experience = new Experience();
+if (saved && saved.seed === seed && saved.xp) experience.load(saved.xp[0], saved.xp[1]);
+const effects = new Effects();
+if (saved && saved.seed === seed && saved.effects) effects.load(saved.effects);
 const health = new Health();
 const hunger = saved && saved.seed === seed && saved.hunger !== undefined ? Hunger.fromValue(saved.hunger) : new Hunger();
 const fallTracker = new FallTracker();
@@ -237,6 +244,8 @@ function itemEmoji(item: number): string {
   if (item === Item.DragonHorn) return "📯";
   if (item === Item.DragonScale) return "🐲";
   if (item === Item.Coal) return "⚫";
+  if (item === Item.GlassBottle) return "⚗️";
+  if (POTION_BY_ID.has(item)) return "🧪";
   const tool = TOOL_BY_ID.get(item);
   if (tool) return TOOL_EMOJI[tool.type];
   return "🪵";
@@ -507,6 +516,66 @@ function onPress(element: HTMLElement, action: () => void): void {
   });
 }
 
+const xpLevelElement = document.getElementById("xp-level") as HTMLElement;
+const xpFillElement = document.getElementById("xp-fill") as HTMLElement;
+const xpElement = document.getElementById("xp") as HTMLElement;
+
+/** 경험치 막대와 레벨 숫자를 맞춘다 (창작 모드에서는 숨긴다). */
+function refreshXp(): void {
+  xpElement.style.display = mode === "creative" ? "none" : "";
+  xpLevelElement.textContent = String(experience.level);
+  xpFillElement.style.width = Math.round(experience.progress * 100) + "%";
+}
+
+/** 경험치를 얻는다 (서바이벌에서만). 레벨이 오르면 알려 준다. */
+function gainXp(points: number): void {
+  if (mode !== "survival" || !(points > 0)) return;
+  const levels = experience.add(points);
+  refreshXp();
+  if (levels > 0) {
+    audio.playLevelUp();
+    showToast("⬆ 레벨 " + experience.level + "!", 1800);
+    if (experience.level >= 5) unlockAchievement("level5");
+    refreshOpenPanels();
+  }
+  scheduleSave();
+}
+
+const effectsElement = document.getElementById("effects") as HTMLElement;
+let effectsTimer = 0;
+
+/** 걸려 있는 물약 효과를 화면 위쪽에 보여 준다. */
+function refreshEffects(): void {
+  effectsElement.replaceChildren();
+  for (const [id, seconds] of effects.entries()) {
+    const chip = document.createElement("span");
+    chip.textContent = EFFECTS[id].emoji + " " + EFFECTS[id].name + " " + Math.ceil(seconds) + "초";
+    effectsElement.append(chip);
+  }
+}
+
+/** 물약을 마신다. 치유는 바로 체력이 차고, 나머지는 한동안 효과가 이어진다. 빈 병은 돌아온다. */
+function drinkPotion(item: number): void {
+  const potion = POTION_BY_ID.get(item);
+  if (!potion || inventory.count(item) === 0) return;
+  if (potion.heal > 0 && health.hp >= MAX_HEALTH) {
+    showToast("체력이 가득 차서 마실 필요가 없어요");
+    return;
+  }
+  inventory.remove(item);
+  inventory.add(Item.GlassBottle, 1);
+  if (potion.heal > 0) health.heal(potion.heal);
+  if (potion.effect) effects.add(potion.effect);
+  audio.playDrink();
+  showToast("🧪 " + potion.name + "을(를) 마셨어요", 1800);
+  unlockAchievement("potion");
+  refreshHearts();
+  refreshEffects();
+  refreshHotbar();
+  refreshOpenPanels();
+  scheduleSave();
+}
+
 function eat(item: number): void {
   const heal = FOOD_HEAL[item];
   if (heal === undefined || inventory.count(item) === 0) return;
@@ -589,6 +658,13 @@ function craftRecipe(index: number): void {
 
 const stationPanel = document.getElementById("station-panel") as HTMLElement;
 const stationList = document.getElementById("station-list") as HTMLElement;
+const stationTitle = document.getElementById("station-title") as HTMLElement;
+/** 제작대와 양조대는 같은 화면을 쓰고, 양조대에서는 물약 제작법만 보인다. */
+let stationMode: "table" | "brewing" = "table";
+const stationFilter = (recipe: Recipe): boolean => (stationMode === "brewing" ? recipe.station === "brewing" : recipe.station !== "brewing");
+const enchantPanel = document.getElementById("enchant-panel") as HTMLElement;
+const enchantBody = document.getElementById("enchant-body") as HTMLElement;
+let enchantSelected: number | null = null;
 const furnacePanel = document.getElementById("furnace-panel") as HTMLElement;
 const furnaceBody = document.getElementById("furnace-body") as HTMLElement;
 const chestPanel = document.getElementById("chest-panel") as HTMLElement;
@@ -618,6 +694,8 @@ function renderRecipeRows(container: HTMLElement, filter: (recipe: Recipe) => bo
 
 function closeStations(): void {
   stationPanel.classList.remove("open");
+  enchantPanel.classList.remove("open");
+  enchantSelected = null;
   furnacePanel.classList.remove("open");
   chestPanel.classList.remove("open");
   openChest = null;
@@ -627,7 +705,8 @@ function closeStations(): void {
 
 function refreshOpenPanels(): void {
   if (inventoryPanel.classList.contains("open")) refreshInventoryPanel();
-  if (stationPanel.classList.contains("open")) renderRecipeRows(stationList, () => true);
+  if (stationPanel.classList.contains("open")) renderRecipeRows(stationList, stationFilter);
+  if (enchantPanel.classList.contains("open")) refreshEnchantPanel();
   if (furnacePanel.classList.contains("open")) refreshFurnacePanel();
   if (chestPanel.classList.contains("open")) refreshChestPanel();
 }
@@ -743,6 +822,7 @@ function refreshFurnacePanel(): void {
         inventory.add(taken.item, taken.count);
         audio.playCraft();
         showToast(itemLabel(taken.item) + " ×" + taken.count + " 꺼냈어요");
+        gainXp((SMELT_XP[taken.item] ?? 0) * taken.count);
         changed();
       }),
     );
@@ -813,6 +893,64 @@ function toggleDoorAt(x: number, y: number, z: number): void {
   scheduleSave();
 }
 
+/** 도구·방어구·활에 붙은 인챈트를 "✨효율 Ⅱ, 내구성 Ⅰ" 처럼 보여 준다 (없으면 빈 글자). */
+function enchantSuffix(item: number): string {
+  const list = inventory.enchantsOf(item);
+  return list.length === 0 ? "" : " ✨" + list.map(([id, level]) => enchantLabel(id, level)).join(", ");
+}
+
+/** 인챈트 테이블 화면: 인챈트할 아이템을 고르고, 레벨을 내고 단계를 고르면 무작위 인챈트가 붙는다. */
+function refreshEnchantPanel(): void {
+  enchantBody.replaceChildren();
+  const info = document.createElement("div");
+  info.className = "furnace-line";
+  info.textContent = "내 경험치 레벨: " + experience.level + " (몬스터 사냥, 광석 캐기, 화로 굽기로 모아요)";
+  enchantBody.append(info);
+
+  const items = inventory.entries().map(([item]) => item).filter(isEnchantable);
+  if (enchantSelected !== null && !items.includes(enchantSelected)) enchantSelected = null;
+  const row = document.createElement("div");
+  row.className = "items-row";
+  if (items.length === 0) row.append("인챈트할 도구·방어구·활이 가방에 없어요");
+  for (const item of items) {
+    const chip = chipButton(itemEmoji(item) + " " + itemLabel(item) + enchantSuffix(item), () => {
+      enchantSelected = item;
+      refreshEnchantPanel();
+    });
+    if (item === enchantSelected) chip.classList.add("equipped");
+    row.append(chip);
+  }
+  enchantBody.append(row);
+
+  if (enchantSelected === null) return;
+  const target = enchantSelected;
+  const tiers = document.createElement("div");
+  tiers.className = "items-row";
+  for (const tier of ENCHANT_TIERS) {
+    const enough = experience.level >= tier;
+    const button = chipButton("단계 " + "ⅠⅡⅢ"[tier - 1] + " (레벨 " + tier + " 사용)" + (enough ? "" : " — 레벨 부족"), () => doEnchant(target, tier));
+    if (!enough) button.classList.add("unequipped");
+    tiers.append(button);
+  }
+  enchantBody.append(tiers);
+}
+
+function doEnchant(item: number, tier: number): void {
+  if (experience.level < tier) {
+    showToast("경험치 레벨이 모자라요", 1800);
+    return;
+  }
+  const roll = rollEnchant(item, tier, Math.random);
+  if (!roll || !inventory.addEnchant(item, roll.id, roll.level)) return;
+  experience.spendLevels(tier);
+  audio.playEnchant();
+  showToast("✨ " + itemLabel(item) + "에 " + enchantLabel(roll.id, roll.level) + " 이(가) 붙었어요!", 2600);
+  unlockAchievement("enchant");
+  refreshXp();
+  refreshOpenPanels();
+  scheduleSave();
+}
+
 /** 가리키고 있는 제작대·화로를 연다. (마인크래프트에서 블록을 우클릭하는 것과 같다.) */
 function useBlock(): void {
   const hit = currentTarget();
@@ -830,16 +968,21 @@ function useBlock(): void {
     refreshChestPanel();
     return;
   }
-  if (block !== Block.CraftingTable && block !== Block.Furnace) return;
+  if (block !== Block.CraftingTable && block !== Block.Furnace && block !== Block.EnchantTable && block !== Block.BrewingStand) return;
   if (mode === "creative") {
     showToast("창작 모드에서는 제작이 필요 없어요");
     return;
   }
   toggleInventory(false);
   closeStations();
-  if (block === Block.CraftingTable) {
+  if (block === Block.CraftingTable || block === Block.BrewingStand) {
+    stationMode = block === Block.BrewingStand ? "brewing" : "table";
+    stationTitle.textContent = block === Block.BrewingStand ? "양조대 (유리병에 재료를 넣어 물약을 만들어요)" : "제작대 (초록 테두리는 만들 수 있어요)";
     stationPanel.classList.add("open");
-    renderRecipeRows(stationList, () => true);
+    renderRecipeRows(stationList, stationFilter);
+  } else if (block === Block.EnchantTable) {
+    enchantPanel.classList.add("open");
+    refreshEnchantPanel();
   } else {
     openFurnace = { x: hit.x, y: hit.y, z: hit.z };
     furnacePanel.classList.add("open");
@@ -858,7 +1001,7 @@ function refreshEquipmentPanel(): void {
   const held = heldItem();
   const heldChip = document.createElement("div");
   heldChip.className = "item-chip " + (held === 0 ? "unequipped" : "equipped");
-  heldChip.textContent = "✋ 손: " + (held === 0 ? "맨손" : itemLabel(held));
+  heldChip.textContent = "✋ 손: " + (held === 0 ? "맨손" : itemLabel(held) + enchantSuffix(held));
   equipmentRow.appendChild(heldChip);
 
   const worn = bestArmor((id) => inventory.count(id) > 0);
@@ -866,7 +1009,7 @@ function refreshEquipmentPanel(): void {
     const def = worn.find((a) => a.slot === slot);
     const chip = document.createElement("div");
     chip.className = "item-chip " + (def ? "equipped" : "unequipped");
-    chip.textContent = ARMOR_SLOT_NAMES[slot] + ": " + (def ? itemLabel(def.id) + " (방어 " + def.points + ")" : "없음");
+    chip.textContent = ARMOR_SLOT_NAMES[slot] + ": " + (def ? itemLabel(def.id) + " (방어 " + def.points + ")" + enchantSuffix(def.id) : "없음");
     equipmentRow.appendChild(chip);
   }
 
@@ -937,13 +1080,17 @@ function refreshInventoryPanel(): void {
         chip.classList.add("eatable");
         chip.textContent = "🛏 " + itemLabel(item) + " ×" + amount + " (밤에 눌러서 자기)";
         onPress(chip, sleepInBed);
+      } else if (POTION_BY_ID.has(item)) {
+        chip.classList.add("eatable");
+        chip.textContent = "🧪 " + itemLabel(item) + " ×" + amount + " (눌러서 마시기)";
+        onPress(chip, () => drinkPotion(item));
       } else if (item === Item.Diamond) {
         chip.textContent = "💎 " + itemLabel(item) + " ×" + amount;
       } else if (ARMOR_BY_ID.has(item)) {
         const def = ARMOR_BY_ID.get(item)!;
-        chip.textContent = "🛡 " + itemLabel(item) + " (방어 " + def.points + ", 알아서 걸쳐요)";
+        chip.textContent = "🛡 " + itemLabel(item) + " (방어 " + def.points + ", 알아서 걸쳐요)" + enchantSuffix(item);
       } else if (item === Item.Bow) {
-        chip.textContent = "🏹 " + itemLabel(item) + " (손에 들면, 화살이 있을 때 먼 동물·괴물을 쏴요)";
+        chip.textContent = "🏹 " + itemLabel(item) + " (손에 들면, 화살이 있을 때 먼 동물·괴물을 쏴요)" + enchantSuffix(item);
         onPress(chip, () => holdItem(item));
       } else if (item === Item.Arrow) {
         chip.textContent = "➹ " + itemLabel(item) + " ×" + amount;
@@ -952,7 +1099,7 @@ function refreshInventoryPanel(): void {
       } else {
         const def = TOOL_BY_ID.get(item);
         if (def) {
-          chip.textContent = TOOL_EMOJI[def.type] + " " + itemLabel(item) + " ×" + amount + " (내구도 " + inventory.toolLeft(item) + "/" + toolDurability(def) + ", 손에 들면 써요)";
+          chip.textContent = TOOL_EMOJI[def.type] + " " + itemLabel(item) + " ×" + amount + " (내구도 " + inventory.toolLeft(item) + "/" + toolDurability(def) + ", 손에 들면 써요)" + enchantSuffix(item);
           onPress(chip, () => holdItem(item));
         } else {
           chip.textContent = itemEmoji(item) + " " + itemLabel(item) + " ×" + amount;
@@ -969,10 +1116,12 @@ function refreshInventoryPanel(): void {
 onPress(document.getElementById("station-close") as HTMLElement, closeStations);
 onPress(document.getElementById("furnace-close") as HTMLElement, closeStations);
 onPress(document.getElementById("chest-close") as HTMLElement, closeStations);
+onPress(document.getElementById("enchant-close") as HTMLElement, closeStations);
 
 onPress(document.getElementById("mode-toggle") as HTMLElement, () => {
   mode = mode === "survival" ? "creative" : "survival";
   showToast(mode === "survival" ? "서바이벌 방식으로 바꿨어요" : "창작 방식으로 바꿨어요");
+  refreshXp();
   refreshHotbar();
   refreshInventoryPanel();
   scheduleSave();
@@ -1027,6 +1176,7 @@ function handleMobKill(kind: MobKind, x: number, y: number, z: number): void {
     unlockAchievement("dragon");
     showToast("🐉 드래곤을 물리쳤어요!", 3500);
   }
+  gainXp(MOB_XP[kind] ?? 0);
   const loot = mode === "survival" ? mobDrops(kind, Math.random) : [];
   for (const [item, amount] of loot) drops.spawn(item, amount, x, y + 0.3, z, Math.random);
   if (loot.length > 0) scheduleSave();
@@ -1039,7 +1189,10 @@ function attackMob(mob: Mob): void {
   const held = heldItem();
   const heldTool = TOOL_BY_ID.get(held);
   const sword = mode === "survival" && heldTool?.type === "sword" && inventory.count(held) > 0 ? heldTool : null;
-  const damage = mode === "creative" ? 4 : sword ? SWORD_DAMAGE[sword.tier] : 1;
+  const damage =
+    mode === "creative"
+      ? 4
+      : (sword ? SWORD_DAMAGE[sword.tier] + sharpnessBonus(inventory.enchantLevel(sword.id, "sharpness")) : 1) + effects.attackBonus();
   if (sword && inventory.useTool(sword.id)) toolBroke(sword);
   if (mobSim.hit(mob, player.x, player.z, damage)) handleMobKill(mob.kind, mob.x, mob.y, mob.z);
 }
@@ -1054,7 +1207,7 @@ function shootBow(mob: Mob): void {
   swingHeldItem();
   const spec = MOB_SPECS[mob.kind];
   spawnArrow(player.x, player.y + EYE_HEIGHT, player.z, mob.x, mob.y + spec.height * 0.6, mob.z);
-  if (mobSim.hit(mob, player.x, player.z, BOW_DAMAGE)) handleMobKill(mob.kind, mob.x, mob.y, mob.z);
+  if (mobSim.hit(mob, player.x, player.z, BOW_DAMAGE * powerMultiplier(inventory.enchantLevel(Item.Bow, "power")))) handleMobKill(mob.kind, mob.x, mob.y, mob.z);
   unlockAchievement("bow");
   refreshHotbar();
   refreshOpenPanels();
@@ -1138,6 +1291,7 @@ function breakAt(hit: RayHit, tool: ToolDef | null): void {
   const harvest = !survival || canHarvest(broken, tool);
   const lightChanged = removeBlock(hit.x, hit.y, hit.z, harvest);
   if (survival && !harvest) showToast("맞는 곡괭이가 없어서 아무것도 안 나왔어요");
+  if (survival && harvest) gainXp(BLOCK_XP[broken] ?? 0);
   if (survival && tool && breakSeconds(broken, null) > 0 && inventory.useTool(tool.id)) toolBroke(tool);
   // 밑이 사라진 식물은 서 있을 곳이 없으니 같이 뽑힌다.
   if (isPlant(world.get(hit.x, hit.y + 1, hit.z))) removeBlock(hit.x, hit.y + 1, hit.z);
@@ -1212,7 +1366,7 @@ function updateMining(dt: number): void {
   const held = heldItem();
   const heldToolDef = TOOL_BY_ID.get(held);
   const tool = heldToolDef && inventory.count(held) > 0 ? heldToolDef : null;
-  const needed = breakSeconds(block, tool);
+  const needed = breakSeconds(block, tool, tool ? efficiencyMultiplier(inventory.enchantLevel(tool.id, "efficiency")) : 1);
   miningProgress += dt;
 
   mineSoundTimer -= dt;
@@ -1333,6 +1487,9 @@ function saveNow(): void {
     drops: drops.toArray(),
     achievements: achievements.toArray(),
     hunger: hunger.value,
+    xp: experience.toArray(),
+    enchants: inventory.enchantEntries(),
+    effects: effects.entries(),
   };
   writeStorage(saveKey(seed), encodeSave(data));
 }
@@ -1405,6 +1562,8 @@ function refreshHunger(): void {
   });
 }
 refreshHunger();
+refreshXp();
+refreshEffects();
 
 /** 가진 투구·흉갑·바지·부츠 중 부위별로 가장 좋은 것을 걸친 걸로 치고, 그 점수를 보여준다. */
 function refreshArmor(): void {
@@ -1426,7 +1585,16 @@ function hurt(amount: number): void {
   if (health.dead) respawn();
 }
 
+/** 걸친 방어구에 붙은 보호 인챈트를 다 합친 점수 (방어 점수처럼 피해를 줄인다). */
+function wornProtection(): number {
+  let levels = 0;
+  for (const def of bestArmor((id) => inventory.count(id) > 0)) levels += inventory.enchantLevel(def.id, "protection");
+  return protectionPoints(levels);
+}
+
 function respawn(): void {
+  effects.clear();
+  refreshEffects();
   player.x = spawnX + 0.5;
   player.z = spawnZ + 0.5;
   player.y = world.surfaceHeight(spawnX, spawnZ) + 0.01;
@@ -1785,6 +1953,17 @@ function frame(now: number): void {
       scheduleSave();
     }
   }
+  const regenHeal = effects.update(dt);
+  if (regenHeal > 0 && mode === "survival") {
+    health.heal(regenHeal);
+    refreshHearts();
+  }
+  player.speedFactor = effects.speedMultiplier();
+  effectsTimer += dt;
+  if (effectsTimer >= 0.5) {
+    effectsTimer = 0;
+    refreshEffects();
+  }
   if (mode !== "creative") player.flying = false;
   heartsElement.style.display = mode === "creative" ? "none" : "";
   descendButton.classList.toggle("show", player.flying);
@@ -1806,7 +1985,7 @@ function frame(now: number): void {
     audio.playMob(call.kind, 1 - Math.hypot(call.x - player.x, call.z - player.z) / 28);
   }
   // 낙하 피해와 달리, 동물·괴물의 공격은 걸친 방어구만큼 줄어든다.
-  if (mobResult.damage > 0) hurt(reduceDamage(mobResult.damage, (id) => inventory.count(id) > 0));
+  if (mobResult.damage > 0) hurt(reduceDamage(mobResult.damage, (id) => inventory.count(id) > 0, wornProtection()));
   for (const shot of mobResult.shots) {
     if (shot.fire) audio.playDragonFire();
     else audio.playArrow();
@@ -1870,7 +2049,7 @@ function frame(now: number): void {
   const target = currentTarget();
   outline.visible = target !== null;
   const aimed = target ? world.get(target.x, target.y, target.z) : Block.Air;
-  useButton.classList.toggle("show", aimed === Block.CraftingTable || aimed === Block.Furnace || isDoor(aimed) || isChest(aimed));
+  useButton.classList.toggle("show", aimed === Block.CraftingTable || aimed === Block.Furnace || aimed === Block.EnchantTable || aimed === Block.BrewingStand || isDoor(aimed) || isChest(aimed));
   if (target) outline.position.set(target.x + 0.5, target.y + 0.5, target.z + 0.5);
 
   if (!freezeTime) worldSeconds += dt;

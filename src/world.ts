@@ -40,6 +40,9 @@ export const Block = {
   Gravel: 58,
   /** 울타리: 59~74. 번호는 59 + (이웃과 이어진 방향 4칸의 조합 0~15) */
   Fence: 59,
+  /** 인챈트 테이블과 양조대는 네모 블록이다 (모양 블록 번호 59~74 다음) */
+  EnchantTable: 75,
+  BrewingStand: 76,
 } as const;
 export type BlockId = (typeof Block)[keyof typeof Block];
 

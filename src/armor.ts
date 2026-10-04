@@ -46,8 +46,8 @@ export function totalArmorPoints(has: (id: number) => boolean): number {
   return bestArmor(has).reduce((sum, a) => sum + a.points, 0);
 }
 
-/** 방어구 점수만큼 들어오는 피해를 줄인다 (최대 80%까지, 마인크래프트와 같은 계산). */
-export function reduceDamage(amount: number, has: (id: number) => boolean): number {
-  const reduction = Math.min(MAX_REDUCTION, totalArmorPoints(has) * PER_POINT);
+/** 방어구 점수(와 보호 인챈트가 더해 주는 점수)만큼 들어오는 피해를 줄인다 (최대 80%까지, 마인크래프트와 같은 계산). */
+export function reduceDamage(amount: number, has: (id: number) => boolean, bonusPoints = 0): number {
+  const reduction = Math.min(MAX_REDUCTION, (totalArmorPoints(has) + bonusPoints) * PER_POINT);
   return amount * (1 - reduction);
 }

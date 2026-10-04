@@ -31,6 +31,12 @@ export interface SaveData {
   achievements?: string[];
   /** 배고픔 (0~20). 없으면(예전 저장) 가득 찬 채로 이어간다. */
   hunger?: number;
+  /** 경험치 [레벨, 그 레벨에서 모은 양]. 없으면 0레벨. */
+  xp?: [number, number];
+  /** 인챈트가 붙은 아이템들 [번호, [[종류, 단계]]]. */
+  enchants?: [number, [string, number][]][];
+  /** 걸려 있는 물약 효과 [종류, 남은 시간(초)]. */
+  effects?: [string, number][];
   /** 월드 규격 번호(높이 등). 없으면 1(예전 낮은 월드). 다르면 지형이 달라져서 블록 수정 기록은 못 쓴다. */
   worldVersion?: number;
 }
@@ -101,7 +107,7 @@ export function decodeSave(text: string | null): SaveData | null {
         data.chests.every(
           (e: unknown) =>
             Array.isArray(e) &&
-            e.length === 5 &&
+            (e.length === 5 || (e.length === 6 && Array.isArray(e[5]))) &&
             isFiniteNumbers(e.slice(0, 3)) &&
             [e[3], e[4]].every((list: unknown) => Array.isArray(list) && list.every((p: unknown) => Array.isArray(p) && p.length === 2 && isFiniteNumbers(p))),
         )
@@ -111,6 +117,27 @@ export function decodeSave(text: string | null): SaveData | null {
     if (data.crops !== undefined && !(Array.isArray(data.crops) && data.crops.every((e: unknown) => Array.isArray(e) && e.length === 4 && isFiniteNumbers(e)))) return null;
     if (data.achievements !== undefined && !(Array.isArray(data.achievements) && data.achievements.every((a: unknown) => typeof a === "string"))) return null;
     if (data.hunger !== undefined && !Number.isFinite(data.hunger)) return null;
+    if (data.xp !== undefined && !(Array.isArray(data.xp) && data.xp.length === 2 && isFiniteNumbers(data.xp))) return null;
+    if (
+      data.enchants !== undefined &&
+      !(
+        Array.isArray(data.enchants) &&
+        data.enchants.every(
+          (e: unknown) =>
+            Array.isArray(e) &&
+            e.length === 2 &&
+            typeof e[0] === "number" &&
+            Array.isArray(e[1]) &&
+            e[1].every((p: unknown) => Array.isArray(p) && p.length === 2 && typeof p[0] === "string" && Number.isFinite(p[1])),
+        )
+      )
+    )
+      return null;
+    if (
+      data.effects !== undefined &&
+      !(Array.isArray(data.effects) && data.effects.every((e: unknown) => Array.isArray(e) && e.length === 2 && typeof e[0] === "string" && Number.isFinite(e[1])))
+    )
+      return null;
     if (data.worldVersion !== undefined && !Number.isFinite(data.worldVersion)) return null;
     if (!data.edits.every((e: unknown) => Array.isArray(e) && e.length === 4 && isFiniteNumbers(e))) return null;
     return data as SaveData;
