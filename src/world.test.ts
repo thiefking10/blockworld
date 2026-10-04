@@ -65,7 +65,7 @@ describe("world", () => {
           if (world.get(x, y, z) !== Block.Wood) continue;
           woods++;
           const below = world.get(x, y - 1, z);
-          expect([Block.Grass, Block.Snow, Block.Wood]).toContain(below);
+          expect([Block.Grass, Block.Snow, Block.Wood, Block.Planks]).toContain(below); // 판자는 마을 집의 바닥
         }
       }
     }
@@ -90,6 +90,8 @@ describe("world", () => {
         for (let y = 0; y < SIZE_Y; y++) {
           if (world.get(x, y, z) !== Block.Water) continue;
           waters++;
+          // 마을 우물·밭의 물은 높은 땅 위에 있어도 된다.
+          if (world.villages.some((v) => Math.hypot(x - v.cx, z - v.cz) <= 15)) continue;
           expect(y).toBeLessThanOrEqual(SEA_LEVEL);
         }
       }
