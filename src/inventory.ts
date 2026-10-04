@@ -2,6 +2,7 @@ import { ARMOR_BY_ID } from "./armor";
 import { Item, ITEM_NAMES } from "./items";
 import { enchantsFor, ENCHANTS, wearChance, type EnchantId } from "./enchant";
 import { baseBlock } from "./shapes";
+import type { SlotHost, Stack } from "./slotOps";
 import { bestSword, maxDurability, SWORD_DAMAGE, TOOL_BY_ID } from "./tools";
 import { Block } from "./world";
 
@@ -175,7 +176,8 @@ export class Inventory {
   /** 도구·방어구·활 번호 → 붙은 인챈트들 */
   private readonly enchants = new Map<number, Map<EnchantId, number>>();
 
-  private maxStack(item: number): number {
+  /** 한 칸에 쌓을 수 있는 최대 개수 */
+  maxStack(item: number): number {
     if (item === Item.Bow || item === Item.FishingRod || item === Item.Saddle) return 1;
     if (item >= Item.HealPotion && item <= Item.RegenPotion) return 16;
     return TOOL_BY_ID.has(item) || ARMOR_BY_ID.has(item) || item === Item.Shield ? 1 : STACK_MAX;
@@ -269,6 +271,68 @@ export class Inventory {
     const max = maxDurability(item);
     if (max === 0 || this.count(item) === 0) return 0;
     return this.wear.get(item) ?? max;
+  }
+
+  /** i번째 칸에 든 것 (닳은 정도·인챈트 포함). 비었으면 null. */
+  slotStack(index: number): Stack | null {
+    const slot = this.slots[index];
+    if (!slot) return null;
+    const stack: Stack = { item: slot.item, count: slot.count };
+    const max = maxDurability(slot.item);
+    if (max > 0 && this.wear.has(slot.item)) stack.wear = this.wear.get(slot.item);
+    const list = this.enchantsOf(slot.item);
+    if (list.length > 0) stack.enchants = list;
+    return stack;
+  }
+
+  /** 칸을 직접 바꾼다 (집어 들기·옮기기용). 아이템이 가방에서 완전히 사라지면 닳은 정도·인챈트도 지우고, 들어오면 되살린다. */
+  setSlotStack(index: number, stack: Stack | null): void {
+    const previous = this.slots[index];
+    this.slots[index] = stack ? { item: stack.item, count: stack.count } : null;
+    if (previous && this.count(previous.item) === 0) {
+      this.wear.delete(previous.item);
+      this.enchants.delete(previous.item);
+    }
+    if (!stack) return;
+    if (stack.wear !== undefined) this.setWear(stack.item, stack.wear);
+    for (const [id, level] of stack.enchants ?? []) this.addEnchant(stack.item, id, level);
+  }
+
+  /** 칸 옮기기 도구들이 쓰는 연결부 (slotOps.ts). */
+  host(): SlotHost {
+    return {
+      size: this.slots.length,
+      get: (i) => this.slotStack(i),
+      set: (i, s) => this.setSlotStack(i, s),
+      maxStack: (item) => this.maxStack(item),
+    };
+  }
+
+  /** 들고 있던 것(닳은 정도·인챈트 포함)을 가방에 넣는다. 실제로 넣은 개수를 돌려준다 (자리가 모자라면 덜 들어간다). */
+  addStack(stack: Stack): number {
+    const added = this.add(stack.item, stack.count);
+    if (added > 0) {
+      if (stack.wear !== undefined) this.setWear(stack.item, stack.wear);
+      for (const [id, level] of stack.enchants ?? []) this.addEnchant(stack.item, id, level);
+    }
+    return added;
+  }
+
+  /** 같은 아이템을 한 칸에 모으고 번호 순으로 앞에서부터 채운다 ("정리"). 닳은 정도·인챈트는 그대로 둔다. */
+  compact(): void {
+    const totals = new Map<number, number>();
+    for (const slot of this.slots) if (slot) totals.set(slot.item, (totals.get(slot.item) ?? 0) + slot.count);
+    this.slots = new Array(SLOT_COUNT).fill(null);
+    let next = 0;
+    for (const item of [...totals.keys()].sort((a, b) => a - b)) {
+      let left = totals.get(item)!;
+      const max = this.maxStack(item);
+      while (left > 0) {
+        const n = Math.min(max, left);
+        this.slots[next++] = { item, count: n };
+        left -= n;
+      }
+    }
   }
 
   /** 이 아이템에 붙은 어떤 인챈트의 단계 (없으면 0). */

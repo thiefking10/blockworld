@@ -49,9 +49,9 @@ export function canPlaceAt(block: number, below: number): boolean {
   return true;
 }
 
-export const HOTBAR_SIZE = 6;
+export const HOTBAR_SIZE = 9;
 
-export const DEFAULT_HOTBAR: number[] = [Block.Grass, Block.Dirt, Block.Stone, Block.Wood, Block.Planks, Block.Glass];
+export const DEFAULT_HOTBAR: number[] = [Block.Grass, Block.Dirt, Block.Stone, Block.Wood, Block.Planks, Block.Glass, Block.Sand, Block.Brick, Block.Torch];
 
 export function blockName(block: number): string {
   return PLACEABLE_BLOCKS.find((b) => b.block === baseBlock(block))?.name ?? "블록";
@@ -67,7 +67,8 @@ export function isPlaceableBlock(id: number): boolean {
  * 이제 블록뿐 아니라 도구·검·활 같은 아이템도 들 수 있어서, 0 이상의 정수면 일단 받아들인다 (0은 빈손).
  */
 export function sanitizeHotbar(saved: number[] | undefined): number[] {
-  if (!saved || saved.length !== HOTBAR_SIZE) return [...DEFAULT_HOTBAR];
+  if (!saved || saved.length < 6 || saved.length > HOTBAR_SIZE) return [...DEFAULT_HOTBAR];
   if (!saved.every((id) => Number.isInteger(id) && id >= 0)) return [...DEFAULT_HOTBAR];
-  return saved;
+  // 예전 저장(6칸)은 새로 생긴 칸을 기본 블록으로 채워서 이어간다.
+  return [...saved, ...DEFAULT_HOTBAR.slice(saved.length)];
 }

@@ -21,11 +21,11 @@ describe("blocks", () => {
     expect(sanitizeHotbar([1, 2])).toEqual(DEFAULT_HOTBAR);
     expect(sanitizeHotbar([1, 2, 3, 4, 5, -1])).toEqual(DEFAULT_HOTBAR);
     expect(sanitizeHotbar([1, 2, 3, 4, 5, 1.5])).toEqual(DEFAULT_HOTBAR);
-    expect(sanitizeHotbar([1, 2, 3, 4, 5, 6])).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(sanitizeHotbar([1, 2, 3, 4, 5, 6, 7, 8, 9])).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
   });
 
   it("도구·검·활 같은 아이템도 아이템 바에 들 수 있고, 0은 빈손이다", () => {
-    expect(sanitizeHotbar([0, 110, 126, 135, 3, 5])).toEqual([0, 110, 126, 135, 3, 5]);
+    expect(sanitizeHotbar([0, 110, 126, 135, 3, 5, 7, 8, 9])).toEqual([0, 110, 126, 135, 3, 5, 7, 8, 9]);
   });
 
   it("놓을 수 있는 블록인지 구분한다", () => {

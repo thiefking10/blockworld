@@ -143,6 +143,96 @@
       #jump-button.active {
         background: rgba(255, 255, 255, 0.45);
       }
+      #craft-body {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .craft-top {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .craft-info {
+        font-size: 12px;
+        color: #cfd8ff;
+      }
+      .craft-middle {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        align-items: flex-start;
+      }
+      .craft-left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .craft-grid {
+        display: grid;
+        gap: 3px;
+      }
+      .craft-arrow {
+        font-size: 22px;
+        color: #cfd8ff;
+      }
+      .craft-result {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+      }
+      .craft-inv {
+        display: grid;
+        grid-template-columns: repeat(9, 44px);
+        gap: 3px;
+      }
+      .cslot {
+        position: relative;
+        width: 44px;
+        height: 44px;
+        box-sizing: border-box;
+        border: 2px solid rgba(255, 255, 255, 0.35);
+        border-radius: 5px;
+        background: rgba(255, 255, 255, 0.08);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: auto;
+        touch-action: manipulation;
+      }
+      .cslot.blank {
+        background: rgba(255, 255, 255, 0.03);
+      }
+      .cslot.ready {
+        border-color: #5aff7a;
+      }
+      .cslot img {
+        width: 30px;
+        height: 30px;
+        image-rendering: pixelated;
+        pointer-events: none;
+      }
+      .cslot-emoji {
+        font-size: 24px;
+        pointer-events: none;
+      }
+      .cslot-count {
+        position: absolute;
+        right: 2px;
+        bottom: 0;
+        font-size: 11px;
+        font-weight: bold;
+        text-shadow: 0 1px 2px #000, 0 0 3px #000;
+        pointer-events: none;
+      }
+      .craft-book {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        max-height: 150px;
+        overflow-y: auto;
+      }
       #guard-button {
         position: absolute;
         right: 300px;
@@ -307,10 +397,10 @@
         bottom: 12px;
         transform: translateX(-50%);
         display: flex;
-        gap: 8px;
+        gap: 4px;
       }
       .slot {
-        width: 52px;
+        width: 46px;
         height: 52px;
         box-sizing: border-box;
         border: 3px solid rgba(255, 255, 255, 0.3);
@@ -342,7 +432,7 @@
       }
       #inventory-button {
         position: absolute;
-        left: calc(50% - 176px - 72px);
+        left: calc(50% - 223px - 64px);
         bottom: 12px;
         width: 60px;
         height: 52px;
@@ -365,6 +455,7 @@
       #chest-panel,
       #enchant-panel,
       #trade-panel,
+      #craft-panel,
       #multiplayer-panel {
         position: absolute;
         left: 50%;
@@ -392,6 +483,7 @@
       #chest-panel.open,
       #enchant-panel.open,
       #trade-panel.open,
+      #craft-panel.open,
       #multiplayer-panel.open {
         display: flex;
       }
@@ -855,6 +947,7 @@
       <div id="inventory-button">가방</div>
       <div id="help-panel">
         <div id="help-text">
+          <b>격자 제작</b> 제작대를 <b>사용</b>하면 3×3 격자가 열려요. 가방 칸을 눌러 집고 격자 칸을 눌러 놓은 뒤, 모양이 맞으면 결과 칸에 나타나요(눌러서 가져가요, <b>모두 만들기</b>도 있어요). 도구·갑옷은 마인크래프트와 같은 모양으로 놓아요(곡괭이 ⛏ = 윗줄 3개 + 가운데 막대 2개). 그 밖의 재료는 모양 상관없이 개수만 맞으면 돼요. 모르겠으면 아래 <b>레시피</b>를 눌러 보세요. 재료로 칸을 채워 줘요. <b>나누기</b>를 켜면 절반만 집고 하나씩 놓아요. 가방의 <b>🔨 격자 제작</b> 버튼은 2×2 격자(판자·막대·횃불·제작대)예요. 단축바는 이제 9칸이고 숫자 1~9로 골라요.<br />
           <b>움직이기</b> 화면 왼쪽을 누른 채 끌면 걷고, 오른쪽을 끌면 둘러봐요. 한 칸 턱은 저절로 올라가요.<br />
           <b>부수기 / 놓기</b> 십자 표시가 가리키는 블록은 <b>부수기를 꾹 누르고 있으면</b> 조금씩 부서져요. <b>맞는 도구를 손에 들고 있어야</b> 빨라지고, 돌은 곡괭이를 들어야 나와요(가방에 있어도 손에 안 들었으면 안 돼요). 놓기는 아이템 바에서 고른 블록을 놓아요.<br />
           <b>비행</b> 창작 방식에서 점프를 두 번 빠르게 누르면 날아요. 점프는 위로, 내려가기는 아래로, 땅에 닿으면 끝나요. 컴퓨터는 Shift로 내려가요. 가방 화면 아래쪽 "아이템 바로 받기"에서 도구·방어구·재료도 눌러서 바로 받을 수 있어요.<br />
@@ -893,6 +986,11 @@
         <div id="furnace-body"></div>
         <div id="furnace-close" class="close-button">닫기</div>
       </div>
+      <div id="craft-panel">
+        <div id="craft-title" class="section-title">제작</div>
+        <div id="craft-body"></div>
+        <div id="craft-close" class="close-button">닫기 (올려 둔 재료는 가방으로 돌아가요)</div>
+      </div>
       <div id="trade-panel">
         <div id="trade-title" class="section-title">마을 사람</div>
         <div id="trade-body"></div>
@@ -927,6 +1025,7 @@
             <input id="look-slider" type="range" min="0.5" max="2" step="0.1" value="1" />
           </div>
           <div id="mode-toggle">방식 바꾸기</div>
+          <div id="craft-open" class="item-chip">🔨 격자 제작·칸 정리</div>
         </div>
         <div id="equipment-row"></div>
         <div id="inventory-body">

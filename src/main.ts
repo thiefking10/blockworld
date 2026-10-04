@@ -8,6 +8,7 @@ import { audio } from "./audio";
 import { Achievements, ACHIEVEMENTS } from "./achievements";
 import { blockName, canPlaceAt, isPlaceableBlock, PLACEABLE_BLOCKS, sanitizeHotbar } from "./blocks";
 import { ChestField, moveStack } from "./chest";
+import { CraftUi } from "./craftUi";
 import { CropField } from "./crops";
 import { FallTracker, Health, MAX_HEALTH } from "./health";
 import { Hunger, MAX_HUNGER } from "./hunger";
@@ -250,6 +251,10 @@ function itemEmoji(item: number): string {
   if (item === Item.DragonHorn) return "📯";
   if (item === Item.DragonScale) return "🐲";
   if (item === Item.Coal) return "⚫";
+  if (item === Item.Stick) return "🥢";
+  if (item === Item.IronIngot) return "🔩";
+  if (item === Item.Bone) return "🦴";
+  if (item === Item.Gunpowder) return "💥";
   if (item === Item.FishingRod) return "🎣";
   if (item === Item.String) return "🧵";
   if (item === Item.Emerald) return "💚";
@@ -669,6 +674,23 @@ function craftRecipe(index: number): void {
 
 const stationPanel = document.getElementById("station-panel") as HTMLElement;
 const stationList = document.getElementById("station-list") as HTMLElement;
+const craftUi = new CraftUi({
+  inventory,
+  itemLabel,
+  itemEmoji,
+  iconUrl: (item) => (isPlaceableBlock(item) ? iconUrl(item) : null),
+  showToast,
+  onChange: () => {
+    refreshHotbar();
+    scheduleSave();
+  },
+  dropStack: (stack) => drops.spawn(stack.item, stack.count, player.x, player.y + 1, player.z, Math.random),
+  playCraft: () => audio.playCraft(),
+  playPickup: () => audio.playPickup(),
+  onCrafted: (recipe) => {
+    if (recipe.name === "제작대") unlockAchievement("table");
+  },
+});
 const stationTitle = document.getElementById("station-title") as HTMLElement;
 /** 제작대와 양조대는 같은 화면을 쓰고, 양조대에서는 물약 제작법만 보인다. */
 let stationMode: "table" | "brewing" = "table";
@@ -708,6 +730,7 @@ function renderRecipeRows(container: HTMLElement, filter: (recipe: Recipe) => bo
 }
 
 function closeStations(): void {
+  craftUi.close();
   stationPanel.classList.remove("open");
   enchantPanel.classList.remove("open");
   tradePanel.classList.remove("open");
@@ -724,6 +747,7 @@ function refreshOpenPanels(): void {
   if (inventoryPanel.classList.contains("open")) refreshInventoryPanel();
   if (stationPanel.classList.contains("open")) renderRecipeRows(stationList, stationFilter);
   if (enchantPanel.classList.contains("open")) refreshEnchantPanel();
+  craftUi.refresh();
   if (tradePanel.classList.contains("open")) refreshTradePanel();
   if (furnacePanel.classList.contains("open")) refreshFurnacePanel();
   if (chestPanel.classList.contains("open")) refreshChestPanel();
@@ -1093,8 +1117,10 @@ function useBlock(): void {
   }
   toggleInventory(false);
   closeStations();
-  if (block === Block.CraftingTable || block === Block.BrewingStand) {
-    stationMode = block === Block.BrewingStand ? "brewing" : "table";
+  if (block === Block.CraftingTable) {
+    craftUi.open(3);
+  } else if (block === Block.BrewingStand) {
+    stationMode = "brewing";
     stationTitle.textContent = block === Block.BrewingStand ? "양조대 (유리병에 재료를 넣어 물약을 만들어요)" : "제작대 (초록 테두리는 만들 수 있어요)";
     stationPanel.classList.add("open");
     renderRecipeRows(stationList, stationFilter);
@@ -1245,6 +1271,15 @@ onPress(document.getElementById("furnace-close") as HTMLElement, closeStations);
 onPress(document.getElementById("chest-close") as HTMLElement, closeStations);
 onPress(document.getElementById("enchant-close") as HTMLElement, closeStations);
 onPress(document.getElementById("trade-close") as HTMLElement, closeStations);
+onPress(document.getElementById("craft-open") as HTMLElement, () => {
+  if (mode === "creative") {
+    showToast("창작 모드에서는 제작이 필요 없어요");
+    return;
+  }
+  toggleInventory(false);
+  closeStations();
+  craftUi.open(2);
+});
 
 onPress(document.getElementById("mode-toggle") as HTMLElement, () => {
   mode = mode === "survival" ? "creative" : "survival";
