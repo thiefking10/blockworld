@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { doorPlateFacing, FACING_DIRS, facingOf } from "./shapes";
-import { Block, isDoor, isLadder } from "./world";
+import { Block, isDoor, isFence, isLadder } from "./world";
 
 export const TILE = {
   GrassTop: 0,
@@ -37,6 +37,7 @@ export const TILE = {
   Ladder: 31,
   DoorLower: 32,
   DoorUpper: 33,
+  Gravel: 34,
 } as const;
 
 export const ATLAS_COLS = 6;
@@ -55,6 +56,7 @@ export function tileForFace(block: number, dirY: number, dirX = 0, dirZ = 0): nu
       return fx === dirX && fz === dirZ ? TILE.ChestFront : TILE.ChestSide;
     }
     if (isLadder(block)) return TILE.Ladder;
+    if (isFence(block)) return TILE.Planks;
     if (isDoor(block)) {
       // 문판의 넓은 면(판이 놓인 방향과 수직인 면)에만 문 무늬를 붙이고, 얇은 옆면은 나무 무늬를 쓴다.
       const [fx] = FACING_DIRS[doorPlateFacing(block)];
@@ -110,6 +112,8 @@ export function tileForFace(block: number, dirY: number, dirX = 0, dirZ = 0): nu
       return TILE.DiamondOre;
     case Block.CoalOre:
       return TILE.CoalOre;
+    case Block.Gravel:
+      return TILE.Gravel;
     default:
       return TILE.Stone;
   }
@@ -305,6 +309,16 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: number): void {
       }
       break;
     }
+    case TILE.Gravel: {
+      noiseFill(ctx, ox, oy, [136, 130, 126], 34, random);
+      for (let i = 0; i < 40; i++) {
+        const gx = Math.floor(random() * 15);
+        const gy = Math.floor(random() * 15);
+        const tone = random() < 0.5 ? -42 : 30;
+        for (const [dx, dy] of [[0, 0], [1, 0], [0, 1]]) px(gx + dx, gy + dy, shade([136, 130, 126], tone + (random() - 0.5) * 12));
+      }
+      break;
+    }
     case TILE.ChestSide:
     case TILE.ChestFront:
     case TILE.ChestTop: {
@@ -484,7 +498,7 @@ export function createAtlasTexture(): THREE.Texture {
   const canvas = document.createElement("canvas");
   atlasCanvas = canvas;
   canvas.width = ATLAS_COLS * TILE_PIXELS;
-  canvas.height = ATLAS_COLS * TILE_PIXELS; // 6×6 = 36칸 (지금 34칸 사용)
+  canvas.height = ATLAS_COLS * TILE_PIXELS; // 6×6 = 36칸 (지금 35칸 사용)
   const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
 
   for (const tile of Object.values(TILE)) drawTile(ctx, tile);

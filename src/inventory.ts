@@ -53,6 +53,7 @@ export const RECIPES: Recipe[] = [
   { name: "판자 계단", station: "table", inputs: [[Block.Planks, 6]], output: [Block.PlankStairs, 4] },
   { name: "돌 계단", station: "table", inputs: [[Block.Stone, 6]], output: [Block.StoneStairs, 4] },
   { name: "문", station: "table", inputs: [[Block.Planks, 6]], output: [Block.Door, 3] },
+  { name: "울타리", station: "table", inputs: [[Block.Planks, 4], [Item.Stick, 2]], output: [Block.Fence, 3] },
   { name: "상자", station: "table", inputs: [[Block.Planks, 8]], output: [Block.Chest, 1] },
   { name: "사다리", station: "table", inputs: [[Item.Stick, 7]], output: [Block.Ladder, 3] },
   { name: "벽돌", station: "table", inputs: [[Block.Stone, 2]], output: [Block.Brick, 2] },

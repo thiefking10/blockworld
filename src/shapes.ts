@@ -1,4 +1,4 @@
-import { Block, isDoor, isLadder, isShaped } from "./world";
+import { Block, isDoor, isFence, isLadder, isShaped, occludes } from "./world";
 
 /** 한 칸(0~1) 안의 상자 하나: [minX, minY, minZ, maxX, maxY, maxZ] */
 export type Box = readonly [number, number, number, number, number, number];
@@ -54,6 +54,48 @@ const DOOR_THICKNESS = 3 / 16;
 const LADDER_THICKNESS = 1 / 8;
 const CHEST_BOX: Box = [1 / 16, 0, 1 / 16, 15 / 16, 14 / 16, 15 / 16];
 
+/** 울타리가 이어진 방향들 (비트 i는 FACING_DIRS[i] 쪽). */
+export function fenceMask(block: number): number {
+  return isFence(block) ? block - Block.Fence : 0;
+}
+
+/** 이 블록 옆에 울타리가 이어질 수 있는지 (다른 울타리나 속이 꽉 찬 블록). */
+export function fenceConnectsTo(neighbor: number): boolean {
+  return isFence(neighbor) || occludes(neighbor);
+}
+
+const FENCE_POST: Box = [6 / 16, 0, 6 / 16, 10 / 16, 1, 10 / 16];
+
+/** 울타리의 그림 모양: 기둥 + 이어진 쪽으로 뻗는 가로대 두 개 */
+function fenceRenderBoxes(mask: number): Box[] {
+  const boxes: Box[] = [FENCE_POST];
+  for (let f = 0; f < 4; f++) {
+    if (!(mask & (1 << f))) continue;
+    for (const [y0, y1] of [[6 / 16, 9 / 16], [12 / 16, 15 / 16]]) {
+      boxes.push(armBox(f, y0, y1, 7 / 16, 9 / 16));
+    }
+  }
+  return boxes;
+}
+
+/** 기둥 가운데에서 칸 가장자리까지 뻗는 막대 */
+function armBox(facing: number, y0: number, y1: number, lo: number, hi: number): Box {
+  const arms: Box[] = [
+    [lo, y0, 0.5, hi, y1, 1],
+    [0, y0, lo, 0.5, y1, hi],
+    [lo, y0, 0, hi, y1, 0.5],
+    [0.5, y0, lo, 1, y1, hi],
+  ];
+  return arms[facing];
+}
+
+/** 울타리는 키가 1.5칸이라 뛰어넘을 수 없다. 몸이 부딪히는 모양은 기둥과 이어진 쪽의 높은 판이다. */
+function fenceCollisionBoxes(mask: number): Box[] {
+  const boxes: Box[] = [[6 / 16, 0, 6 / 16, 10 / 16, 1.5, 10 / 16]];
+  for (let f = 0; f < 4; f++) if (mask & (1 << f)) boxes.push(armBox(f, 0, 1.5, 6 / 16, 10 / 16));
+  return boxes;
+}
+
 /** 모양 있는 블록의 방향 (0~3). 방향이 없는 블록(반블록)은 0. */
 export function facingOf(block: number): number {
   if (block >= Block.PlankStairs && block < Block.PlankStairs + 8) return (block - Block.PlankStairs) % 4;
@@ -77,12 +119,14 @@ export function renderBoxes(block: number): readonly Box[] | null {
   if (block >= Block.Chest && block < Block.Ladder) return [CHEST_BOX];
   if (isLadder(block)) return [plate(facingOf(block), LADDER_THICKNESS)];
   if (isDoor(block)) return [plate(doorPlateFacing(block), DOOR_THICKNESS)];
+  if (isFence(block)) return fenceRenderBoxes(fenceMask(block));
   return null;
 }
 
 /** 몸이 부딪히는 모양. 사다리는 몸이 통과한다 (타고 오르는 블록이라서). */
 export function collisionBoxes(block: number): readonly Box[] {
   if (isLadder(block)) return [];
+  if (isFence(block)) return fenceCollisionBoxes(fenceMask(block));
   return renderBoxes(block) ?? [];
 }
 
@@ -93,6 +137,7 @@ export function baseBlock(block: number): number {
   if (block >= Block.Chest && block < Block.Ladder) return Block.Chest;
   if (isLadder(block)) return Block.Ladder;
   if (isDoor(block)) return Block.Door;
+  if (isFence(block)) return Block.Fence;
   return block;
 }
 

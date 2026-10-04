@@ -36,6 +36,10 @@ export const Block = {
   /** 문 아랫부분: 42~49 (닫힘 42~45, 열림 46~49), 윗부분: 50~57 */
   Door: 42,
   DoorTop: 50,
+  /** 자갈은 모래처럼 받침이 없으면 떨어진다 (falling.ts) */
+  Gravel: 58,
+  /** 울타리: 59~74. 번호는 59 + (이웃과 이어진 방향 4칸의 조합 0~15) */
+  Fence: 59,
 } as const;
 export type BlockId = (typeof Block)[keyof typeof Block];
 
@@ -67,7 +71,11 @@ export function isPlant(block: number): boolean {
 
 /** 반블록·계단·상자·사다리·문처럼 한 칸을 다 채우지 않는 모양의 블록인지. */
 export function isShaped(block: number): boolean {
-  return block >= Block.PlankSlab && block <= 57;
+  return (block >= Block.PlankSlab && block <= 57) || isFence(block);
+}
+
+export function isFence(block: number): boolean {
+  return block >= Block.Fence && block < Block.Fence + 16;
 }
 
 export function isChest(block: number): boolean {
@@ -94,7 +102,7 @@ export function isOpaque(block: number): boolean {
 
 /** 하늘빛을 막는 블록인지. 유리는 몸은 막아도 빛은 통과시킨다. */
 export function blocksLight(block: number): boolean {
-  return isOpaque(block) && block !== Block.Glass && !isLadder(block) && !isOpenDoor(block);
+  return isOpaque(block) && block !== Block.Glass && !isLadder(block) && !isOpenDoor(block) && !isFence(block);
 }
 
 /** 옆 블록의 면을 가려 그리지 않아도 되게 하는 블록인지 (투명한 유리는 가리지 못한다). */
@@ -433,6 +441,19 @@ export class World {
   }
 
   /** 다이아몬드는 철보다 훨씬 드물고, 땅속 아주 깊은 곳(맨 밑 14칸)에서만 나온다 (진짜 마인크래프트처럼 깊을수록 귀하다). */
+  private scatterGravel(seed: number): void {
+    for (let x = 0; x < SIZE_X; x++) {
+      for (let z = 0; z < SIZE_Z; z++) {
+        const surface = this.top[x + SIZE_X * z];
+        for (let y = 5; y <= Math.min(surface - 3, SEA_LEVEL + 12); y++) {
+          if (this.get(x, y, z) !== Block.Stone) continue;
+          if (hash3(x >> 1, y >> 1, z >> 1, seed + 77123) > 0.012) continue;
+          if (hash3(x, y, z, seed + 33) < 0.8) this.set(x, y, z, Block.Gravel);
+        }
+      }
+    }
+  }
+
   private scatterDiamond(seed: number): void {
     for (let x = 0; x < SIZE_X; x++) {
       for (let z = 0; z < SIZE_Z; z++) {
@@ -516,6 +537,7 @@ export class World {
     this.carveCaves(seed);
     this.scatterOre(seed);
     this.scatterCoal(seed);
+    this.scatterGravel(seed);
     this.scatterDiamond(seed);
     this.plantTrees(seed);
     this.scatterFlowers(seed);

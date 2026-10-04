@@ -17,6 +17,8 @@ import { MobRenderer } from "./mobRender";
 import { DropField } from "./drops";
 import { DropRenderer } from "./dropRender";
 import { FUELS, FurnaceField, SMELTS } from "./furnace";
+import { refreshFences } from "./fences";
+import { settleFrom } from "./falling";
 import { HeldHandRenderer } from "./heldHand";
 import { MOB_SPECS, MobSimulation, raycastMobs, type Mob, type MobKind } from "./mobs";
 import { connectAndWait, NetClient, randomRoomCode } from "./net";
@@ -1065,6 +1067,35 @@ function refreshMesh(x: number, z: number, lightChanged: boolean): void {
   else worldMesh.updateBlock(x, z);
 }
 
+/** 블록을 놓거나 없앤 뒤 주변을 정리한다: 울타리 이음새는 바로 맞추고, 받침을 잃은 모래·자갈은 잠깐 뒤에 떨어뜨린다. */
+function afterBlockChange(x: number, y: number, z: number): void {
+  const fenceChanges = refreshFences(world, x, y, z);
+  for (const c of fenceChanges) {
+    editLog.record(c.x, c.y, c.z, c.block);
+    net.sendEdit(c.x, c.y, c.z, c.block);
+    refreshMesh(c.x, c.z, false);
+  }
+  if (fenceChanges.length > 0) scheduleSave();
+  window.setTimeout(() => settleColumn(x, y, z), 150);
+}
+
+/** 놓은 자리(모래를 놓았을 때)와 그 바로 위(받침을 없앴을 때)에서 떨어질 것이 있으면 떨어뜨린다. */
+function settleColumn(x: number, y: number, z: number): void {
+  for (const startY of [y, y + 1]) {
+    const result = settleFrom(world, x, startY, z);
+    if (result.moves.length === 0) continue;
+    for (const move of result.moves) {
+      editLog.record(x, move.fromY, z, Block.Air);
+      editLog.record(x, move.toY, z, move.block);
+      net.sendEdit(x, move.fromY, z, Block.Air);
+      net.sendEdit(x, move.toY, z, move.block);
+    }
+    audio.playPlace(Block.Sand);
+    refreshMesh(x, z, result.lightChanged);
+    scheduleSave();
+  }
+}
+
 /** 블록 하나를 없앤다. 서바이벌이면 (얻을 수 있을 때) 나오는 것들을 가방에 넣는다. */
 function removeBlock(x: number, y: number, z: number, harvest = true): boolean {
   const broken = world.get(x, y, z);
@@ -1090,6 +1121,7 @@ function removeBlock(x: number, y: number, z: number, harvest = true): boolean {
   editLog.record(x, y, z, Block.Air);
   net.sendEdit(x, y, z, Block.Air);
   crops.remove(x, y, z);
+  afterBlockChange(x, y, z);
   // 문은 두 칸짜리라, 한쪽을 부수면 나머지 반쪽도 같이 사라진다 (문은 아랫부분이 하나만 준다).
   if (isDoor(broken)) {
     const otherY = isDoorTop(broken) ? y - 1 : y + 1;
@@ -1275,6 +1307,7 @@ function placeBlock(): void {
     editLog.record(px, py + dy, pz, id);
     net.sendEdit(px, py + dy, pz, id);
   }
+  for (const [dy] of placement?.cells ?? []) afterBlockChange(px, py + dy, pz);
   if (block === Block.Sprout) crops.plant(px, py, pz, worldSeconds);
   refreshMesh(px, pz, lightChanged);
   scheduleSave();

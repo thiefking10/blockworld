@@ -53,10 +53,12 @@ export class Player {
     const y1 = Math.floor(py + HEIGHT);
     const z0 = Math.floor(pz - HALF_WIDTH);
     const z1 = Math.floor(pz + HALF_WIDTH);
+    // 울타리처럼 칸보다 키가 큰 블록은 바로 아래 칸에서 위로 솟아 있어서, 한 칸 아래도 모양 블록만 살핀다.
     for (let x = x0; x <= x1; x++) {
-      for (let y = y0; y <= y1; y++) {
+      for (let y = y0 - 1; y <= y1; y++) {
         for (let z = z0; z <= z1; z++) {
           const block = this.world.get(x, y, z);
+          if (y < y0 && !isShaped(block)) continue;
           if (isShaped(block)) {
             // 계단·반블록·문 같은 모양 블록은 칸 전체가 아니라 실제 모양과만 부딪힌다.
             const min: [number, number, number] = [px - HALF_WIDTH - x, py - y, pz - HALF_WIDTH - z];

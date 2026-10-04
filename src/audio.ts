@@ -23,6 +23,7 @@ export function materialOf(block: number): Material {
     case Block.Wool:
       return "snow";
     case Block.Sand:
+    case Block.Gravel:
       return "sand";
     case Block.Wood:
     case Block.Planks:
@@ -32,6 +33,7 @@ export function materialOf(block: number): Material {
     case Block.Chest:
     case Block.Ladder:
     case Block.Door:
+    case Block.Fence:
       return "wood";
     case Block.Leaves:
     case Block.Cactus:
